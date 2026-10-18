@@ -1,0 +1,59 @@
+// Single source of truth for role-based access control.
+// Roles come from the MemberRole enum. Staff roles only count inside the INTERNAL organization,
+// client roles only inside CLIENT organizations. A user's permissions are the union of their active memberships.
+
+export const PERMISSIONS = {
+  'org.create': 'Create client workspaces',
+  'project.create': 'Create projects',
+  'project.manage_team': 'Edit any project team',
+  'task.create': 'Create tasks',
+  'task.update_any': 'Edit any task',
+  'task.update_own': 'Edit tasks they own or are assigned to',
+  'task.assign': 'Assign tasks to other people',
+  'ticket.create': 'Raise tickets',
+  'ticket.view_internal': 'See internal-only tickets and comments',
+  'ticket.triage': 'Assign, re-prioritise and change status of any ticket',
+  'ticket.update_own': 'Update status of tickets assigned to them',
+  'ticket.comment_internal': 'Write internal comments',
+  'file.upload': 'Upload attachments',
+  'team.view': 'View teams',
+  'team.create': 'Create teams',
+  'user.list': 'See the staff directory',
+  'chat.use': 'Use team chat',
+  'update.post': 'Post daily updates',
+  'admin.view': 'Open the admin console',
+  'member.manage': 'Invite people and change roles',
+  'member.grant_admin': 'Grant or remove Platform Admin',
+  'project.post_update': 'Post client-visible project updates (any project)',
+};
+const ALL = Object.keys(PERMISSIONS);
+
+const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
+const TEAM_LEAD = [...EMPLOYEE.filter((p) => !['task.update_own', 'ticket.update_own'].includes(p)), 'project.create', 'task.update_any', 'task.assign', 'ticket.triage', 'project.post_update'];
+const MANAGER = ALL.filter((p) => p !== 'member.grant_admin');
+
+export const ROLE_PERMISSIONS = {
+  PLATFORM_ADMIN: ALL,
+  MANAGER,
+  TEAM_LEAD,
+  EMPLOYEE,
+  CLIENT_ADMIN: ['ticket.create', 'file.upload'],
+  CLIENT_MEMBER: ['ticket.create', 'file.upload'],
+};
+export const ROLE_LABELS = {
+  PLATFORM_ADMIN: 'Platform admin', MANAGER: 'Manager', TEAM_LEAD: 'Team lead', EMPLOYEE: 'Employee',
+  CLIENT_ADMIN: 'Client admin', CLIENT_MEMBER: 'Client member',
+};
+export const STAFF_ROLES = ['PLATFORM_ADMIN', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE'];
+export const CLIENT_ROLES = ['CLIENT_ADMIN', 'CLIENT_MEMBER'];
+export const MANAGER_ROLES = ['PLATFORM_ADMIN', 'MANAGER'];
+
+/** Permissions for a list of memberships [{ role, organization: { type } }]. */
+export function permissionsFor(memberships) {
+  const set = new Set();
+  for (const m of memberships) {
+    const roleFitsOrg = (m.organization.type === 'INTERNAL' ? STAFF_ROLES : CLIENT_ROLES).includes(m.role);
+    if (roleFitsOrg) for (const p of ROLE_PERMISSIONS[m.role] || []) set.add(p);
+  }
+  return set;
+}
