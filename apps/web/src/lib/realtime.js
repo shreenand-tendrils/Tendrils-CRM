@@ -21,19 +21,29 @@ export function emit(type, payload) {
 export const isOpen = () => ws?.readyState === WebSocket.OPEN;
 export const getOnline = () => online;
 
-export function connect() {
+// Production: VITE_API_URL points at the Render API (WebSocket goes direct; Vercel cannot proxy it) and a
+// short-lived token replaces the cookie. Local dev: same-origin /ws through the Vite proxy with the cookie.
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+
+async function wsUrl() {
+  if (!API_URL) return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+  const r = await fetch("/api/v1/realtime/token", { credentials: "include" });
+  if (!r.ok) throw new Error("no ws token");
+  const { token } = await r.json();
+  return `${API_URL.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`;
+}
+
+let connecting = false;
+export async function connect() {
   wanted = true;
-  if (ws && ws.readyState <= WebSocket.OPEN) return;
+  if (connecting || (ws && ws.readyState <= WebSocket.OPEN)) return;
   clearTimeout(timer);
- 
- 
-  const apiUrl = (
-  import.meta.env.VITE_API_URL || "http://localhost:4000"
-).replace(/\/+$/, "");
-
-const wsUrl = apiUrl.replace(/^http/, "ws");
-
-ws = new WebSocket(`${wsUrl}/ws`);
+  connecting = true;
+  let url;
+  try { url = await wsUrl(); } catch { connecting = false; if (wanted) timer = setTimeout(connect, Math.min(1000 * 2 ** retry++, 15000)); return; }
+  connecting = false;
+  if (!wanted) return;
+  ws = new WebSocket(url);
   ws.onopen = () => { retry = 0; emit("open"); };
   ws.onmessage = (e) => {
     let m;

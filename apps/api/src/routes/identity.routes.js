@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { isManager } from '../middleware/index.js';
+import { signWsToken } from '../services/wsToken.js';
 
 const router = Router();
 router.get('/me', (req, res) =>
@@ -14,4 +15,5 @@ router.get('/me', (req, res) =>
     })),
   })
 );
+router.get('/realtime/token', (req, res) => res.json({ token: signWsToken(req.currentUser.id) }));
 export default router;
