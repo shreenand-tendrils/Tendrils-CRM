@@ -13,7 +13,7 @@ import { env } from './env.js';
 // Force the public (Vercel) host so Google gets https://<vercel-host>/auth/callback/google.
 const publicHost = (() => {
   try {
-    return env.prod && process.env.WEB_URL ? new URL(process.env.WEB_URL).host : null;
+    return process.env.WEB_URL?.startsWith('https://') ? new URL(process.env.WEB_URL).host : null;
   } catch {
     return null;
   }
