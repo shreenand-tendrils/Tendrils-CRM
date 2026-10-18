@@ -9,7 +9,7 @@ export const primaryNavigation = [
   { label: "Tickets", to: "/tickets", icon: Ticket },
   { label: "Tasks", to: "/tasks", icon: ListTodo, staff: true },
   { label: "Chat", to: "/chat", icon: MessagesSquare, staff: true },
-  { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
+  // { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
   { label: "Teams", to: "/teams", icon: Users, staff: true },
 ];
 export const adminNavigation = [{ label: "Admin console", to: "/admin", icon: ShieldCheck }];
