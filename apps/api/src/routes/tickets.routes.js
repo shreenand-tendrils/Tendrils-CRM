@@ -191,6 +191,17 @@ router.patch('/tickets/:id', async (req, res) => {
   res.json(t);
 });
 
+router.get('/tickets/:id/history', async (req, res) => {
+  const t = await loadVisibleTicket(req);
+  const rows = await prisma.activityLog.findMany({
+    where: { entityType: 'ticket', entityId: t.id,
+      ...(req.can('ticket.view_internal') ? {} : { metadata: { path: ['visibility'], equals: 'CLIENT' } }) },
+    orderBy: { createdAt: 'desc' }, take: 100,
+    include: { actor: { select: { id: true, name: true, email: true } } },
+  });
+  res.json(rows);
+});
+
 router.get('/tickets/:id/comments', async (req, res) => {
   const t = await loadVisibleTicket(req);
   res.json(

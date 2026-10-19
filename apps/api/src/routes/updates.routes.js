@@ -37,16 +37,7 @@ router.post('/updates', async (req, res) => {
     metadata: { visibility: 'INTERNAL', date: ymd(date) },
   });
 
-  // Share with admins: in-app for every post/edit, email on the first post of the day.
-  const admins = (await findAdmins()).filter((a) => a.id !== req.currentUser.id);
-  for (const a of admins) {
-    await notifyUser({ userId: a.id, type: 'SYSTEM', title: `Daily update: ${who}`, body: input.today.slice(0, 140), href: '/admin' });
-  }
-  if (!existing && admins.length) {
-    sendDailyUpdateEmail({ to: admins.map((a) => a.email).filter(Boolean), userName: who, date: ymd(date), ...fields, blockers: fields.blockers }).catch((e) =>
-      console.error('Daily update email failed:', e.message)
-    );
-  }
+  // Daily updates are private to their author; no other employee receives this update.
   res.status(existing ? 200 : 201).json(row);
 });
 export default router;

@@ -11,6 +11,15 @@ const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], onClose, onUpdate, onAddComment, onUpload }) {
   const [text, setText] = useState("");
+  const [pasteHint, setPasteHint] = useState("");
+  const handlePaste = (e) => {
+    const item = Array.from(e.clipboardData?.items || []).find((it) => it.kind === "file" && (it.type.startsWith("image/") || it.type === "application/pdf"));
+    if (!item) return;
+    const file = item.getAsFile(); if (!file) return; e.preventDefault();
+    const ext = file.type === "application/pdf" ? "pdf" : (file.type.split("/")[1] || "png");
+    const pasted = new File([file], `pasted-attachment-${Date.now()}.${ext}`, { type: file.type });
+    Promise.resolve(onUpload({ target: { files: [pasted], value: "" } }, ticket.id)).then(() => setPasteHint("Pasted attachment uploaded.")).catch(() => setPasteHint("Could not upload pasted attachment."));
+  };
   const [visibility, setVisibility] = useState("CLIENT");
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(ticket?.title || "");
@@ -104,7 +113,8 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           </div>
         ))}
         <form className="comment-form" onSubmit={post}>
-          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a comment…" rows={3} aria-label="Comment" />
+          <textarea value={text} onChange={(e) => setText(e.target.value)} onPaste={handlePaste} placeholder="Write a comment… (paste an image or PDF to attach)" rows={3} aria-label="Comment" />
+          {pasteHint && <small className="hint">{pasteHint}</small>}
           <div className="row">
             {staff && <select value={visibility} onChange={(e) => setVisibility(e.target.value)} aria-label="Comment visibility"><option value="CLIENT">Visible to client</option><option value="INTERNAL">Internal note</option></select>}
             <button className="primary" disabled={!text.trim()}>Post comment</button>
@@ -114,7 +124,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         {can(me, "file.upload") && (
           <>
             <div className="drawer-tabs"><b>Attachments</b></div>
-            <label className="upload"><UploadCloud /><span>Upload an image or document<input type="file" onChange={(e) => onUpload(e, ticket.id)} /></span></label>
+            <label className="upload"><UploadCloud /><span>Upload an image or document, or paste an image/PDF into the comment box<input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={(e) => onUpload(e, ticket.id)} /></span></label>
           </>
         )}
       </aside>

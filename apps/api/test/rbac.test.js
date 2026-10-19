@@ -17,9 +17,9 @@ test('every role only holds known permissions', () => {
 
 test('role ladder: admin > manager > lead > employee > client', () => {
   const n = (r) => ctx(r).permissions.size;
-  assert.ok(n('PLATFORM_ADMIN') > n('MANAGER') && n('MANAGER') > n('TEAM_LEAD') && n('TEAM_LEAD') > n('EMPLOYEE') && n('EMPLOYEE') > n('CLIENT_ADMIN'));
+  assert.ok(n('PLATFORM_ADMIN') > n('MANAGER') && n('MANAGER') > n('EMPLOYEE') && n('EMPLOYEE') > n('CLIENT_ADMIN'));
   assert.ok(ctx('PLATFORM_ADMIN').can('member.grant_admin') && !ctx('MANAGER').can('member.grant_admin'));
-  assert.ok(!ctx('EMPLOYEE').can('task.assign') && ctx('TEAM_LEAD').can('task.assign'));
+  assert.ok(!ctx('EMPLOYEE').can('task.assign') && ctx('MANAGER').can('task.assign'));
   assert.ok(!ctx('CLIENT_ADMIN').can('chat.use') && !ctx('CLIENT_ADMIN').can('task.create'));
 });
 
@@ -32,7 +32,7 @@ test('task policy', () => {
   const emp = ctx('EMPLOYEE', 'me');
   assert.ok(canEditTask(emp, { creatorId: 'me' }) && canEditTask(emp, { assigneeId: 'me' }) && canEditTask(emp, { assignees: [{ userId: 'me' }] }));
   assert.ok(!canEditTask(emp, { creatorId: 'x', assigneeId: 'y', assignees: [] }));
-  assert.ok(canEditTask(ctx('TEAM_LEAD', 'me'), { creatorId: 'x' }));
+  assert.ok(canEditTask(ctx('MANAGER', 'me'), { creatorId: 'x' }));
 });
 
 test('ticket policy: view + edit scope', () => {
@@ -41,7 +41,7 @@ test('ticket policy: view + edit scope', () => {
   assert.ok(canViewTicket(ctx('CLIENT_MEMBER', 'a'), t) && !canViewTicket(ctx('CLIENT_MEMBER', 'b'), t));
   assert.ok(!canViewTicket(ctx('CLIENT_ADMIN', 'boss', client, 'other-org'), t), 'other org');
   assert.ok(!canViewTicket(ctx('CLIENT_ADMIN', 'boss'), { ...t, visibility: 'INTERNAL' }));
-  assert.equal(ticketEditScope(ctx('TEAM_LEAD'), t), 'full');
+  assert.equal(ticketEditScope(ctx('MANAGER'), t), 'full');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'e'), t), 'status');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'a'), t), 'own', 'internal ticket requester can edit their own ticket without gaining team assignment privileges');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'z'), t), 'none');
@@ -69,7 +69,7 @@ test('member change guards', () => {
   assert.match(checkMemberChange({ actor: mgr, target: { userId: 'x', role: 'EMPLOYEE' }, change: { role: 'PLATFORM_ADMIN' }, otherActiveAdmins: 5 }), /Platform admin/);
   assert.match(checkMemberChange({ actor: admin, target: { userId: 'x', role: 'PLATFORM_ADMIN' }, change: { role: 'MANAGER' }, otherActiveAdmins: 0 }), /at least one/);
   assert.equal(checkMemberChange({ actor: admin, target: { userId: 'x', role: 'PLATFORM_ADMIN' }, change: { role: 'MANAGER' }, otherActiveAdmins: 1 }), null);
-  assert.equal(checkMemberChange({ actor: mgr, target: { userId: 'x', role: 'EMPLOYEE' }, change: { role: 'TEAM_LEAD' }, otherActiveAdmins: 0 }), null);
+  assert.equal(checkMemberChange({ actor: mgr, target: { userId: 'x', role: 'EMPLOYEE' }, change: { role: 'MANAGER' }, otherActiveAdmins: 0 }), null);
   assert.ok(roleFitsOrgType('EMPLOYEE', 'INTERNAL') && !roleFitsOrgType('EMPLOYEE', 'CLIENT') && roleFitsOrgType('CLIENT_ADMIN', 'CLIENT'));
 });
 

@@ -89,7 +89,7 @@ test('project updates: members, leads and managers post; clients never do', () =
   const project = { members: [{ userId: 'dev' }] };
   assert.ok(canPostProjectUpdate(ctx('EMPLOYEE', 'dev'), project));
   assert.ok(!canPostProjectUpdate(ctx('EMPLOYEE', 'other'), project));
-  assert.ok(canPostProjectUpdate(ctx('TEAM_LEAD', 'other'), project) && canPostProjectUpdate(ctx('MANAGER'), project));
+  assert.ok(canPostProjectUpdate(ctx('MANAGER', 'other'), project) && canPostProjectUpdate(ctx('MANAGER'), project));
   assert.ok(!canPostProjectUpdate(ctx('CLIENT_ADMIN', 'dev'), project));
 });
 

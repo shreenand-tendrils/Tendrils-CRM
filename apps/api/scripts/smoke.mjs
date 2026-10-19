@@ -171,12 +171,12 @@ const rMe = (await root.get('/me')).data, tMe = (await tara.get('/me')).data, iM
 check('/me exposes permissions per role', mMe.permissions.includes('admin.view') && !dMe.permissions.includes('admin.view') && !sMe.permissions.includes('task.create') && sMe.permissions.includes('ticket.create'));
 check('only Platform admin holds member.grant_admin', rMe.permissions.includes('member.grant_admin') && !mMe.permissions.includes('member.grant_admin'));
 check('employee cannot create project (403)', (await dev.post('/projects', { name: 'Nope proj', organizationId: sofaOrg.id })).status === 403);
-check('team lead can create project', (await tara.post('/projects', { name: `Lead proj ${Date.now()}`, organizationId: sofaOrg.id })).status === 201);
+check('manager can create project', (await tara.post('/projects', { name: `Lead proj ${Date.now()}`, organizationId: sofaOrg.id })).status === 201);
 check('employee cannot create team (403)', (await dev.post('/teams', { name: 'Nope', slug: 'nope', organizationId: mMe.memberships[0].organization.id })).status === 403);
-check('team lead cannot create team (403)', (await tara.post('/teams', { name: 'Nope', slug: 'nope', organizationId: mMe.memberships[0].organization.id })).status === 403);
+check('manager cannot create team (403)', (await tara.post('/teams', { name: 'Nope', slug: 'nope', organizationId: mMe.memberships[0].organization.id })).status === 403);
 check('employee cannot create client workspace (403)', (await dev.post('/organizations', { name: 'Nope Co', slug: 'nope-co' })).status === 403);
 check('manager can create client workspace', (await maya.post('/organizations', { name: 'Smoke Co', slug: `smoke-${Date.now()}` })).status === 201);
-check('team lead cannot open admin console (403)', (await tara.get('/admin/overview')).status === 403);
+check('manager cannot open admin console (403)', (await tara.get('/admin/overview')).status === 403);
 check('employee cannot list members (403)', (await dev.get('/admin/members')).status === 403);
 
 section('RBAC: task rules');
@@ -187,13 +187,13 @@ const ishaTask = await maya.post('/tasks', { title: `Isha task ${Date.now()}`, o
 check("employee cannot edit someone else's task (403)", (await dev.patch(`/tasks/${ishaTask.data.id}`, { status: 'DONE' })).status === 403);
 check('employee can update own task status', (await dev.patch(`/tasks/${mine1.data.id}`, { status: 'IN_PROGRESS' })).status === 200);
 check('employee cannot reassign even own task (403)', (await dev.patch(`/tasks/${mine1.data.id}`, { assigneeIds: [iMe.user.id] })).status === 403);
-check('team lead can edit and reassign any task', (await tara.patch(`/tasks/${ishaTask.data.id}`, { priority: 'LOW', assigneeIds: [iMe.user.id, dMe.user.id] })).status === 200);
+check('manager can edit and reassign any task', (await tara.patch(`/tasks/${ishaTask.data.id}`, { priority: 'LOW', assigneeIds: [iMe.user.id, dMe.user.id] })).status === 200);
 
 section('RBAC: tickets');
 const plain = await maya.post('/tickets', { title: `Plain ticket ${Date.now()}`, organizationId: sofaOrg.id });
 check('employee cannot edit a ticket not assigned to them (403)', (await dev.patch(`/tickets/${plain.data.id}`, { status: 'TRIAGED' })).status === 403);
 check('employee cannot assign tickets to others (403)', (await dev.post('/tickets', { title: 'Assign other', organizationId: sofaOrg.id, assigneeId: iMe.user.id })).status === 403);
-check('team lead (triage) can assign a ticket', (await tara.patch(`/tickets/${plain.data.id}`, { assigneeId: dMe.user.id })).status === 200);
+check('manager (triage) can assign a ticket', (await tara.patch(`/tickets/${plain.data.id}`, { assigneeId: dMe.user.id })).status === 200);
 check('assignee may change status only', (await dev.patch(`/tickets/${plain.data.id}`, { status: 'IN_PROGRESS' })).status === 200 && (await dev.patch(`/tickets/${plain.data.id}`, { title: 'Hijack title' })).status === 403);
 const memberSees = (await sofa.get('/tickets')).data.map((t) => t.key), bossSees = (await boss.get('/tickets')).data.map((t) => t.key);
 check('client MEMBER only sees tickets they raised', memberSees.includes('SOF-100001') && !memberSees.includes('SOF-100003'));
@@ -249,7 +249,7 @@ check('manager cannot grant Platform admin (403)', (await maya.post('/admin/memb
 const rootMembership = members.find((m) => m.user.email === 'root.demo@tendrils.io');
 check('manager cannot change a Platform admin (403)', (await maya.patch(`/admin/members/${rootMembership.id}`, { role: 'EMPLOYEE' })).status === 403);
 check('nobody can change their own access (403)', (await root.patch(`/admin/members/${rootMembership.id}`, { isActive: false })).status === 403);
-check('manager changes a role', (await maya.patch(`/admin/members/${inv.data.id}`, { role: 'TEAM_LEAD' })).data.role === 'TEAM_LEAD');
+check('manager changes a role', (await maya.patch(`/admin/members/${inv.data.id}`, { role: 'MANAGER' })).data.role === 'MANAGER');
 check('platform admin grants Platform admin', (await root.post('/admin/members', { email: `adm${Date.now()}@tendrils.io`, organizationId: tendrilsOrg.id, role: 'PLATFORM_ADMIN' })).status === 201);
 check('manager deactivates a member', (await maya.patch(`/admin/members/${inv.data.id}`, { isActive: false })).data.isActive === false);
 check('employee cannot change roles (403)', (await dev.patch(`/admin/members/${inv.data.id}`, { role: 'MANAGER' })).status === 403);

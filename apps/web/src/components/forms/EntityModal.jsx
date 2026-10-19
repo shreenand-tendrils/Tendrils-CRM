@@ -86,7 +86,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
           ))}
-          {kind === "task" && !can(me, "task.assign") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a team lead to assign others.</p>}
+          {kind === "task" && !can(me, "task.assign") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a manager to assign others.</p>}
         </div>
         <div className="modal-foot">
           <small><ShieldCheck size={14} /> Recorded in the activity log</small>

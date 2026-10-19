@@ -93,9 +93,9 @@ test('email invitation: lower-cased, any domain, multiple teams, re-invite refre
   const r = await call(mgr, 'POST', '/admin/invitations', { email: ' New.Hire@Gmail.com ', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'] });
   assert.equal(r.status, 201);
   assert.equal(r.body.email, 'new.hire@gmail.com'); assert.deepEqual(r.body.teamIds, ['t1', 't2']); assert.equal(r.body.memberType, 'internal');
-  await call(mgr, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'TEAM_LEAD', teamIds: ['t1'] });
+  await call(mgr, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'MANAGER', teamIds: ['t1'] });
   const pending = (await call(mgr, 'GET', '/admin/invitations')).body.filter((i) => i.email === 'new.hire@gmail.com');
-  assert.equal(pending.length, 1); assert.equal(pending[0].role, 'TEAM_LEAD');
+  assert.equal(pending.length, 1); assert.equal(pending[0].role, 'MANAGER');
 });
 
 test('invitation guards: admin grant, role/workspace fit, teams internal-only, existing member', async () => {

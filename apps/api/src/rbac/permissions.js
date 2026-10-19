@@ -29,22 +29,20 @@ export const PERMISSIONS = {
 const ALL = Object.keys(PERMISSIONS);
 
 const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
-const TEAM_LEAD = [...EMPLOYEE.filter((p) => !['task.update_own', 'ticket.update_own'].includes(p)), 'project.create', 'task.update_any', 'task.assign', 'ticket.triage', 'project.post_update'];
 const MANAGER = ALL.filter((p) => p !== 'member.grant_admin');
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL,
   MANAGER,
-  TEAM_LEAD,
   EMPLOYEE,
   CLIENT_ADMIN: ['ticket.create', 'file.upload'],
   CLIENT_MEMBER: ['ticket.create', 'file.upload'],
 };
 export const ROLE_LABELS = {
-  PLATFORM_ADMIN: 'Platform admin', MANAGER: 'Manager', TEAM_LEAD: 'Team lead', EMPLOYEE: 'Employee',
+  PLATFORM_ADMIN: 'Platform admin', MANAGER: 'Manager', EMPLOYEE: 'Employee',
   CLIENT_ADMIN: 'Client admin', CLIENT_MEMBER: 'Client member',
 };
-export const STAFF_ROLES = ['PLATFORM_ADMIN', 'MANAGER', 'TEAM_LEAD', 'EMPLOYEE'];
+export const STAFF_ROLES = ['PLATFORM_ADMIN', 'MANAGER', 'EMPLOYEE'];
 export const CLIENT_ROLES = ['CLIENT_ADMIN', 'CLIENT_MEMBER'];
 export const MANAGER_ROLES = ['PLATFORM_ADMIN', 'MANAGER'];
 

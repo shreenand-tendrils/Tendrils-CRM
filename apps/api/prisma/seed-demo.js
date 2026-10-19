@@ -9,7 +9,6 @@ const PEOPLE = [
   { email: 'maya.demo@tendrils.io', name: 'Maya Manager', org: 'tendrils', role: 'MANAGER' },
   { email: 'dev.demo@tendrils.io', name: 'Dev Rao', org: 'tendrils', role: 'EMPLOYEE' },
   { email: 'isha.demo@tendrils.io', name: 'Isha Designer', org: 'tendrils', role: 'EMPLOYEE' },
-  { email: 'tara.demo@tendrils.io', name: 'Tara Lead', org: 'tendrils', role: 'TEAM_LEAD' },
   { email: 'root.demo@tendrils.io', name: 'Root Admin', org: 'tendrils', role: 'PLATFORM_ADMIN' },
   { email: 'sofabed.demo@sofabed.test', name: 'Sofabed Client', org: 'sofabed', role: 'CLIENT_MEMBER' },
   { email: 'boss.demo@sofabed.test', name: 'Sofabed Boss', org: 'sofabed', role: 'CLIENT_ADMIN' },
