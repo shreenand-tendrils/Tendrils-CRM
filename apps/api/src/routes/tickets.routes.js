@@ -3,8 +3,9 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { ticketScope, canSeeOrg, requirePermission } from '../middleware/index.js';
 import {
-  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers,
+  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
 } from '../services/index.js';
+import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee } from '../services/ticketRouting.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -24,7 +25,7 @@ async function notifyTicket(req, t, { title, body, toRequester = false }) {
 }
 
 async function loadVisibleTicket(req) {
-  const t = await prisma.ticket.findUnique({ where: { id: req.params.id }, include: { teamAccesses: { select: { teamId: true, accessRole: true } } } });
+  const t = await prisma.ticket.findUnique({ where: { id: req.params.id }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } } } });
   if (!t || !canViewTicket(req, t)) throw new AppError('Ticket not found', 404); // hide existence
   return t;
 }
@@ -100,9 +101,14 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   await assertProjectInOrg(data.projectId, data.organizationId);
   await assertAssignable(data.assigneeId);
   await assertInternalTeam(data.teamId);
-  if (req.isInternal && data.assigneeId && !(data.teamId || (teamIds || []).length)) throw new AppError('Route the ticket to an owning or participating team before assigning work.', 409, 'TICKET_NOT_ROUTED');
   if (teamIds.length && !req.can('ticket.triage')) throw new AppError('Only authorized triagers can share a ticket with additional teams.', 403);
-  const accessTeamIds = [...new Set([...(data.teamId ? [data.teamId] : []), ...teamIds])];
+  const accessTeamIds = accessTeamIdsFor(data.teamId, teamIds);
+  if (req.isInternal && data.assigneeId) {
+    // Team first, then assignee: the assignee must belong to the ticket's team.
+    if (!accessTeamIds.length) throw new AppError('Pick a team first, then choose an assignee from that team.', 409, 'TICKET_NOT_ROUTED');
+    const members = await loadTeamMemberIds(accessTeamIds);
+    if (!isMemberOfAnyTeam(data.assigneeId, accessTeamIds, members)) throw new AppError('The assignee must be a member of the ticket’s team.', 400, 'ASSIGNEE_NOT_IN_TEAM');
+  }
   if (accessTeamIds.length) {
     const valid = await prisma.team.findMany({ where: { id: { in: accessTeamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } });
     if (valid.length !== accessTeamIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
@@ -115,6 +121,14 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
     return created;
   });
   await ticketLog(req, t, 'created', `Created ticket ${t.key}: ${t.title}`);
+  {
+    const base = { title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.dueDate, visibility: t.visibility, projectId: t.projectId, teamId: null, assigneeId: null };
+    const names = await loadNames({ userIds: [t.assigneeId], teamIds: accessTeamIds });
+    await recordTicketEvents(prisma, t.id, req.currentUser.id, [
+      { type: 'CREATED', note: t.key, clientVisible: true },
+      ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
+    ]);
+  }
   // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
   if (!req.isInternal) {
     await notifyPeople({ userIds: (await findTriagers()).map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });
@@ -151,24 +165,36 @@ router.patch('/tickets/:id', async (req, res) => {
   await assertInternalTeam(data.teamId);
   const nextOwnerTeamId = data.teamId !== undefined ? data.teamId : old.teamId;
   const existingParticipants = (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId).map((a) => a.teamId);
-  const nextAccessIds = [...new Set([...(nextOwnerTeamId ? [nextOwnerTeamId] : []), ...(teamIds !== undefined ? teamIds : existingParticipants)])];
-  if (req.isInternal && data.assigneeId && !nextAccessIds.length) throw new AppError('Route the ticket to an owning or participating team before assigning work.', 409, 'TICKET_NOT_ROUTED');
+  const nextAccessIds = accessTeamIdsFor(nextOwnerTeamId, teamIds !== undefined ? teamIds : existingParticipants);
   if (teamIds && !req.can('ticket.triage')) throw new AppError('Only authorized triagers can change participating teams.', 403);
-  if (teamIds) {
-    const all = [...new Set([...(data.teamId !== undefined ? (data.teamId ? [data.teamId] : []) : (old.teamId ? [old.teamId] : [])), ...teamIds])];
-    const valid = all.length ? await prisma.team.findMany({ where: { id: { in: all }, organization: { type: 'INTERNAL' } }, select: { id: true } }) : [];
-    if (valid.length !== all.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
+  if (nextAccessIds.length) {
+    const valid = await prisma.team.findMany({ where: { id: { in: nextAccessIds }, organization: { type: 'INTERNAL' } }, select: { id: true } });
+    if (valid.length !== nextAccessIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
+  }
+  // Team first, then assignee. Changing the team clears an assignee who is not in the new team.
+  const routingTouched = data.teamId !== undefined || teamIds !== undefined;
+  let autoUnassigned = false;
+  if (req.isInternal && (data.assigneeId !== undefined || routingTouched)) {
+    const plan = planAssignee({ old, data, accessIds: nextAccessIds, membersByTeam: await loadTeamMemberIds(nextAccessIds), routingTouched });
+    if (plan.error) throw new AppError(plan.error.message, plan.error.status, plan.error.code);
+    if (plan.assigneeId !== undefined) data.assigneeId = plan.assigneeId;
+    autoUnassigned = plan.autoUnassigned;
   }
 
   const t = await prisma.$transaction(async (tx) => {
     const updated = await tx.ticket.update({ where: { id: old.id }, data });
-    if (teamIds) {
-      const all = [...new Set([...(updated.teamId ? [updated.teamId] : []), ...teamIds])];
-      await tx.ticketTeamAccess.deleteMany({ where: { ticketId: old.id } });
-      if (all.length) await tx.ticketTeamAccess.createMany({ data: all.map((teamId) => ({ ticketId: old.id, teamId, accessRole: teamId === updated.teamId ? 'OWNER' : 'PARTICIPANT', addedById: req.currentUser.id })) });
-    } else if (data.teamId !== undefined && data.teamId !== old.teamId) {
-      if (data.teamId) await tx.ticketTeamAccess.upsert({ where: { ticketId_teamId: { ticketId: old.id, teamId: data.teamId } }, create: { ticketId: old.id, teamId: data.teamId, accessRole: 'OWNER', addedById: req.currentUser.id }, update: { accessRole: 'OWNER' } });
-      if (old.teamId && old.teamId !== data.teamId) await tx.ticketTeamAccess.deleteMany({ where: { ticketId: old.id, teamId: old.teamId } });
+    if (teamIds || (data.teamId !== undefined && data.teamId !== old.teamId)) {
+      // Diff instead of delete-all so the people who routed the ticket keep their `addedById` trail (and their visibility).
+      const wanted = accessTeamIdsFor(updated.teamId, teamIds !== undefined ? teamIds : existingParticipants);
+      await tx.ticketTeamAccess.deleteMany({ where: { ticketId: old.id, teamId: { notIn: wanted.length ? wanted : ['__none__'] } } });
+      for (const teamId of wanted) {
+        const accessRole = teamId === updated.teamId ? 'OWNER' : 'PARTICIPANT';
+        await tx.ticketTeamAccess.upsert({
+          where: { ticketId_teamId: { ticketId: old.id, teamId } },
+          create: { ticketId: old.id, teamId, accessRole, addedById: req.currentUser.id },
+          update: { accessRole },
+        });
+      }
     }
     await syncTaskFromTicket(tx, updated, { prevAssigneeId: old.assigneeId, changed: [...Object.keys(data), ...(teamIds ? ['teamIds'] : [])], actor: req.currentUser });
     return updated;
@@ -176,7 +202,15 @@ router.patch('/tickets/:id', async (req, res) => {
   if (t.assigneeId && t.assigneeId !== old.assigneeId) {
     await notifyAssignment({ userId: t.assigneeId, actor: req.currentUser, title: `${t.key} — ${t.title}`, kind: 'ticket', href: ticketUrl(t) });
   }
-  await ticketLog(req, t, 'updated', `Updated ticket ${t.key}`);
+  {
+    const oldIds = (old.teamAccesses || []).map((a) => a.teamId);
+    const newIds = routingTouched ? nextAccessIds : oldIds;
+    const names = await loadNames({ userIds: [old.assigneeId, t.assigneeId], teamIds: [...oldIds, ...newIds, old.teamId, t.teamId], projectIds: [old.projectId, t.projectId] });
+    const events = diffTicketEvents({ old, updated: t, oldTeamIds: oldIds, newTeamIds: newIds, names });
+    if (autoUnassigned) events.forEach((e) => { if (e.type === 'ASSIGNEE') e.note = 'Cleared automatically: not a member of the new team'; });
+    await recordTicketEvents(prisma, t.id, req.currentUser.id, events);
+  }
+  await ticketLog(req, t, 'updated', autoUnassigned ? `Updated ticket ${t.key} (team changed, assignee cleared because they are not in the new team)` : `Updated ticket ${t.key}`);
   if (data.status && data.status !== old.status) {
     if (req.isInternal) {
       await notifyTicket(req, t, {
@@ -188,18 +222,23 @@ router.patch('/tickets/:id', async (req, res) => {
       await notifyTicket(req, t, { title: `${t.key}: client ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${req.currentUser.name || req.currentUser.email} ${data.status === 'CLOSED' ? 'approved' : 'asked for changes on'} "${t.title}".` });
     }
   }
-  res.json(t);
+  res.json({ ...t, autoUnassigned });
 });
 
+// Per-ticket history: who changed what, and when. Clients only get client-visible events (status shown in client wording).
 router.get('/tickets/:id/history', async (req, res) => {
   const t = await loadVisibleTicket(req);
-  const rows = await prisma.activityLog.findMany({
-    where: { entityType: 'ticket', entityId: t.id,
-      ...(req.can('ticket.view_internal') ? {} : { metadata: { path: ['visibility'], equals: 'CLIENT' } }) },
-    orderBy: { createdAt: 'desc' }, take: 100,
-    include: { actor: { select: { id: true, name: true, email: true } } },
-  });
-  res.json(rows);
+  const rows = await prisma.ticketEvent.findMany({ where: { ticketId: t.id }, orderBy: { createdAt: 'desc' }, take: 300 });
+  const events = req.can('ticket.view_internal') ? rows : clientView([...rows].reverse()).reverse();
+  const actorIds = [...new Set(events.map((e) => e.actorId).filter(Boolean))];
+  const people = actorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true, memberships: { where: { isActive: true }, select: { role: true, organization: { select: { type: true } } } } } })
+    : [];
+  const byId = Object.fromEntries(people.map((u) => {
+    const m = u.memberships.find((x) => x.organization?.type === 'INTERNAL') || u.memberships[0];
+    return [u.id, { id: u.id, name: u.name, email: u.email, role: m?.role || null }];
+  }));
+  res.json(events.map((e) => ({ ...e, actor: e.actorId ? byId[e.actorId] || null : null })));
 });
 
 router.get('/tickets/:id/comments', async (req, res) => {
@@ -217,6 +256,7 @@ router.post('/tickets/:id/comments', async (req, res) => {
   const data = parseBody(commentCreate, req.body);
   if (data.visibility === 'INTERNAL' && !req.can('ticket.comment_internal')) throw new AppError('Internal comment permission required', 403);
   const c = await prisma.comment.create({ data: { ...data, ticketId: t.id, authorId: req.currentUser.id }, include: authorSelect });
+  await recordTicketEvents(prisma, t.id, req.currentUser.id, [{ type: 'COMMENT', toValue: c.id, note: data.body.slice(0, 140), clientVisible: data.visibility === 'CLIENT' }]);
   await logActivity({
     actorId: req.currentUser.id, organizationId: t.organizationId, entityType: 'ticket', entityId: t.id,
     action: 'commented', summary: `Comment added to ${t.key}`,

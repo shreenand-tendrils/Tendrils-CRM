@@ -17,8 +17,13 @@ export function canViewTicket(ctx, t) {
     if (ctx.memberships.some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN')) return true;
     const myTeamIds = new Set((ctx.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)));
     const allowed = (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
+    if (allowed) return true;
+    // The current assignee can always open their ticket.
+    if (t.assigneeId && t.assigneeId === me(ctx)) return true;
+    // A triager who routed the ticket to another team keeps access to it.
+    if (ctx.can('ticket.triage') && (t.teamAccesses || []).some((a) => a.addedById && a.addedById === me(ctx))) return true;
     // A not-yet-routed ticket is available to authorized triagers only, never to unrelated teams.
-    return allowed || (ctx.can('ticket.triage') && !t.teamId && !(t.teamAccesses || []).length);
+    return ctx.can('ticket.triage') && !t.teamId && !(t.teamAccesses || []).length;
   }
   if (t.visibility !== 'CLIENT') return false;
   if (!ctx.memberships.some((m) => m.organizationId === t.organizationId)) return false;

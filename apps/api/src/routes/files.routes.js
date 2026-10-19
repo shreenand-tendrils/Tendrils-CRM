@@ -7,6 +7,7 @@ import { prisma } from '../db.js';
 import { canSeeOrg, requirePermission, taskTeamScope } from '../middleware/index.js';
 import { canViewTicket } from '../rbac/policies.js';
 import { env } from '../config/env.js';
+import { recordTicketEvents } from '../services/ticketHistory.service.js';
 
 const router = Router();
 const dir = path.resolve(env.uploadDir);
@@ -54,6 +55,7 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
       uploadedById: req.currentUser.id, ticketId: ticketId || null, taskId: taskId || null,
     },
   });
+  if (ticketId) await recordTicketEvents(prisma, ticketId, req.currentUser.id, [{ type: 'ATTACHMENT', toValue: a.id, toLabel: a.originalName, clientVisible: rec.visibility === 'CLIENT' }]);
   res.status(201).json({ id: a.id, originalName: a.originalName, size: a.size, mimeType: a.mimeType });
 });
 

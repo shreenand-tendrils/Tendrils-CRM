@@ -10,13 +10,29 @@ const cookieOpts = { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 8 * 360
 
 router.get('/status', (req, res) => res.json({ enabled: true, current: devEmailFromCookieHeader(req.headers.cookie) }));
 
+const ROLE_LABELS = { PLATFORM_ADMIN: 'Platform admin (Root / Boss)', MANAGER: 'Manager', EMPLOYEE: 'Employee', CLIENT_ADMIN: 'Client admin (Client boss)', CLIENT_MEMBER: 'Client member' };
+const ROLE_ORDER = ['PLATFORM_ADMIN', 'MANAGER', 'EMPLOYEE', 'CLIENT_ADMIN', 'CLIENT_MEMBER'];
+
+// Every demo account with its role label and teams, so the switcher shows WHO each person is.
 router.get('/users', async (_req, res) => {
   const users = await prisma.user.findMany({
     where: { email: { contains: '.demo@' }, memberships: { some: { isActive: true } } },
-    select: { id: true, name: true, email: true, memberships: { where: { isActive: true }, select: { role: true, organization: { select: { name: true, type: true } } } } },
+    select: {
+      id: true, name: true, email: true,
+      memberships: { where: { isActive: true }, select: { role: true, organization: { select: { name: true, type: true } }, teamMemberships: { select: { team: { select: { name: true } } } } } },
+    },
     orderBy: { name: 'asc' },
   });
-  res.json(users.filter((u) => isDemoEmail(u.email)).map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.memberships[0]?.role, organization: u.memberships[0]?.organization?.name, type: u.memberships[0]?.organization?.type })));
+  const rows = users.filter((u) => isDemoEmail(u.email)).map((u) => {
+    const m = u.memberships.find((x) => x.organization?.type === 'INTERNAL') || u.memberships[0];
+    return {
+      id: u.id, name: u.name, email: u.email, role: m?.role, roleLabel: ROLE_LABELS[m?.role] || m?.role,
+      organization: m?.organization?.name, type: m?.organization?.type,
+      teams: (m?.teamMemberships || []).map((tm) => tm.team.name).sort(),
+    };
+  });
+  rows.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || String(a.name).localeCompare(String(b.name)));
+  res.json(rows);
 });
 
 router.post('/login', async (req, res) => {

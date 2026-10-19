@@ -63,8 +63,14 @@ export const ticketScope = (req) => {
     const teamIds = internalTeamIds(req);
     const clauses = [];
     if (teamIds.length) clauses.push({ teamAccesses: { some: { teamId: { in: teamIds } } } });
-    if (req.can('ticket.triage')) clauses.push({ teamAccesses: { none: {} }, teamId: null });
-    return { OR: clauses.length ? clauses : [{ id: '__no_ticket_access__' }] };
+    if (req.can('ticket.triage')) {
+      clauses.push({ teamAccesses: { none: {} }, teamId: null });
+      // A manager who routed a ticket to another team keeps seeing it (otherwise it "disappears" from their list).
+      clauses.push({ teamAccesses: { some: { addedById: req.currentUser.id } } });
+    }
+    // Whoever holds the ticket must always be able to see it.
+    clauses.push({ assigneeId: req.currentUser.id });
+    return { OR: clauses };
   }
   return {
     visibility: 'CLIENT',

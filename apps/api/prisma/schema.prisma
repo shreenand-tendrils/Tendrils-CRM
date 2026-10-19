@@ -207,6 +207,7 @@ model Ticket {
   attachments Attachment[]
   tasks Task[]
   teamAccesses TicketTeamAccess[]
+  events TicketEvent[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([organizationId,status,priority])
@@ -472,4 +473,22 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([organizationId, visibility, createdAt])
+}
+
+// Per-ticket history (who changed what, when). Separate from ActivityLog (the org-wide audit feed).
+// Labels are stored as text so the history stays readable after users/teams are renamed or removed.
+model TicketEvent {
+  id String @id @default(cuid())
+  ticketId String
+  actorId String?
+  type String // CREATED, STATUS, PRIORITY, ASSIGNEE, TEAM, TEAM_ACCESS, TITLE, DESCRIPTION, DUE_DATE, VISIBILITY, PROJECT, COMMENT, ATTACHMENT
+  fromValue String?
+  toValue String?
+  fromLabel String?
+  toLabel String?
+  note String?
+  clientVisible Boolean @default(false)
+  createdAt DateTime @default(now())
+  ticket Ticket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
+  @@index([ticketId,createdAt])
 }

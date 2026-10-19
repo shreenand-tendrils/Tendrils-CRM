@@ -6,3 +6,5 @@ export * from './guards.js';
 export * from './notify.service.js';
 export { sendInviteEmail, sendAccessGrantedEmail, fireAndLog, emailEnabled } from './email.service.js';
 export * from './invitations.service.js';
+export { recordTicketEvents, loadNames } from './ticketHistory.service.js';
+export { diffTicketEvents, clientView } from './ticketEvents.js';

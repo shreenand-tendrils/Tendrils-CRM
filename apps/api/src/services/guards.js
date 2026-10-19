@@ -49,3 +49,15 @@ export function findAdmins() {
     select: { id: true, name: true, email: true },
   });
 }
+
+/** Map<teamId, Set<userId>> of ACTIVE members for the given teams. */
+export async function loadTeamMemberIds(teamIds = []) {
+  const map = new Map(teamIds.map((id) => [id, new Set()]));
+  if (!teamIds.length) return map;
+  const rows = await prisma.teamMember.findMany({
+    where: { teamId: { in: teamIds }, membership: { isActive: true, organization: { type: 'INTERNAL' } } },
+    select: { teamId: true, membership: { select: { userId: true } } },
+  });
+  for (const r of rows) map.get(r.teamId)?.add(r.membership.userId);
+  return map;
+}

@@ -1,5 +1,6 @@
 import { logActivity } from './activity.js';
 import { AppError } from '../errors/AppError.js';
+import { recordTicketEvents } from './ticketHistory.service.js';
 import { TICKET_TO_TASK, TASK_TO_TICKET, taskTitleFor } from './ticketTaskMaps.js';
 
 // Tickets and their auto-created task stay in step:
@@ -82,5 +83,6 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
     summary: `Ticket ${updated.key} moved to ${next.replaceAll('_', ' ').toLowerCase()} (task progress)`,
     metadata: { visibility: updated.visibility, requesterId: updated.requesterId },
   });
+  await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: ticket.status, toValue: next, note: 'Moved by task progress', clientVisible: true }]);
   return updated;
 }
