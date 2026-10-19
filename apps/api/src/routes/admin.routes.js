@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
-import { requirePermission } from '../middleware/index.js';
+import { requirePermission, taskTeamScope } from '../middleware/index.js';
 import { AppError } from '../errors/AppError.js';
+import { safeActivityScope } from '../repositories/workspace.repository.js';
 
 // Admin console API: managers/admins of the internal organization only.
 const router = Router();
@@ -24,8 +25,8 @@ router.get('/admin/overview', async (req, res) => {
       orderBy: { name: 'asc' },
     }),
     prisma.dailyUpdate.findMany({ where: { date: d }, include: { user: { select: userSelect } }, orderBy: { updatedAt: 'desc' } }),
-    prisma.taskAssignee.findMany({ where: { task: { status: { not: 'DONE' } } }, select: { userId: true, task: { select: { dueDate: true, status: true } } } }),
-    prisma.activityLog.findMany({ orderBy: { createdAt: 'desc' }, take: 20, include: { actor: { select: { name: true, email: true } } } }),
+    prisma.taskAssignee.findMany({ where: { task: { AND: [taskTeamScope(req), { status: { not: 'DONE' } }] } }, select: { userId: true, task: { select: { dueDate: true, status: true } } } }),
+    prisma.activityLog.findMany({ where: await safeActivityScope(req), orderBy: { createdAt: 'desc' }, take: 20, include: { actor: { select: { name: true, email: true } } } }),
   ]);
 
   const submitted = new Set(updates.map((u) => u.userId));

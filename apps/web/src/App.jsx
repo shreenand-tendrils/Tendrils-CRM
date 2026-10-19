@@ -221,8 +221,10 @@ export default function App() {
           current ? { ...current, ...body } : current
         );
       }
+      return true;
     } catch (err) {
       notify(err.response?.data?.error || "Update failed", "error");
+      return false;
     }
   };
 
@@ -364,6 +366,7 @@ export default function App() {
         comments={comments}
         me={me}
         users={data.users || []}
+        teams={data.teams || []}
         onClose={() => setSelected(null)}
         onUpdate={(id, body) => update("tickets", id, body)}
         onAddComment={(body, visibility) => create("comment", { body, visibility })}

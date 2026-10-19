@@ -25,6 +25,8 @@ export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate }) 
                   </div>
                   <b>{t.title}</b>
                   {t.ticket && <span className="chip-link" style={{ alignSelf: "flex-start" }}><Ticket size={13} /> From {t.ticket.key}</span>}
+                  {t.parent && <span className="chip-link" style={{ alignSelf: "flex-start" }}>Subtask of {t.parent.title}</span>}
+                  {t.teamAccesses?.length > 0 && <span className="chip-link" style={{ alignSelf: "flex-start" }}>Teams: {t.teamAccesses.map((a) => a.team?.name).filter(Boolean).join(", ")}</span>}
                   <p>{t.description || "No description provided."}</p>
                   <div className="task-card-foot">
                     <span>{t.project?.name || t.organization?.name || "Workspace"}</span>

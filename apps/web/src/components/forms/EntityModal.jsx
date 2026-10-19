@@ -9,11 +9,16 @@ const configs = {
     ["title", "Ticket title", "text", true], ["description", "Description", "textarea"],
     ["organizationId", "Client workspace", "clients", true], ["projectId", "Project", "projects"],
     ["assigneeId", "Assignee", "users", false, (me) => can(me, "ticket.triage")],
+    ["teamId", "Owning team", "teams", false, (me) => me.isInternal],
+    ["teamIds", "Share with additional teams", "teamsMulti", false, (me) => can(me, "ticket.triage")],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
     ["title", "Task title", "text", true], ["description", "Description", "textarea"],
     ["organizationId", "Client workspace", "clients", true], ["projectId", "Project", "projects"], ["ticketId", "Related ticket", "tickets"],
+    ["parentId", "Parent task (optional subtask)", "parentTasks"],
+    ["teamId", "Owning team", "teams", false, (me) => me.isInternal],
+    ["teamIds", "Share task with additional teams", "teamsMulti", false, (me) => can(me, "task.assign")],
     ["assigneeIds", "Assignees (one or more)", "people", false, (me) => can(me, "task.assign")],
     ["priority", "Priority", "priority"], ["dueDate", "Due date", "date"],
   ] },
@@ -23,7 +28,7 @@ const configs = {
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
-const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus"];
+const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks"];
 
 function optionsFor(type, data, orgId) {
   const inOrg = (o) => !orgId || o.organizationId === orgId || o.organization?.id === orgId;
@@ -32,6 +37,8 @@ function optionsFor(type, data, orgId) {
     projects: (data.projects || []).filter(inOrg).map((o) => [o.id, o.name]),
     tickets: (data.tickets || []).filter(inOrg).map((o) => [o.id, `${o.key} · ${o.title}`]),
     users: (data.users || []).map((o) => [o.id, o.name || o.email]),
+    teams: (data.teams || []).filter((team) => can(data.me, "ticket.triage") || can(data.me, "task.assign") || team.members?.some((m) => m.membership?.user?.id === data.me.user?.id)).map((o) => [o.id, o.name]),
+    parentTasks: (data.tasks || []).filter((task) => !task.autoCreated && (!orgId || task.organizationId === orgId)).map((o) => [o.id, o.title]),
     priority: [["LOW", "Low"], ["MEDIUM", "Medium"], ["HIGH", "High"], ["URGENT", "Urgent"]],
     visibility: [["CLIENT", "Client visible"], ["INTERNAL", "Internal only"]],
     projectStatus: [["ACTIVE", "Active"], ["PLANNING", "Planning"], ["ON_HOLD", "On hold"], ["COMPLETED", "Completed"]],
@@ -51,7 +58,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
     const fd = new FormData(e.currentTarget);
     const payload = {};
     for (const [name, , type] of fields) {
-      const v = type === "people" ? fd.getAll(name) : fd.get(name);
+      const v = ["people", "teamsMulti"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
     }
     onSubmit(kind, payload);
@@ -70,6 +77,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <textarea id={`f-${name}`} name={name} />
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />
+                : type === "teamsMulti" ? <select id={`f-${name}`} name={name} multiple size={Math.min(4, Math.max(2, (data.teams || []).length))} aria-label={label}>{optionsFor("teams", data, orgId).filter(([v]) => v).map(([v, l]) => <option value={v} key={v}>{l}</option>)}</select>
                 : SELECTS.includes(type) ? (
                   <select id={`f-${name}`} name={name} required={required} onChange={name === "organizationId" ? (e) => setOrgId(e.target.value) : undefined}>
                     {optionsFor(type, data, orgId).map(([v, l]) => <option value={v} key={v}>{l}</option>)}

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, UploadCloud, ListChecks, Info, ThumbsUp, Undo2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
@@ -9,15 +9,22 @@ const STATUSES = ["OPEN", "TRIAGED", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT
 const CLIENT_LABEL = { OPEN: "Received", TRIAGED: "Reviewed by the team", IN_PROGRESS: "In progress", BLOCKED: "In progress", REVIEW: "In progress", CLIENT_REVIEW: "Waiting for your review", RESOLVED: "Done", CLOSED: "Closed" };
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
-export default function TicketDrawer({ ticket, comments, me, users = [], onClose, onUpdate, onAddComment, onUpload }) {
+export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], onClose, onUpdate, onAddComment, onUpload }) {
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState("CLIENT");
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(ticket?.title || "");
+  const [editDescription, setEditDescription] = useState(ticket?.description || "");
+  const [selectedTeamIds, setSelectedTeamIds] = useState([]);
   const navigate = useNavigate();
+  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
   const ownStatus = can(me, "ticket.update_own") && ticket.assigneeId === me.user.id;
-  const canStatus = triage || ownStatus;
+  const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
+  const canEditDetails = triage || requesterCanEdit;
+  const canStatus = triage || ownStatus || (me.isInternal && requesterCanEdit);
   const task = ticket.tasks?.[0];
   const staff = me.isInternal;
 
@@ -33,8 +40,15 @@ export default function TicketDrawer({ ticket, comments, me, users = [], onClose
       <div className="drawer-backdrop" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-label={`Ticket ${ticket.key}`}>
         <div className="drawer-head"><b>{ticket.key}</b><button onClick={onClose} aria-label="Close"><X /></button></div>
-        <h2>{ticket.title}</h2>
-        <p>{ticket.description || "No description added."}</p>
+        {editing ? (
+          <div className="field">
+            <label htmlFor="ticket-edit-title">Ticket title</label>
+            <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
+            <label htmlFor="ticket-edit-description">Description</label>
+            <textarea id="ticket-edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} />
+            <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
+          </div>
+        ) : <><div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}><h2>{ticket.title}</h2>{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</div><p>{ticket.description || "No description added."}</p></>}
 
         <div className="detail"><span>Client</span><b>{ticket.organization?.name}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
@@ -62,6 +76,15 @@ export default function TicketDrawer({ ticket, comments, me, users = [], onClose
             ? <select className="table-select" value={ticket.assigneeId || ""} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee"><option value="">Unassigned</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select>
             : <b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b>}
         </div>
+        {triage && teams.length > 0 && (
+          <div className="field">
+            <label htmlFor="ticket-participating-teams">Participating teams (only selected teams can see this ticket)</label>
+            <select id="ticket-participating-teams" multiple size={Math.min(4, Math.max(2, teams.length))} value={selectedTeamIds} onChange={(e) => setSelectedTeamIds(Array.from(e.target.selectedOptions, (o) => o.value))}>
+              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.id === ticket.teamId ? " (owner)" : ""}</option>)}
+            </select>
+            <button className="secondary" onClick={async () => { const saved = await onUpdate(ticket.id, { teamIds: selectedTeamIds }); if (saved) setSelectedTeamIds(selectedTeamIds); }}>Save team access</button>
+          </div>
+        )}
         {triage && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Assigning a ticket creates a task for that person automatically, and the two stay in sync.</p>}
 
         {staff && task && (

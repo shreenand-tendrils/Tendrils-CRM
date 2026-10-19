@@ -43,9 +43,23 @@ test('ticket policy: view + edit scope', () => {
   assert.ok(!canViewTicket(ctx('CLIENT_ADMIN', 'boss'), { ...t, visibility: 'INTERNAL' }));
   assert.equal(ticketEditScope(ctx('TEAM_LEAD'), t), 'full');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'e'), t), 'status');
+  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'a'), t), 'own', 'internal ticket requester can edit their own ticket without gaining team assignment privileges');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'z'), t), 'none');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'a'), t), 'client');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'b'), t), 'none');
+});
+
+test('team-scoped ticket visibility blocks a third team', () => {
+  const teamCtx = (role, teamIds, id = 'u') => {
+    const memberships = [{ role, organizationId: 'internal-org', organization: internal, teamMemberships: teamIds.map((teamId) => ({ teamId })) }];
+    const permissions = permissionsFor(memberships);
+    return { currentUser: { id }, memberships, isInternal: true, permissions, can: (p) => permissions.has(p) };
+  };
+  const shared = { id: 'ticket-1', organizationId: 'client-org', visibility: 'CLIENT', requesterId: 'client', teamId: 'team-a', teamAccesses: [{ teamId: 'team-a' }, { teamId: 'team-b' }] };
+  assert.equal(canViewTicket(teamCtx('EMPLOYEE', ['team-a']), shared), true);
+  assert.equal(canViewTicket(teamCtx('EMPLOYEE', ['team-b']), shared), true);
+  assert.equal(canViewTicket(teamCtx('EMPLOYEE', ['team-c']), shared), false, 'third team cannot discover a two-team ticket');
+  assert.equal(canViewTicket(teamCtx('PLATFORM_ADMIN', []), shared), true, 'platform admin retains explicit global oversight');
 });
 
 test('member change guards', () => {

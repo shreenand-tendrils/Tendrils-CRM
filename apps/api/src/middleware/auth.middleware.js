@@ -51,12 +51,36 @@ const memberOrgIds = (req) => req.memberships.map((m) => m.organizationId);
 export const orgScope = (req) => (req.isInternal ? {} : { organizationId: { in: memberOrgIds(req) } });
 
 /** Tickets: staff see all; client admins see their org's client-visible tickets; client members only the ones they raised. */
+export const internalTeamIds = (req) => [...new Set((req.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
+const isPlatformAdmin = (req) => (req.memberships || []).some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN');
+
+/** Strict team boundary: internal users see only tickets explicitly shared with one of their teams.
+ * Platform admins retain global oversight. Unrouted tickets are visible to triagers so they can route them.
+ */
 export const ticketScope = (req) => {
-  if (req.isInternal) return {};
+  if (req.isInternal) {
+    if (isPlatformAdmin(req)) return {};
+    const teamIds = internalTeamIds(req);
+    const clauses = [];
+    if (teamIds.length) clauses.push({ teamAccesses: { some: { teamId: { in: teamIds } } } });
+    if (req.can('ticket.triage')) clauses.push({ teamAccesses: { none: {} }, teamId: null });
+    return { OR: clauses.length ? clauses : [{ id: '__no_ticket_access__' }] };
+  }
   return {
     visibility: 'CLIENT',
     OR: req.memberships.map((m) => ({ organizationId: m.organizationId, ...(m.role === 'CLIENT_ADMIN' ? {} : { requesterId: req.currentUser.id }) })),
   };
+};
+
+export const taskTeamScope = (req) => {
+  if (!req.isInternal) return { id: '__no_task_access__' };
+  if (isPlatformAdmin(req)) return {};
+  const teamIds = internalTeamIds(req);
+  const clauses = [];
+  if (teamIds.length) clauses.push({ teamAccesses: { some: { teamId: { in: teamIds } } } });
+  if (teamIds.length) clauses.push({ ticket: { is: { teamAccesses: { some: { teamId: { in: teamIds } } } } } });
+  if (teamIds.length) clauses.push({ parent: { is: { teamAccesses: { some: { teamId: { in: teamIds } } } } } });
+  return { OR: clauses.length ? clauses : [{ id: '__no_task_access__' }] };
 };
 
 /**

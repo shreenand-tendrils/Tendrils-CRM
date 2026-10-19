@@ -57,6 +57,9 @@ export const taskCreate = z.object({
   organizationId: id,
   projectId: optId,
   ticketId: optId,
+  parentId: optId,
+  teamId: optId,
+  teamIds: idList.optional(),
   assigneeId: optId,
   assigneeIds: idList.optional(),
   priority: en(Priority).default('MEDIUM'),
@@ -73,6 +76,9 @@ export const taskUpdate = z.object({
   assigneeIds: idList.optional(),
   dueDate: nullDate,
   position: z.number().int().min(0).optional(),
+  teamId: nullId,
+  teamIds: idList.optional(),
+  parentId: nullId,
 });
 
 export const ticketCreate = z.object({
@@ -84,6 +90,7 @@ export const ticketCreate = z.object({
   visibility: en(Visibility).default('CLIENT'),
   assigneeId: optId,
   teamId: optId,
+  teamIds: idList.optional(),
   dueDate: optDate,
 });
 
@@ -95,6 +102,7 @@ export const ticketUpdate = z.object({
   visibility: en(Visibility).optional(),
   assigneeId: nullId,
   teamId: nullId,
+  teamIds: idList.optional(),
   projectId: nullId,
   dueDate: nullDate,
 });

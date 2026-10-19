@@ -13,7 +13,13 @@ const isClientAdminOf = (ctx, orgId) => ctx.memberships.some((m) => m.organizati
 
 /** Can this person see the ticket at all? Client admins see their whole org, client members only what they raised. */
 export function canViewTicket(ctx, t) {
-  if (ctx.isInternal) return true;
+  if (ctx.isInternal) {
+    if (ctx.memberships.some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN')) return true;
+    const myTeamIds = new Set((ctx.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)));
+    const allowed = (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
+    // A not-yet-routed ticket is available to authorized triagers only, never to unrelated teams.
+    return allowed || (ctx.can('ticket.triage') && !t.teamId && !(t.teamAccesses || []).length);
+  }
   if (t.visibility !== 'CLIENT') return false;
   if (!ctx.memberships.some((m) => m.organizationId === t.organizationId)) return false;
   return isClientAdminOf(ctx, t.organizationId) || t.requesterId === me(ctx);
@@ -24,8 +30,9 @@ export const CLIENT_REVIEW_OUTCOMES = ['CLOSED', 'IN_PROGRESS'];
 export const clientStatusChangeAllowed = (currentStatus, nextStatus) => currentStatus === 'CLIENT_REVIEW' && CLIENT_REVIEW_OUTCOMES.includes(nextStatus);
 
 export const TICKET_FIELDS = {
-  full: ['title', 'description', 'status', 'priority', 'visibility', 'assigneeId', 'teamId', 'projectId', 'dueDate'],
+  full: ['title', 'description', 'status', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'projectId', 'dueDate'],
   status: ['status'],
+  own: ['title', 'description', 'status', 'priority', 'dueDate'],
   client: ['title', 'description', 'priority', 'status'], // 'status' is further limited by clientStatusChangeAllowed
   none: [],
 };
@@ -34,6 +41,7 @@ export const TICKET_FIELDS = {
 export function ticketEditScope(ctx, t) {
   if (ctx.isInternal) {
     if (ctx.can('ticket.triage')) return 'full';
+    if (ctx.can('ticket.update_own') && t.requesterId === me(ctx)) return 'own';
     if (ctx.can('ticket.update_own') && t.assigneeId === me(ctx)) return 'status';
     return 'none';
   }
