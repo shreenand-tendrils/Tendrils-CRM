@@ -7,6 +7,8 @@ import { can, ROLE_LABELS } from "../../lib/rbac";
 import { assigneeGroups, isInTeams, sameIds } from "../../lib/teams";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 import TicketHistory from "./TicketHistory";
+import TicketAttachments from "./TicketAttachments";
+import TicketReminder from "./TicketReminder";
 
 const STATUSES = ["OPEN", "TRIAGED", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT_REVIEW", "RESOLVED", "CLOSED"];
 const CLIENT_LABEL = { OPEN: "Received", TRIAGED: "Reviewed by the team", IN_PROGRESS: "In progress", BLOCKED: "In progress", REVIEW: "In progress", CLIENT_REVIEW: "Waiting for your review", RESOLVED: "Done", CLOSED: "Closed" };
@@ -147,12 +149,14 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           </div>
         )}
 
+        {staff && <TicketReminder ticket={ticket} />}
+
         <div className="drawer-tabs" role="tablist">
           <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>
           <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>History</button>
         </div>
         {tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
-        {tab === "comments" && comments.map((
+        {tab === "comments" && comments.map((c) => (
           <div className="comment" key={c.id}>
             <b>{c.author?.name || c.author?.email}</b>
             <small>{pretty(c.visibility)} · {new Date(c.createdAt).toLocaleString()}</small>
@@ -172,6 +176,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <>
             <div className="drawer-tabs"><b>Attachments</b></div>
             <label className="upload"><UploadCloud /><span>Upload an image or document, or paste an image/PDF into the comment box<input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={(e) => onUpload(e, ticket.id)} /></span></label>
+            <TicketAttachments ticketId={ticket.id} refreshKey={ticket._count?.attachments || 0} />
           </>
         )}
       </aside>

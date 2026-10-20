@@ -27,6 +27,7 @@ model User {
   chatReads ChatRead[]
   dailyUpdates DailyUpdate[]
   privateNotes PrivateNote[]
+  reminders Reminder[]
   invitationsSent Invitation[] @relation("InvitedBy")
   projectUpdates ProjectUpdate[]
   documents Document[]
@@ -209,6 +210,7 @@ model Ticket {
   tasks Task[]
   teamAccesses TicketTeamAccess[]
   events TicketEvent[]
+  reminders Reminder[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([organizationId,status,priority])
@@ -506,4 +508,28 @@ model PrivateNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([userId,date])
+}
+
+// Personal flags and reminders (staff only). A flag is a reminder with flagged=true and no remindAt.
+model Reminder {
+  id String @id @default(cuid())
+  userId String
+  ticketId String?
+  title String
+  remindAt DateTime?
+  flagged Boolean @default(false)
+  notifiedAt DateTime?
+  doneAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId,doneAt])
+  @@index([remindAt,notifiedAt])
+}
+
+// Remembers one-time jobs (like the demo seed) so they never run twice on the same database.
+model SeedMarker {
+  key String @id
+  ranAt DateTime @default(now())
 }

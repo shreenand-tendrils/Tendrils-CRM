@@ -1,6 +1,7 @@
 // Clean, realistic dev data for every role. ONE seed (replaces the old seed.js / seed-demo.js / seed-company.js).
-//   npm run db:seed     add/refresh the data (safe to re-run)
+//   npm run db:seed     ONE-TIME: seeds the demo data once. A second run does nothing (your edits are never overwritten).
 //   npm run db:fresh    wipe the database, re-apply migrations, then seed (a truly clean start)
+//   SEED_FORCE=true npm run db:seed   re-run on purpose (only ADDS missing rows, never overwrites existing people)
 // DEV ONLY. Every email is "<name>.demo@<domain>" so the DEV LOGIN switcher lists them.
 //
 // Structure:  Boss (Platform admin) -> team Managers -> team Employees;  4 client companies, each with a client boss
@@ -51,24 +52,32 @@ const CLIENTS = [
 // Old demo accounts from earlier versions: switched off so they never show up in the DEV LOGIN switcher.
 const RETIRED = ['maya', 'tara', 'dev', 'isha', 'root'].map((n) => `${n}.demo@tendrils.io`);
 
+const SEED_KEY = 'demo-data-v1';
+
 async function main() {
+  const already = await prisma.seedMarker.findUnique({ where: { key: SEED_KEY } });
+  if (already && process.env.SEED_FORCE !== 'true') {
+    console.log(`Seed skipped: demo data was already seeded on ${already.ranAt.toISOString()}. Nothing was changed.`);
+    console.log('For a clean start run "npm run db:fresh". To top up missing rows only: SEED_FORCE=true npm run db:seed');
+    return;
+  }
   // ---- organizations, teams -------------------------------------------------
-  const internal = await prisma.organization.upsert({ where: { slug: 'tendrils' }, update: { name: 'Tendrils', type: 'INTERNAL' }, create: { name: 'Tendrils', slug: 'tendrils', type: 'INTERNAL' } });
+  const internal = await prisma.organization.upsert({ where: { slug: 'tendrils' }, update: {}, create: { name: 'Tendrils', slug: 'tendrils', type: 'INTERNAL' } });
   const org = {};
-  for (const c of CLIENTS) org[c.slug] = await prisma.organization.upsert({ where: { slug: c.slug }, update: { name: c.name }, create: { name: c.name, slug: c.slug, type: 'CLIENT' } });
+  for (const c of CLIENTS) org[c.slug] = await prisma.organization.upsert({ where: { slug: c.slug }, update: {}, create: { name: c.name, slug: c.slug, type: 'CLIENT' } });
   const team = {};
   for (const name of TEAMS) {
     const slug = slugify(name);
-    team[slug] = await prisma.team.upsert({ where: { organizationId_slug: { organizationId: internal.id, slug } }, update: { name }, create: { name, slug, organizationId: internal.id, description: `${name} team` } });
+    team[slug] = await prisma.team.upsert({ where: { organizationId_slug: { organizationId: internal.id, slug } }, update: {}, create: { name, slug, organizationId: internal.id, description: `${name} team` } });
   }
 
   // ---- people ---------------------------------------------------------------
   const u = {};
   const person = async (p, organizationId) => {
-    const user = await prisma.user.upsert({ where: { email: p.email }, update: { name: p.name }, create: { email: p.email, name: p.name, emailVerified: new Date() } });
+    const user = await prisma.user.upsert({ where: { email: p.email }, update: {}, create: { email: p.email, name: p.name, emailVerified: new Date() } });
     const membership = await prisma.membership.upsert({
       where: { userId_organizationId: { userId: user.id, organizationId } },
-      update: { role: p.role, isActive: true }, create: { userId: user.id, organizationId, role: p.role },
+      update: {}, create: { userId: user.id, organizationId, role: p.role },
     });
     u[p.key] = user;
     return membership;
@@ -193,6 +202,7 @@ async function main() {
     create: { userId: u.sneha.id, date: yesterday, yesterday: 'Started the footer link fix', today: 'Finish the fix and start the checkout bug', blockers: 'Waiting for staging credentials' },
   });
 
+  await prisma.seedMarker.upsert({ where: { key: SEED_KEY }, update: {}, create: { key: SEED_KEY } });
   console.log('Seed ready. DEV LOGIN accounts (role: team):');
   for (const p of STAFF) console.log(`  ${p.role.padEnd(15)} ${p.email.padEnd(28)} ${p.teams.join(', ')}`);
   for (const c of CLIENTS) for (const p of c.users) console.log(`  ${p.role.padEnd(15)} ${p.email.padEnd(40)} ${c.name}`);

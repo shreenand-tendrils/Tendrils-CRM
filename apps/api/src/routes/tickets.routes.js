@@ -251,6 +251,11 @@ router.get('/tickets/:id/comments', async (req, res) => {
   );
 });
 
+router.get('/tickets/:id/attachments', async (req, res) => {
+  const t = await loadVisibleTicket(req);
+  res.json(await prisma.attachment.findMany({ where: { ticketId: t.id }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
+});
+
 router.post('/tickets/:id/comments', async (req, res) => {
   const t = await loadVisibleTicket(req);
   const data = parseBody(commentCreate, req.body);

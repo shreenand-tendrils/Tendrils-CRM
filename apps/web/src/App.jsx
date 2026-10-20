@@ -46,6 +46,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ChatPage from "./pages/ChatPage";
 // import UpdatesPage from "./pages/UpdatesPage";
 import NotesPage from "./pages/NotesPage";
+import RemindersPage from "./pages/RemindersPage";
 import AdminPage from "./pages/AdminPage";
 import DocumentsPage from "./pages/DocumentsPage";
 
@@ -72,6 +73,7 @@ const pageMeta = {
     "Your team’s work, deadlines and what needs attention.",
   ],
   "/chat": ["Chat", "Talk with your team, in General or per project."],
+  "/reminders": ["Reminders", "Your private flags and reminders. Only you can see them."],
   "/notes": ["My notes", "Private notes that only you can see. Never emailed or shared."],
   // "/updates": ["Daily update", "Share what you did and what is next. Admins are notified."],
   "/admin": ["Admin console", "Daily updates, workload and activity across the team."],
@@ -337,6 +339,7 @@ export default function App() {
             <Route path="/documents" element={<DocumentsPage me={me} notify={notify} />} />
             <Route path="/projects" element={<ProjectsPage data={data} onRefresh={refresh} notify={notify} />} />
             <Route path="/chat" element={guard(can(me, "chat.use"), "team chat", <ChatPage me={me} users={data.users || []} notify={notify} />)} />
+            <Route path="/reminders" element={guard(internal, "reminders", <RemindersPage notify={notify} onOpenTicket={(t) => { navigate("/tickets"); setSelected(t); }} />)} />
             <Route path="/notes" element={guard(internal, "my notes", <NotesPage notify={notify} />)} />
             {/* <Route path="/updates" element={guard(can(me, "update.post"), "daily updates", <UpdatesPage notify={notify} onRefresh={refresh} />)} /> */}
             <Route path="/admin" element={guard(can(me, "admin.view"), "the admin console", <AdminPage me={me} notify={notify} orgs={data.organizations || []} teams={data.teams || []} presetOrgId={new URLSearchParams(loc.search).get("org") || ""} />)} />
