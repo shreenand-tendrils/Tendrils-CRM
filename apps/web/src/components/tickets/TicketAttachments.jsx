@@ -5,10 +5,10 @@ import { api } from "../../api";
 const size = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 // Lists the files on a ticket and downloads them through the authenticated API.
-export default function TicketAttachments({ ticketId, refreshKey }) {
+export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
   const [files, setFiles] = useState([]);
   const [err, setErr] = useState("");
-  const load = useCallback(() => api.get(`/tickets/${ticketId}/attachments`).then((r) => setFiles(r.data)).catch(() => setFiles([])), [ticketId]);
+  const load = useCallback(() => api.get(endpoint || `/tickets/${ticketId}/attachments`).then((r) => setFiles(r.data)).catch(() => setFiles([])), [ticketId, endpoint]);
   useEffect(() => { load(); }, [load, refreshKey]);
   const download = async (f) => {
     setErr("");

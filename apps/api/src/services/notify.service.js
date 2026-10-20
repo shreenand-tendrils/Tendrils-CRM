@@ -28,3 +28,12 @@ export async function findClientUsers(organizationId, { adminsOnly = false, user
     select: { id: true },
   });
 }
+
+/** Active managers and admins who belong to any of the given teams (they triage work sent to their team). */
+export async function findTeamManagers(teamIds = []) {
+  if (!teamIds.length) return [];
+  return prisma.user.findMany({
+    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'MANAGER'] }, organization: { type: 'INTERNAL', isActive: true }, teamMemberships: { some: { teamId: { in: teamIds } } } } } },
+    select: { id: true },
+  });
+}

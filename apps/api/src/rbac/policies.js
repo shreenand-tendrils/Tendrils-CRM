@@ -18,6 +18,8 @@ export function canViewTicket(ctx, t) {
     const myTeamIds = new Set((ctx.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)));
     const allowed = (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
     if (allowed) return true;
+    // Whoever raised the ticket keeps seeing it, even when it was routed to another team.
+    if (t.requesterId && t.requesterId === me(ctx)) return true;
     // The current assignee can always open their ticket.
     if (t.assigneeId && t.assigneeId === me(ctx)) return true;
     // A triager who routed the ticket to another team keeps access to it.

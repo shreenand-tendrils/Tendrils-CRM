@@ -23,6 +23,7 @@ export function describeEvent(e) {
     case "DUE_DATE": return `changed the due date from ${day(e.fromValue)} to ${day(e.toValue)}`;
     case "VISIBILITY": return `made the ticket ${e.toValue === "INTERNAL" ? "internal only" : "visible to the client"}`;
     case "PROJECT": return e.toLabel ? `linked the ticket to project ${e.toLabel}` : "unlinked the ticket from its project";
+    case "TASK": return `added linked task “${e.toLabel || "task"}”`;
     case "COMMENT": return e.clientVisible ? "commented" : "added an internal note";
     case "ATTACHMENT": return `attached ${e.toLabel || "a file"}`;
     default: return pretty(e.type);

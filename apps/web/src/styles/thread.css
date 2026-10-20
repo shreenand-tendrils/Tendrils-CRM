@@ -1,0 +1,33 @@
+.thread { position: relative; padding: 6px 0 2px; }
+.thread-item { position: relative; padding: 0 0 14px 28px; }
+.thread-item::before { content: ""; position: absolute; left: 6px; top: 18px; bottom: -4px; width: 2px; background: #d9dcf0; }
+.thread-item:last-child { padding-bottom: 4px; }
+.thread-item:last-child::before { display: none; }
+.thread-dot { position: absolute; left: 0; top: 4px; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 3px solid #5746e8; background: #fff; }
+.thread-dot.root { background: #5746e8; }
+.thread-dot.team { border-color: #0f9d8a; }
+.thread-dot.assign { border-color: #e8872f; }
+.thread-dot.status { border-color: #8a90a6; }
+.thread-dot.task { border-color: #e8462f; border-radius: 4px; }
+.thread-text { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.thread-text + small, .thread-card small { display: block; color: #6b7287; font-size: 12px; }
+.thread-card { display: block; width: 100%; text-align: left; border: 1px solid #e3e6f2; border-radius: 10px; background: #fff; padding: 8px 10px; }
+button.thread-card { cursor: pointer; }
+button.thread-card:hover { border-color: #5746e8; }
+.thread-card .thread-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; font-size: 14px; }
+.thread-card.focus { border-color: #5746e8; background: #f3f1ff; box-shadow: 0 0 0 2px #5746e826; }
+.thread-card .here { font-size: 11px; font-weight: 600; color: #5746e8; background: #e7e3ff; border-radius: 999px; padding: 1px 8px; }
+.thread-branch { position: relative; margin: 10px 0 0 6px; padding-left: 20px; border-left: 2px solid #e8462f55; }
+.thread-branch > .thread-item { padding-left: 0; }
+.thread-branch > .thread-item::before { display: none; }
+.thread-branch > .thread-item .thread-card::before { content: ""; position: absolute; left: -20px; top: 20px; width: 18px; height: 2px; background: #e8462f55; }
+.thread-branch > .thread-item { position: relative; }
+.thread-branch .thread-branch { border-left-color: #0f9d8a55; }
+.thread-branch .thread-branch > .thread-item .thread-card::before { background: #0f9d8a55; }
+.thread-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #6b7287; margin: 4px 0 10px; }
+.thread-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.linked-rows { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; }
+.linked-rows button { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; border: 1px solid #e3e6f2; border-radius: 8px; padding: 6px 10px; background: #fff; }
+.linked-rows button:hover { border-color: #5746e8; }
+.task-node { display: block; }
+.thread-branch > .thread-item .thread-branch .thread-card::before { background: #0f9d8a55; }

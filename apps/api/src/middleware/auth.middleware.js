@@ -70,6 +70,7 @@ export const ticketScope = (req) => {
     }
     // Whoever holds the ticket must always be able to see it.
     clauses.push({ assigneeId: req.currentUser.id });
+    clauses.push({ requesterId: req.currentUser.id }); // staff keep tickets they raised for other teams
     return { OR: clauses };
   }
   return {
@@ -86,7 +87,9 @@ export const taskTeamScope = (req) => {
   if (teamIds.length) clauses.push({ teamAccesses: { some: { teamId: { in: teamIds } } } });
   if (teamIds.length) clauses.push({ ticket: { is: { teamAccesses: { some: { teamId: { in: teamIds } } } } } });
   if (teamIds.length) clauses.push({ parent: { is: { teamAccesses: { some: { teamId: { in: teamIds } } } } } });
-  return { OR: clauses.length ? clauses : [{ id: '__no_task_access__' }] };
+  clauses.push({ creatorId: req.currentUser.id }); // creators keep tasks they made for other teams
+  clauses.push({ assigneeId: req.currentUser.id });
+  return { OR: clauses };
 };
 
 /**

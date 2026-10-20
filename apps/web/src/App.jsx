@@ -33,6 +33,7 @@ import Topbar from "./components/layout/Topbar";
 import PageHeader from "./components/layout/PageHeader";
 import EntityModal from "./components/forms/EntityModal";
 import TicketDrawer from "./components/tickets/TicketDrawer";
+import TaskDrawer from "./components/tasks/TaskDrawer";
 
 import OverviewPage from "./pages/OverviewPage";
 import TicketsPage from "./pages/TicketsPage";
@@ -100,6 +101,8 @@ export default function App() {
 
   const [modal, setModal] = useState("");
   const [selected, setSelected] = useState(null);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [modalInit, setModalInit] = useState(null);
   const [comments, setComments] = useState([]);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -117,7 +120,7 @@ export default function App() {
   const toggleCollapsed = () => setCollapsed((c) => { localStorage.setItem("tendrils.sidebar", c ? "open" : "collapsed"); return !c; });
   useEffect(() => { setNavOpen(false); window.scrollTo(0, 0); }, [path]);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") { setNavOpen(false); setSelected(null); setModal(""); } };
+    const onKey = (e) => { if (e.key === "Escape") { setNavOpen(false); setSelected(null); setSelectedTaskId(null); setModal(""); setModalInit(null); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -145,6 +148,22 @@ export default function App() {
     }
     loadComments();
   }, [selectedId, loadComments]);
+
+  // Notification links (/?ticket=ID or /?task=ID) open the matching drawer.
+  useEffect(() => {
+    const sp = new URLSearchParams(loc.search);
+    const tk = sp.get("ticket"), ts = sp.get("task");
+    if (!tk && !ts) return;
+    const t = tk && (data.tickets || []).find((x) => x.id === tk);
+    const k = ts && (data.tasks || []).find((x) => x.id === ts);
+    if (t) { setSelectedTaskId(null); setSelected(t); }
+    if (k) { setSelected(null); setSelectedTaskId(k.id); }
+    if (t || k) navigate(loc.pathname, { replace: true });
+  }, [loc.search, loc.pathname, data.tickets, data.tasks, navigate]);
+
+  const openTask = useCallback((t) => { setSelected(null); setSelectedTaskId(t.id); }, []);
+  const showTicket = useCallback((t) => { setSelectedTaskId(null); setSelected(t); }, []);
+  const openModal = (kind, init = null) => { setModalInit(init); setModal(kind); };
 
   const notify = useCallback((message, type = "success") => {
     setToast({ message, type });
@@ -201,6 +220,7 @@ export default function App() {
 
       notify("Saved successfully");
       setModal("");
+      setModalInit(null);
       if (kind === "comment") await loadComments();
       await refresh();
     } catch (err) {
@@ -254,7 +274,7 @@ export default function App() {
 
   const newAction = () => {
     const target = { "/": "ticket", "/tickets": "ticket", "/tasks": "task", "/projects": "project", "/clients": "client" }[path];
-    if (target) setModal(target);
+    if (target) openModal(target);
   };
 
   // Which primary button does this page offer for the current role?
@@ -335,7 +355,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<OverviewPage data={data} onSelectTicket={setSelected} />} />
             <Route path="/tickets" element={<TicketsPage data={data} onSelect={setSelected} />} />
-            <Route path="/tasks" element={guard(internal, "tasks", <TasksPage data={data} onCreate={() => setModal("task")} onStatusChange={(task, status) => update("tasks", task.id, { status })} />)} />
+            <Route path="/tasks" element={guard(internal, "tasks", <TasksPage data={data} onCreate={() => openModal("task")} onOpen={openTask} onStatusChange={(task, status) => update("tasks", task.id, { status })} />)} />
             <Route path="/documents" element={<DocumentsPage me={me} notify={notify} />} />
             <Route path="/projects" element={<ProjectsPage data={data} onRefresh={refresh} notify={notify} />} />
             <Route path="/chat" element={guard(can(me, "chat.use"), "team chat", <ChatPage me={me} users={data.users || []} notify={notify} />)} />
@@ -365,7 +385,7 @@ export default function App() {
         </div>
       )}
 
-      {modal && <EntityModal kind={modal} data={data} onClose={() => setModal("")} onSubmit={create} saving={saving} />}
+      {modal && <EntityModal key={modal + (modalInit?.ticketId || "") + (modalInit?.parentId || "")} kind={modal} data={data} initial={modalInit} onClose={() => { setModal(""); setModalInit(null); }} onSubmit={create} saving={saving} />}
 
       <TicketDrawer
         ticket={openTicket}
@@ -373,10 +393,27 @@ export default function App() {
         me={me}
         users={data.users || []}
         teams={data.teams || []}
+        tasks={data.tasks || []}
+        onAddTask={(t) => openModal("task", { organizationId: t.organization?.id || t.organizationId, ticketId: t.id, teamId: t.teamId || "", projectId: t.projectId || t.project?.id || "" })}
+        onOpenTask={openTask}
         onClose={() => setSelected(null)}
         onUpdate={(id, body) => update("tickets", id, body)}
         onAddComment={(body, visibility) => create("comment", { body, visibility })}
         onUpload={upload}
+      />
+
+      <TaskDrawer
+        task={(data.tasks || []).find((t) => t.id === selectedTaskId) || null}
+        tasks={data.tasks || []}
+        tickets={data.tickets || []}
+        me={me}
+        onClose={() => setSelectedTaskId(null)}
+        onStatusChange={(t, status) => update("tasks", t.id, { status })}
+        onOpenTask={openTask}
+        onOpenTicket={showTicket}
+        onRefresh={refresh}
+        notify={notify}
+        onAddSubtask={(t) => openModal("task", { organizationId: t.organizationId, parentId: t.id, teamId: t.teamId || "", projectId: t.projectId || "" })}
       />
     </div>
   );

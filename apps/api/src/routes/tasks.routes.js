@@ -3,9 +3,11 @@ import { prisma } from '../db.js';
 import { orgScope, requirePermission, canSeeOrg, taskTeamScope, ticketScope } from '../middleware/index.js';
 import { canEditTask } from '../rbac/policies.js';
 import {
-  logActivity, notifyAssignment, resolveAssignees, assertAssignees, assertProjectInOrg, assertTicketInOrg, syncTicketFromTask, assertTaskSubtasksDone, loadTeamMemberIds,
+  logActivity, notifyAssignment, notifyPeople, findTeamManagers, resolveAssignees, assertAssignees, assertProjectInOrg, assertTicketInOrg, syncTicketFromTask, assertTaskSubtasksDone, loadTeamMemberIds, recordTicketEvents,
 } from '../services/index.js';
 import { assigneesOutsideTeams } from '../services/ticketRouting.js';
+import { taskCommentRecipients } from '../services/taskComments.js';
+import { commentCreate } from '../validators/schemas.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
 import { taskCreate, taskUpdate } from '../validators/schemas.js';
@@ -21,6 +23,8 @@ const include = {
   teamAccesses: { include: { team: { select: { id: true, name: true } } } },
   assignee: { select: userSelect },
   assignees: { include: { user: { select: userSelect } } },
+  creator: { select: userSelect },
+  _count: { select: { comments: true, attachments: true } },
 };
 const asRows = (ids) => ids.map((userId) => ({ userId }));
 const link = (t) => `/?task=${t.id}`;
@@ -37,10 +41,9 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
   const { assigneeIds, assigneeId, teamIds = [], parentId, ...data } = parseBody(taskCreate, req.body);
   let ids = resolveAssignees({ assigneeIds, assigneeId }) ?? [];
   const me = req.currentUser.id;
-  if (!req.can('task.assign')) {
-    if (ids.some((id) => id !== me)) throw new AppError("You don't have permission to assign tasks to others (task.assign).", 403);
-    if (!ids.length) ids = [me]; // employees' own tasks default to themselves
-  }
+  const cross = req.can('task.assign') || req.can('work.cross_team'); // may send work to other teams
+  if (!cross && ids.some((id) => id !== me)) throw new AppError("You don't have permission to assign tasks to others (task.assign).", 403);
+  if (!req.can('task.assign') && !ids.length) ids = [me]; // employees' own tasks default to themselves (dropped below if the task goes to another team)
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   await assertProjectInOrg(data.projectId, data.organizationId);
   await assertTicketInOrg(data.ticketId, data.organizationId);
@@ -49,16 +52,15 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
     const parent = await prisma.task.findFirst({ where: { id: parentId, organizationId: data.organizationId, ...taskTeamScope(req) }, select: { id: true } });
     if (!parent) throw new AppError('Parent task not found or not accessible.', 404);
   }
-  if (teamIds.length && !req.can('task.assign')) throw new AppError('Only authorized task assigners can distribute work across teams.', 403);
+  if (teamIds.length && !cross) throw new AppError('Only authorized task assigners can distribute work across teams.', 403);
+  const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
   if (!req.can('task.assign')) {
-    const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
-    if (data.teamId && !ownTeamIds.includes(data.teamId)) throw new AppError('You can only create work for one of your own teams.', 403, 'TEAM_SCOPE_DENIED');
+    if (!cross && data.teamId && !ownTeamIds.includes(data.teamId)) throw new AppError('You can only create work for one of your own teams.', 403, 'TEAM_SCOPE_DENIED');
     if (!data.teamId && !data.ticketId && parentId) { const parent = await prisma.task.findFirst({ where: { id: parentId, ...taskTeamScope(req) }, select: { teamId: true } }); if (parent?.teamId) data.teamId = parent.teamId; }
     if (!data.teamId && !data.ticketId && ownTeamIds.length === 1) data.teamId = ownTeamIds[0];
     if (!data.teamId && !data.ticketId && ownTeamIds.length > 1) throw new AppError('Select your owning team for this task.', 400, 'TEAM_REQUIRED');
   }
   if (!data.teamId && !data.ticketId && !parentId) {
-    const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
     if (ownTeamIds.length === 1) data.teamId = ownTeamIds[0];
     else if (ownTeamIds.length > 1) throw new AppError('Select an owning team for this task.', 400, 'TEAM_REQUIRED');
     else throw new AppError('An owning team is required for standalone tasks.', 400, 'TEAM_REQUIRED');
@@ -77,14 +79,17 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
   }
 
   // Team first, then assignees: everyone assigned must belong to the task's team(s) (owner + shared + ticket/parent teams).
-  if (ids.length) {
+  {
     const inheritedTeams = [
       ...(data.ticketId ? (await prisma.ticketTeamAccess.findMany({ where: { ticketId: data.ticketId }, select: { teamId: true } })).map((x) => x.teamId) : []),
       ...(parentId ? (await prisma.taskTeamAccess.findMany({ where: { taskId: parentId }, select: { teamId: true } })).map((x) => x.teamId) : []),
     ];
     const allowedTeams = [...new Set([...accessIds, ...inheritedTeams])];
-    if (!allowedTeams.length) throw new AppError('Pick a team first, then choose assignees from that team.', 409, 'TASK_NOT_ROUTED');
-    const outside = assigneesOutsideTeams(ids, allowedTeams, await loadTeamMemberIds(allowedTeams));
+    if (ids.length && !allowedTeams.length) throw new AppError('Pick a team first, then choose assignees from that team.', 409, 'TASK_NOT_ROUTED');
+    const members = await loadTeamMemberIds(allowedTeams);
+    // A task sent to a team you are not in is left for that team to pick up, not forced onto you.
+    if (ids.length === 1 && ids[0] === me && !req.can('task.assign') && assigneesOutsideTeams(ids, allowedTeams, members).length) ids = [];
+    const outside = assigneesOutsideTeams(ids, allowedTeams, members);
     if (outside.length) throw new AppError('Assignees must be members of the task’s team.', 400, 'ASSIGNEE_NOT_IN_TEAM');
   }
 
@@ -102,6 +107,12 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
     action: 'created', summary: `Created task ${task.title}`,
   });
   for (const userId of ids) await notifyAssignment({ userId, actor: req.currentUser, title: task.title, kind: 'task', href: link(task) });
+  if (task.ticketId) await recordTicketEvents(prisma, task.ticketId, req.currentUser.id, [{ type: 'TASK', toValue: task.id, toLabel: task.title, clientVisible: false }]);
+  const foreign = [...new Set([task.teamId, ...teamIds].filter((id) => id && !ownTeamIds.includes(id)))];
+  if (foreign.length && !ids.length) {
+    const managers = await findTeamManagers(foreign);
+    await notifyPeople({ userIds: managers.map((u) => u.id), actorId: me, type: 'ASSIGNMENT', title: `New task sent to your team: ${task.title}`, body: `${req.currentUser.name || req.currentUser.email} created it. Assign someone from your team.`, href: link(task) });
+  }
   res.status(201).json(task);
 });
 
@@ -173,4 +184,41 @@ router.patch('/tasks/:id', async (req, res) => {
   }
   res.json(task);
 });
+// ---- Task comments: internal team talk, visible to everyone who can open the task (never to clients) ----
+const authorSelect = { author: { select: userSelect } };
+async function loadTask(req) {
+  if (!req.isInternal) throw new AppError('Task not found', 404);
+  const t = await prisma.task.findFirst({ where: { id: req.params.id, ...taskTeamScope(req) }, include: { assignees: true } });
+  if (!t || !canSeeOrg(req, t.organizationId)) throw new AppError('Task not found', 404);
+  return t;
+}
+
+router.get('/tasks/:id/comments', async (req, res) => {
+  const t = await loadTask(req);
+  res.json(await prisma.comment.findMany({ where: { taskId: t.id }, orderBy: { createdAt: 'asc' }, include: authorSelect, take: 500 }));
+});
+
+router.post('/tasks/:id/comments', requirePermission('ticket.comment_internal'), async (req, res) => {
+  const t = await loadTask(req);
+  const { body } = parseBody(commentCreate, req.body);
+  const c = await prisma.comment.create({ data: { body, visibility: 'INTERNAL', taskId: t.id, authorId: req.currentUser.id }, include: authorSelect });
+  await logActivity({ actorId: req.currentUser.id, organizationId: t.organizationId, entityType: 'task', entityId: t.id, action: 'commented', summary: `Comment added to task ${t.title}` });
+  await notifyPeople({ userIds: taskCommentRecipients(t, req.currentUser.id), actorId: req.currentUser.id, type: 'COMMENT', title: `New comment on task: ${t.title}`, body: `${req.currentUser.name || req.currentUser.email}: ${body.slice(0, 200)}`, href: link(t), email: false });
+  res.status(201).json(c);
+});
+
+router.delete('/tasks/:id/comments/:commentId', async (req, res) => {
+  const t = await loadTask(req);
+  const c = await prisma.comment.findFirst({ where: { id: req.params.commentId, taskId: t.id } });
+  if (!c) throw new AppError('Comment not found', 404);
+  if (c.authorId !== req.currentUser.id && !req.can('task.update_any')) throw new AppError('You can only delete your own comments.', 403);
+  await prisma.comment.delete({ where: { id: c.id } });
+  res.json({ ok: true });
+});
+
+router.get('/tasks/:id/attachments', async (req, res) => {
+  const t = await loadTask(req);
+  res.json(await prisma.attachment.findMany({ where: { taskId: t.id }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
+});
+
 export default router;

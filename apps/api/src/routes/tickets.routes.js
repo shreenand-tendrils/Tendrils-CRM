@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { ticketScope, canSeeOrg, requirePermission } from '../middleware/index.js';
 import {
-  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
+  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, findTeamManagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
 } from '../services/index.js';
 import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee } from '../services/ticketRouting.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
@@ -88,12 +88,13 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!req.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
   if (!req.isInternal && (data.teamId || teamIds.length)) throw new AppError('Client users cannot assign internal teams.', 403);
-  if (!req.can('ticket.triage') && data.assigneeId && data.assigneeId !== req.currentUser.id) {
+  const crossTeam = req.can('ticket.triage') || req.can('work.cross_team');
+  if (!crossTeam && data.assigneeId && data.assigneeId !== req.currentUser.id) {
     throw new AppError("You don't have permission to assign tickets to others (ticket.triage).", 403);
   }
+  const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
   if (req.isInternal && !req.can('ticket.triage')) {
-    const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
-    if (data.teamId && !ownTeamIds.includes(data.teamId)) throw new AppError('You can only raise a ticket for one of your own teams.', 403, 'TEAM_SCOPE_DENIED');
+    if (!crossTeam && data.teamId && !ownTeamIds.includes(data.teamId)) throw new AppError('You can only raise a ticket for one of your own teams.', 403, 'TEAM_SCOPE_DENIED');
     if (!data.teamId && ownTeamIds.length === 1) data.teamId = ownTeamIds[0];
     if (!data.teamId && ownTeamIds.length > 1) throw new AppError('Select which of your teams owns this ticket.', 400, 'TEAM_REQUIRED');
     if (!data.teamId && !ownTeamIds.length) throw new AppError('Join a team before creating an internal ticket.', 400, 'TEAM_REQUIRED');
@@ -101,7 +102,7 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   await assertProjectInOrg(data.projectId, data.organizationId);
   await assertAssignable(data.assigneeId);
   await assertInternalTeam(data.teamId);
-  if (teamIds.length && !req.can('ticket.triage')) throw new AppError('Only authorized triagers can share a ticket with additional teams.', 403);
+  if (teamIds.length && !crossTeam) throw new AppError('Only authorized triagers can share a ticket with additional teams.', 403);
   const accessTeamIds = accessTeamIdsFor(data.teamId, teamIds);
   if (req.isInternal && data.assigneeId) {
     // Team first, then assignee: the assignee must belong to the ticket's team.
@@ -128,6 +129,11 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
       { type: 'CREATED', note: t.key, clientVisible: true },
       ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
     ]);
+  }
+  // Staff who route a ticket to a team that is not theirs tell that team's managers, so it gets picked up.
+  if (req.isInternal && accessTeamIds.some((id) => !ownTeamIds.includes(id))) {
+    const managers = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
+    await notifyPeople({ userIds: managers.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${req.currentUser.name || req.currentUser.email}: ${t.title}`, href: ticketUrl(t) });
   }
   // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
   if (!req.isInternal) {

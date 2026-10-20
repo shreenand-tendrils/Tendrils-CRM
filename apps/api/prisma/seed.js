@@ -111,14 +111,15 @@ async function main() {
   const brand = await project('Brand Refresh', 'comfort-furniture', 'nisha', ['karan'], 'Logo, colours and social templates for Comfort Furniture.', 25);
 
   // ---- standalone tasks: every task has a team and its assignees come from that team ------
-  const task = async ({ title, slug, projectId, teamSlug, creator, assignees, status, priority = 'MEDIUM', due }) => {
-    if (await prisma.task.findFirst({ where: { title, organizationId: org[slug].id } })) return;
-    await prisma.task.create({
+  const task = async ({ title, slug, projectId, ticketId = null, parentId = null, teamSlug, shared = [], creator, assignees, status, priority = 'MEDIUM', due }) => {
+    const found = await prisma.task.findFirst({ where: { title, organizationId: org[slug].id } });
+    if (found) return found;
+    return prisma.task.create({
       data: {
-        title, organizationId: org[slug].id, projectId, teamId: team[teamSlug].id, status, priority, creatorId: u[creator].id,
+        title, organizationId: org[slug].id, projectId, ticketId, parentId, teamId: team[teamSlug].id, status, priority, creatorId: u[creator].id,
         dueDate: ahead(due), assigneeId: u[assignees[0]].id,
         assignees: { create: assignees.map((k) => ({ userId: u[k].id })) },
-        teamAccesses: { create: [{ teamId: team[teamSlug].id, accessRole: 'OWNER', addedById: u[creator].id }] },
+        teamAccesses: { create: [{ teamId: team[teamSlug].id, accessRole: 'OWNER', addedById: u[creator].id }, ...shared.map((s) => ({ teamId: team[s].id, accessRole: 'PARTICIPANT', addedById: u[creator].id }))] },
       },
     });
   };
@@ -185,7 +186,7 @@ async function main() {
     statuses: [[4, 'aditya', 'IN_PROGRESS']] });
   await ticket({ key: 'SOF-100003', org: 'sofabed', project: web, requester: 'rohan', title: 'Need invoice export', description: 'Can we export all invoices as CSV from the admin?', status: 'OPEN', priority: 'MEDIUM', age: 0.3 });
   await ticket({ key: 'SOF-100004', org: 'sofabed', project: web, requester: 'neha', title: 'Footer links broken on mobile', description: 'Privacy and Terms links do nothing on phones.',
-    team: 'development', routedBy: 'rahul', assignee: 'sneha', assignedBy: 'rahul', status: 'CLIENT_REVIEW', priority: 'HIGH', due: 1, age: 6,
+    team: 'development', shared: ['qa'], routedBy: 'rahul', assignee: 'sneha', assignedBy: 'rahul', status: 'CLIENT_REVIEW', priority: 'HIGH', due: 1, age: 6,
     statuses: [[5.5, 'rahul', 'TRIAGED'], [5, 'sneha', 'IN_PROGRESS'], [1, 'sneha', 'REVIEW'], [0.5, 'rahul', 'CLIENT_REVIEW']],
     comments: [[0.5, 'rahul', 'Fixed and deployed to staging. Please check on your phone.', 'CLIENT']] });
   await ticket({ key: 'JEN-100001', org: 'jennihome', project: seo, requester: 'tanvi', title: 'Add size chart to product pages', description: 'Customers keep asking for sizes before buying.',
@@ -195,6 +196,20 @@ async function main() {
     team: 'it-infrastructure', routedBy: 'priya', assignee: 'nikhil', assignedBy: 'anil', status: 'IN_PROGRESS', priority: 'HIGH', due: 2, age: 4,
     statuses: [[3.5, 'anil', 'TRIAGED'], [3, 'nikhil', 'IN_PROGRESS']] });
   await ticket({ key: 'COM-100001', org: 'comfort-furniture', project: brand, requester: 'imran', title: 'Logo colours look different on mobile', description: 'The orange looks more red on Android phones.', status: 'OPEN', priority: 'LOW', age: 0.6 });
+
+  // Team-to-team work: Sneha (Development employee) raised a linked task for the QA team, with a subtask under it.
+  const sof4 = await prisma.ticket.findUnique({ where: { key: 'SOF-100004' } });
+  if (sof4) {
+    const qaTask = await task({ title: 'QA: verify footer links on phones', slug: 'sofabed', projectId: web.id, ticketId: sof4.id, teamSlug: 'qa', shared: ['development'], creator: 'sneha', assignees: ['pooja'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1 });
+    await task({ title: 'Test on Android and iOS', slug: 'sofabed', projectId: web.id, parentId: qaTask.id, teamSlug: 'qa', creator: 'pooja', assignees: ['pooja'], status: 'TODO', priority: 'MEDIUM', due: 1 });
+    if (!(await prisma.comment.count({ where: { taskId: qaTask.id } }))) {
+      await prisma.comment.createMany({ data: [
+        { body: 'Footer fix is on staging. Please check iOS Safari first, it was the worst one.', visibility: 'INTERNAL', authorId: u.sneha.id, taskId: qaTask.id, createdAt: ago(0.3) },
+        { body: 'On it. Android Chrome looks fine, testing iOS now.', visibility: 'INTERNAL', authorId: u.pooja.id, taskId: qaTask.id, createdAt: ago(0.1) },
+      ] });
+    }
+    await prisma.ticketEvent.create({ data: { ticketId: sof4.id, actorId: u.sneha.id, type: 'TASK', toValue: qaTask.id, toLabel: qaTask.title, clientVisible: false, createdAt: ago(0.4) } });
+  }
 
   const yesterday = new Date(`${new Date(Date.now() - DAY).toISOString().slice(0, 10)}T00:00:00.000Z`);
   await prisma.dailyUpdate.upsert({

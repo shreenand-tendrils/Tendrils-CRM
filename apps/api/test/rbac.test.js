@@ -80,3 +80,26 @@ test('ticket/task status maps never ping-pong', () => {
     assert.ok(back === undefined || TICKET_TO_TASK[back] === taskStatus, `${ticketStatus} <-> ${taskStatus}`);
   }
 });
+
+test('employees can send work to other teams; clients cannot', () => {
+  assert.ok(ctx('EMPLOYEE').can('work.cross_team') && ctx('MANAGER').can('work.cross_team'));
+  assert.ok(!ctx('CLIENT_ADMIN').can('work.cross_team'));
+  assert.ok(!ctx('EMPLOYEE').can('ticket.triage'), 'cross-team requests do not make an employee a triager');
+});
+
+test('staff keep seeing a ticket they raised for another team', () => {
+  const memberships = [{ role: 'EMPLOYEE', organizationId: 'o1', organization: internal, teamMemberships: [{ teamId: 'team-a' }] }];
+  const permissions = permissionsFor(memberships);
+  const me = { currentUser: { id: 'emp' }, memberships, isInternal: true, permissions, can: (p) => permissions.has(p) };
+  const t = { requesterId: 'emp', teamId: 'team-b', teamAccesses: [{ teamId: 'team-b' }] };
+  assert.equal(canViewTicket(me, t), true);
+  assert.equal(canViewTicket(me, { ...t, requesterId: 'someone-else' }), false);
+});
+
+import { taskCommentRecipients } from '../src/services/taskComments.js';
+test('task comments notify the creator and assignees, never the author, no duplicates', () => {
+  const task = { creatorId: 'c', assigneeId: 'a', assignees: [{ userId: 'a' }, { userId: 'b' }] };
+  assert.deepEqual(taskCommentRecipients(task, 'a').sort(), ['b', 'c']);
+  assert.deepEqual(taskCommentRecipients(task, 'zzz').sort(), ['a', 'b', 'c']);
+  assert.deepEqual(taskCommentRecipients({ creatorId: 'c' }, 'c'), []);
+});

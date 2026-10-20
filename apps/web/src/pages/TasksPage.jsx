@@ -7,7 +7,7 @@ import { PriorityBadge, StatusBadge } from "../components/ui/StatusBadge";
 import { formatDate, isOverdue } from "../lib/formatters";
 import { useAppStore } from "../store";
 
-export default function TasksPage({ data, onCreate, onStatusChange }) {
+export default function TasksPage({ data, onCreate, onStatusChange, onOpen }) {
   const { search } = useAppStore();
   const [layout, setLayout] = useState("board");
   const [mine, setMine] = useState(false);
@@ -45,14 +45,14 @@ export default function TasksPage({ data, onCreate, onStatusChange }) {
     <Panel title="Tasks" sub="Tasks created from assigned tickets appear here automatically">
       {toolbar}
       {layout === "board" ? (
-        <TaskBoard tasks={tasks} me={data.me} onCreate={onCreate} onStatusChange={onStatusChange} />
+        <TaskBoard tasks={tasks} me={data.me} onCreate={onCreate} onStatusChange={onStatusChange} onOpen={onOpen} />
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Assignees</th><th>Due</th></tr></thead>
             <tbody>
               {tasks.map((t) => (
-                <tr key={t.id}>
+                <tr key={t.id} onClick={() => onOpen?.(t)} style={onOpen ? { cursor: "pointer" } : undefined}>
                   <td data-label="Task"><b>{t.title}</b>{t.ticket && <div><span className="chip-link">From {t.ticket.key}</span></div>}</td>
                   <td data-label="Project">{t.project?.name || t.organization?.name || "—"}</td>
                   <td data-label="Status"><StatusBadge value={t.status} /></td>

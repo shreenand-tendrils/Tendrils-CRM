@@ -1,4 +1,4 @@
-import { Plus, Ticket } from "lucide-react";
+import { Plus, Ticket, MessageSquare, Paperclip } from "lucide-react";
 import { formatDate, isOverdue } from "../../lib/formatters";
 import AvatarStack from "../ui/AvatarStack";
 import { PriorityBadge } from "../ui/StatusBadge";
@@ -6,7 +6,7 @@ import { can, canEditTask } from "../../lib/rbac";
 
 export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "Review"], ["DONE", "Done"]];
 
-export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate }) {
+export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate, onOpen }) {
   return (
     <div className="task-board">
       {COLUMNS.map(([key, label]) => {
@@ -16,10 +16,10 @@ export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate }) 
             <header><span>{label}</span><b>{list.length}</b></header>
             <div className="task-cards">
               {list.map((t) => (
-                <article className="task-card" key={t.id}>
+                <article className="task-card" key={t.id} style={onOpen ? { cursor: "pointer" } : undefined} tabIndex={onOpen ? 0 : undefined} role={onOpen ? "button" : undefined} aria-label={onOpen ? `Open task ${t.title}` : undefined} onClick={() => onOpen?.(t)} onKeyDown={(e) => { if (onOpen && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t); } }}>
                   <div className="task-card-top">
                     <PriorityBadge value={t.priority} />
-                    <select aria-label="Change task status" value={t.status} disabled={!canEditTask(me, t)} title={canEditTask(me, t) ? undefined : "You can only move tasks assigned to you"} onChange={(e) => onStatusChange(t, e.target.value)}>
+                    <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t)} title={canEditTask(me, t) ? undefined : "You can only move tasks assigned to you"} onChange={(e) => onStatusChange(t, e.target.value)}>
                       {COLUMNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
@@ -31,6 +31,8 @@ export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate }) 
                   <div className="task-card-foot">
                     <span>{t.project?.name || t.organization?.name || "Workspace"}</span>
                     <AvatarStack users={(t.assignees || []).map((a) => a.user)} />
+                    {t._count?.comments > 0 && <small title="Comments" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><MessageSquare size={12} />{t._count.comments}</small>}
+                    {t._count?.attachments > 0 && <small title="Files" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Paperclip size={12} />{t._count.attachments}</small>}
                     <small className={isOverdue(t) ? "overdue" : ""}>{formatDate(t.dueDate)}</small>
                   </div>
                 </article>

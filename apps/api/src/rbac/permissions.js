@@ -25,10 +25,11 @@ export const PERMISSIONS = {
   'member.manage': 'Invite people and change roles',
   'member.grant_admin': 'Grant or remove Platform Admin',
   'project.post_update': 'Post client-visible project updates (any project)',
+  'work.cross_team': 'Raise tickets and create tasks for other teams',
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
+const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post', 'work.cross_team'];
 const MANAGER = ALL.filter((p) => p !== 'member.grant_admin');
 
 export const ROLE_PERMISSIONS = {
