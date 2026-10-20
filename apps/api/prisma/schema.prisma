@@ -26,6 +26,7 @@ model User {
   chatMessages ChatMessage[]
   chatReads ChatRead[]
   dailyUpdates DailyUpdate[]
+  privateNotes PrivateNote[]
   invitationsSent Invitation[] @relation("InvitedBy")
   projectUpdates ProjectUpdate[]
   documents Document[]
@@ -491,4 +492,18 @@ model TicketEvent {
   createdAt DateTime @default(now())
   ticket Ticket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
   @@index([ticketId,createdAt])
+}
+
+// Personal notes: visible ONLY to their author. Never emailed, never notified, never written to ActivityLog,
+// and there is intentionally no admin/manager route that reads this table.
+model PrivateNote {
+  id String @id @default(cuid())
+  userId String
+  date DateTime @db.Date
+  title String?
+  body String @db.Text
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId,date])
 }

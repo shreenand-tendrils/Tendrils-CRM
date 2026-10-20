@@ -3,8 +3,9 @@ import { prisma } from '../db.js';
 import { orgScope, requirePermission, canSeeOrg, taskTeamScope, ticketScope } from '../middleware/index.js';
 import { canEditTask } from '../rbac/policies.js';
 import {
-  logActivity, notifyAssignment, resolveAssignees, assertAssignees, assertProjectInOrg, assertTicketInOrg, syncTicketFromTask, assertTaskSubtasksDone,
+  logActivity, notifyAssignment, resolveAssignees, assertAssignees, assertProjectInOrg, assertTicketInOrg, syncTicketFromTask, assertTaskSubtasksDone, loadTeamMemberIds,
 } from '../services/index.js';
+import { assigneesOutsideTeams } from '../services/ticketRouting.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
 import { taskCreate, taskUpdate } from '../validators/schemas.js';
@@ -75,6 +76,18 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
     if (!data.teamId) data.teamId = ticket.teamId;
   }
 
+  // Team first, then assignees: everyone assigned must belong to the task's team(s) (owner + shared + ticket/parent teams).
+  if (ids.length) {
+    const inheritedTeams = [
+      ...(data.ticketId ? (await prisma.ticketTeamAccess.findMany({ where: { ticketId: data.ticketId }, select: { teamId: true } })).map((x) => x.teamId) : []),
+      ...(parentId ? (await prisma.taskTeamAccess.findMany({ where: { taskId: parentId }, select: { teamId: true } })).map((x) => x.teamId) : []),
+    ];
+    const allowedTeams = [...new Set([...accessIds, ...inheritedTeams])];
+    if (!allowedTeams.length) throw new AppError('Pick a team first, then choose assignees from that team.', 409, 'TASK_NOT_ROUTED');
+    const outside = assigneesOutsideTeams(ids, allowedTeams, await loadTeamMemberIds(allowedTeams));
+    if (outside.length) throw new AppError('Assignees must be members of the task’s team.', 400, 'ASSIGNEE_NOT_IN_TEAM');
+  }
+
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
       data: { ...data, parentId: parentId || null, creatorId: req.currentUser.id, assigneeId: ids[0] ?? null, assignees: { create: asRows(ids) } },
@@ -116,10 +129,28 @@ router.patch('/tasks/:id', async (req, res) => {
       }
     }
   }
-  if (ids) {
-    await assertAssignees(ids);
-    data.assigneeId = ids[0] ?? null;
-    data.assignees = { deleteMany: {}, create: asRows(ids) };
+  // Team first, then assignees. Explicit assignees must fit the (new) teams; when the teams change, people who no longer fit are removed.
+  let nextIds = ids;
+  {
+    const ownerNext = data.teamId !== undefined ? data.teamId : old.teamId;
+    const sharedNext = teamIds !== undefined ? teamIds : (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId).map((a) => a.teamId);
+    const teamsNext = [...new Set([...(ownerNext ? [ownerNext] : []), ...sharedNext])];
+    const teamsChanged = teamIds !== undefined || data.teamId !== undefined;
+    if (nextIds || teamsChanged) {
+      const current = nextIds ?? old.assignees.map((a) => a.userId);
+      if (current.length) {
+        if (!teamsNext.length) throw new AppError('Pick a team first, then choose assignees from that team.', 409, 'TASK_NOT_ROUTED');
+        const members = await loadTeamMemberIds(teamsNext);
+        const outside = assigneesOutsideTeams(current, teamsNext, members);
+        if (outside.length && nextIds) throw new AppError('Assignees must be members of the task’s team.', 400, 'ASSIGNEE_NOT_IN_TEAM');
+        if (outside.length) nextIds = current.filter((id) => !outside.includes(id));
+      }
+    }
+  }
+  if (nextIds) {
+    await assertAssignees(nextIds);
+    data.assigneeId = nextIds[0] ?? null;
+    data.assignees = { deleteMany: {}, create: asRows(nextIds) };
   }
 
   const task = await prisma.$transaction(async (tx) => {
@@ -136,9 +167,9 @@ router.patch('/tasks/:id', async (req, res) => {
     actorId: req.currentUser.id, organizationId: task.organizationId, entityType: 'task', entityId: task.id,
     action: 'updated', summary: `Updated task ${task.title}`,
   });
-  if (ids) {
+  if (nextIds) {
     const before = new Set([old.assigneeId, ...old.assignees.map((a) => a.userId)].filter(Boolean));
-    for (const userId of ids.filter((u) => !before.has(u))) await notifyAssignment({ userId, actor: req.currentUser, title: task.title, kind: 'task', href: link(task) });
+    for (const userId of nextIds.filter((u) => !before.has(u))) await notifyAssignment({ userId, actor: req.currentUser, title: task.title, kind: 'task', href: link(task) });
   }
   res.json(task);
 });

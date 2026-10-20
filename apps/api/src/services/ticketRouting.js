@@ -40,3 +40,8 @@ export function planAssignee({ old, data, accessIds, membersByTeam, routingTouch
   }
   return { assigneeId: null, autoUnassigned: true, error: null };
 }
+
+/** Ids from `ids` that are NOT members of any of `teamIds` (empty array = everyone fits). Used for tasks. */
+export function assigneesOutsideTeams(ids = [], teamIds = [], membersByTeam) {
+  return ids.filter((id) => !isMemberOfAnyTeam(id, teamIds, membersByTeam));
+}

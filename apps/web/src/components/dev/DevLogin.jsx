@@ -4,6 +4,9 @@ import { api } from "../../api";
 // Development-only helper to test the app as different roles. The API exposes
 // /dev/* only when DEV_LOGIN=true and NODE_ENV !== production, so in production
 // this component renders nothing.
+// "Rahul Verma — Manager · Development"  /  "Boss — Client admin (Client boss) · Sofabed"
+const personLine = (u) => `${u.name} — ${u.roleLabel || u.role}${u.type === "CLIENT" ? ` · ${u.organization}` : u.teams?.length ? ` · ${u.teams.join(", ")}` : ""}`;
+
 export default function DevLogin({ variant = "signin" }) {
   const [state, setState] = useState(null);
 
@@ -23,24 +26,26 @@ export default function DevLogin({ variant = "signin" }) {
         <small>DEV · view as</small>
         <select value={state.current || ""} onChange={(e) => (e.target.value ? loginAs(e.target.value) : useGoogle())}>
           <option value="">My Google account</option>
-          {state.users.map((u) => <option key={u.id} value={u.email}>{u.name} · {u.type === "CLIENT" ? "Client" : u.role.replace("_", " ").toLowerCase()}</option>)}
+          {state.users.map((u) => <option key={u.id} value={u.email}>{personLine(u)}</option>)}
         </select>
       </label>
     );
   }
 
-  const staff = state.users.filter((u) => u.type === "INTERNAL");
-  const clients = state.users.filter((u) => u.type === "CLIENT");
+  const by = (role) => state.users.filter((u) => u.role === role);
   const group = (title, list) => !!list.length && (
     <div className="dev-group"><small>{title}</small>
-      {list.map((u) => <button key={u.id} onClick={() => loginAs(u.email)}><b>{u.name}</b><span>{u.type === "CLIENT" ? u.organization : u.role.replace("_", " ").toLowerCase()}</span></button>)}
+      {list.map((u) => <button key={u.id} onClick={() => loginAs(u.email)}><b>{u.name}</b><span>{u.roleLabel}{u.type === "CLIENT" ? ` · ${u.organization}` : u.teams?.length ? ` · ${u.teams.join(", ")}` : ""}</span></button>)}
     </div>
   );
   return (
     <div className="dev-login">
       <div className="dev-title">DEV LOGIN · testing only</div>
-      {group("Tendrils team", staff)}
-      {group("Client users", clients)}
+      {group("Root admin / Boss", by("PLATFORM_ADMIN"))}
+      {group("Managers", by("MANAGER"))}
+      {group("Employees", by("EMPLOYEE"))}
+      {group("Client boss (client admin)", by("CLIENT_ADMIN"))}
+      {group("Client members", by("CLIENT_MEMBER"))}
       {!state.users.length && <small>No demo users yet — run: npm run seed:demo</small>}
     </div>
   );

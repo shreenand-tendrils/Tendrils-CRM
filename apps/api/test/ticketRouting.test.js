@@ -136,3 +136,30 @@ test('ticket team label for the table', () => {
   assert.equal(ticketTeamLabel({ teamId: 'dev', teamAccesses: [{ teamId: 'dev', team: { name: 'Development' } }, { teamId: 'qa', team: { name: 'QA' } }] }), 'Development +1');
   assert.equal(ticketTeamLabel({ teamId: null, teamAccesses: [] }), null);
 });
+
+// ---- tasks use the same team-first rule; multi-team pickers ----
+import { assigneesOutsideTeams } from '../src/services/ticketRouting.js';
+import { peopleOfTeams, sameIds } from '../../web/src/lib/teams.js';
+
+test('task assignees outside the chosen teams are detected', () => {
+  assert.deepEqual(assigneesOutsideTeams(['sneha', 'meera'], ['dev'], members), ['meera']);
+  assert.deepEqual(assigneesOutsideTeams(['sneha', 'pooja'], ['dev', 'qa'], members), []);
+  assert.deepEqual(assigneesOutsideTeams(['aditya'], ['seo'], members), ['aditya']);
+});
+
+test('people of several teams: owner + shared, de-duplicated, with roles', () => {
+  const ppl = peopleOfTeams([
+    { id: 'dev', name: 'Development', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'MANAGER', user: { id: 'rahul', name: 'Rahul Verma', email: 'r@x' } } }] },
+    { id: 'qa', name: 'QA', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'EMPLOYEE', user: { id: 'pooja', name: 'Pooja Desai', email: 'p@x' } } }] },
+  ], ['dev', 'qa']);
+  assert.deepEqual(ppl.map((p) => p.id), ['aditya', 'pooja', 'rahul'], 'Aditya (Dev + QA) appears once');
+  assert.equal(ppl.find((p) => p.id === 'rahul').label, 'Rahul Verma — Manager');
+  assert.deepEqual(peopleOfTeams([], ['dev']), []);
+  assert.deepEqual(peopleOfTeams([{ id: 'dev', members: [] }], []), [], 'no team picked => nobody to pick');
+});
+
+test('team selection "dirty" check ignores order', () => {
+  assert.ok(sameIds(['a', 'b'], ['b', 'a']));
+  assert.ok(!sameIds(['a'], ['a', 'b']));
+  assert.ok(sameIds([], []));
+});

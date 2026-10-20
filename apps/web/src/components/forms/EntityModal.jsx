@@ -2,24 +2,26 @@ import { useState } from "react";
 import { X, ShieldCheck, Info } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
+import { peopleOfTeams } from "../../lib/teams";
+import TeamMultiSelect from "../ui/TeamMultiSelect";
 
 // field = [name, label, type, required, visible(me)]
 const configs = {
   ticket: { title: "Create a ticket", fields: [
     ["title", "Ticket title", "text", true], ["description", "Description", "textarea"],
     ["organizationId", "Client workspace", "clients", true], ["projectId", "Project", "projects"],
-    ["assigneeId", "Assignee", "users", false, (me) => can(me, "ticket.triage")],
-    ["teamId", "Owning team", "teams", false, (me) => me.isInternal],
-    ["teamIds", "Share with additional teams", "teamsMulti", false, (me) => can(me, "ticket.triage")],
+    ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
+    ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage")],
+    ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage")],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
     ["title", "Task title", "text", true], ["description", "Description", "textarea"],
     ["organizationId", "Client workspace", "clients", true], ["projectId", "Project", "projects"], ["ticketId", "Related ticket", "tickets"],
     ["parentId", "Parent task (optional subtask)", "parentTasks"],
-    ["teamId", "Owning team", "teams", false, (me) => me.isInternal],
-    ["teamIds", "Share task with additional teams", "teamsMulti", false, (me) => can(me, "task.assign")],
-    ["assigneeIds", "Assignees (one or more)", "people", false, (me) => can(me, "task.assign")],
+    ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
+    ["teamIds", "Also share task with other teams", "teamsMulti", false, (me) => can(me, "task.assign")],
+    ["assigneeIds", "Assignees (from the selected team(s))", "teamPeople", false, (me) => can(me, "task.assign")],
     ["priority", "Priority", "priority"], ["dueDate", "Due date", "date"],
   ] },
   project: { title: "Create a project", fields: [
@@ -28,15 +30,16 @@ const configs = {
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
-const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks"];
+const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks", "teamAssignees"];
 
-function optionsFor(type, data, orgId) {
+function optionsFor(type, data, orgId, teamIds = []) {
   const inOrg = (o) => !orgId || o.organizationId === orgId || o.organization?.id === orgId;
   const map = {
     clients: (data.organizations || []).filter((o) => o.type === "CLIENT").map((o) => [o.id, o.name]),
     projects: (data.projects || []).filter(inOrg).map((o) => [o.id, o.name]),
     tickets: (data.tickets || []).filter(inOrg).map((o) => [o.id, `${o.key} · ${o.title}`]),
     users: (data.users || []).map((o) => [o.id, o.name || o.email]),
+    teamAssignees: peopleOfTeams(data.teams, teamIds).map((p) => [p.id, p.label]),
     teams: (data.teams || []).filter((team) => can(data.me, "ticket.triage") || can(data.me, "task.assign") || team.members?.some((m) => m.membership?.user?.id === data.me.user?.id)).map((o) => [o.id, o.name]),
     parentTasks: (data.tasks || []).filter((task) => !task.autoCreated && (!orgId || task.organizationId === orgId)).map((o) => [o.id, o.title]),
     priority: [["LOW", "Low"], ["MEDIUM", "Medium"], ["HIGH", "High"], ["URGENT", "Urgent"]],
@@ -48,9 +51,12 @@ function optionsFor(type, data, orgId) {
 
 export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
   const [orgId, setOrgId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [sharedIds, setSharedIds] = useState([]);
   const config = configs[kind];
   const me = data.me;
   if (!config) return null;
+  const pickedTeams = [teamId, ...sharedIds.filter((id) => id !== teamId)].filter(Boolean); // owner + shared teams
   const fields = config.fields.filter(([, , , , visible]) => !visible || visible(me));
 
   const submit = (e) => {
@@ -58,7 +64,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
     const fd = new FormData(e.currentTarget);
     const payload = {};
     for (const [name, , type] of fields) {
-      const v = ["people", "teamsMulti"].includes(type) ? fd.getAll(name) : fd.get(name);
+      const v = ["people", "teamsMulti", "teamPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
     }
     onSubmit(kind, payload);
@@ -77,10 +83,16 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving }) {
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <textarea id={`f-${name}`} name={name} />
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />
-                : type === "teamsMulti" ? <select id={`f-${name}`} name={name} multiple size={Math.min(4, Math.max(2, (data.teams || []).length))} aria-label={label}>{optionsFor("teams", data, orgId).filter(([v]) => v).map(([v, l]) => <option value={v} key={v}>{l}</option>)}</select>
+                : type === "teamPeople" ? (teamId
+                    ? <PeoplePicker key={pickedTeams.join("|")} name={name} users={peopleOfTeams(data.teams, pickedTeams).map((p) => ({ id: p.id, name: p.label }))} />
+                    : <small className="hint">Select a team first, then pick people from it.</small>)
+                : type === "teamsMulti" ? <><TeamMultiSelect id={`f-${name}`} name={name} teams={optionsFor("teams", data, orgId).filter(([v]) => v).map(([id, tname]) => ({ id, name: tname }))} value={sharedIds} onChange={setSharedIds} lockedId={teamId} disabled={!teamId} label={label} />{!teamId && <small className="hint">Choose the team first.</small>}</>
                 : SELECTS.includes(type) ? (
-                  <select id={`f-${name}`} name={name} required={required} onChange={name === "organizationId" ? (e) => setOrgId(e.target.value) : undefined}>
-                    {optionsFor(type, data, orgId).map(([v, l]) => <option value={v} key={v}>{l}</option>)}
+                  <select id={`f-${name}`} name={name} required={required} disabled={type === "teamAssignees" && !teamId}
+                    onChange={name === "organizationId" ? (e) => setOrgId(e.target.value) : name === "teamId" ? (e) => setTeamId(e.target.value) : undefined}>
+                    {type === "teamAssignees"
+                      ? [[ "", teamId ? "— Unassigned —" : "Select a team first" ], ...optionsFor(type, data, orgId, pickedTeams).filter(([v]) => v)].map(([v, l]) => <option value={v} key={v}>{l}</option>)
+                      : optionsFor(type, data, orgId, pickedTeams).map(([v, l]) => <option value={v} key={v}>{l}</option>)}
                   </select>
                 ) : <input id={`f-${name}`} name={name} type={type} required={required} />}
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}

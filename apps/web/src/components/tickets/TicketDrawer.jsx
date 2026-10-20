@@ -3,7 +3,10 @@ import { X, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCirc
 import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
-import { can } from "../../lib/rbac";
+import { can, ROLE_LABELS } from "../../lib/rbac";
+import { assigneeGroups, isInTeams, sameIds } from "../../lib/teams";
+import TeamMultiSelect from "../ui/TeamMultiSelect";
+import TicketHistory from "./TicketHistory";
 
 const STATUSES = ["OPEN", "TRIAGED", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT_REVIEW", "RESOLVED", "CLOSED"];
 const CLIENT_LABEL = { OPEN: "Received", TRIAGED: "Reviewed by the team", IN_PROGRESS: "In progress", BLOCKED: "In progress", REVIEW: "In progress", CLIENT_REVIEW: "Waiting for your review", RESOLVED: "Done", CLOSED: "Closed" };
@@ -20,13 +23,16 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     const pasted = new File([file], `pasted-attachment-${Date.now()}.${ext}`, { type: file.type });
     Promise.resolve(onUpload({ target: { files: [pasted], value: "" } }, ticket.id)).then(() => setPasteHint("Pasted attachment uploaded.")).catch(() => setPasteHint("Could not upload pasted attachment."));
   };
+  const [tab, setTab] = useState("comments");
   const [visibility, setVisibility] = useState("CLIENT");
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(ticket?.title || "");
   const [editDescription, setEditDescription] = useState(ticket?.description || "");
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+  const [ownerTeamId, setOwnerTeamId] = useState("");
   const navigate = useNavigate();
-  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
+  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
+  useEffect(() => { setTab("comments"); }, [ticket?.id]);
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
@@ -36,6 +42,19 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const canStatus = triage || ownStatus || (me.isInternal && requesterCanEdit);
   const task = ticket.tasks?.[0];
   const staff = me.isInternal;
+  // Teams that are SAVED on the ticket decide who can be assigned. Unsaved changes in the pickers do not.
+  const savedShared = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.teamId);
+  const groups = assigneeGroups(teams, ticket.teamId, savedShared);
+  const savedAccessIds = groups.map((g) => g.team.id);
+  const legacyAssignee = ticket.assignee && ticket.teamId && !isInTeams(teams, savedAccessIds, ticket.assigneeId) ? ticket.assignee : null;
+  const sharedNow = selectedTeamIds.filter((id) => id !== ownerTeamId);
+  const teamsDirty = ownerTeamId !== (ticket.teamId || "") || !sameIds(sharedNow, savedShared);
+  const canSaveTeams = teamsDirty && (ownerTeamId || !sharedNow.length);
+  const saveTeams = async () => {
+    // The assignee must belong to the saved teams, so clear them if they would no longer fit.
+    const fits = ticket.assigneeId && ownerTeamId && isInTeams(teams, [ownerTeamId, ...sharedNow], ticket.assigneeId);
+    await onUpdate(ticket.id, { teamId: ownerTeamId || null, teamIds: ownerTeamId ? sharedNow : [], ...(ticket.assigneeId && !fits ? { assigneeId: null } : {}) });
+  };
 
   const post = async (e) => {
     e.preventDefault();
@@ -59,6 +78,44 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           </div>
         ) : <><div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}><h2>{ticket.title}</h2>{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</div><p>{ticket.description || "No description added."}</p></>}
 
+        {/* STEP 1: teams (top). STEP 2: save. STEP 3: assignee, only from the saved teams. */}
+        {staff && (triage ? (
+          <div className="team-block">
+            <div className="field">
+              <label htmlFor="ticket-owner-team">Team</label>
+              <select id="ticket-owner-team" value={ownerTeamId} onChange={(e) => setOwnerTeamId(e.target.value)} aria-label="Owning team">
+                <option value="">Not routed — pick a team</option>
+                {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="ticket-shared-teams">Also share with other teams (optional)</label>
+              <TeamMultiSelect id="ticket-shared-teams" teams={teams} value={selectedTeamIds} onChange={setSelectedTeamIds} lockedId={ownerTeamId} disabled={!ownerTeamId} />
+              {!ownerTeamId && <small className="hint">Choose the owning team first.</small>}
+            </div>
+            <button className="primary" disabled={!canSaveTeams} onClick={saveTeams}>Save team access</button>
+            <div className="field">
+              <label htmlFor="ticket-assignee">Assignee</label>
+              <select id="ticket-assignee" value={ticket.assigneeId || ""} disabled={!ticket.teamId || teamsDirty} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee">
+                <option value="">{teamsDirty ? "Click “Save team access” first" : ticket.teamId ? "Unassigned" : "Select a team first"}</option>
+                {legacyAssignee && <option value={legacyAssignee.id}>{legacyAssignee.name || legacyAssignee.email} (not in these teams — reassign)</option>}
+                {groups.map((g) => (
+                  <optgroup key={g.team.id} label={`${g.team.name}${g.owner ? " (owner team)" : " (shared)"}`}>
+                    {g.people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <small className="hint">Only people from the saved team(s) can be assigned.</small>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="detail"><span>Team</span><b>{ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "Not routed yet"}</b></div>
+            <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>
+          </>
+        ))}
+        {!staff && <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>}
+
         <div className="detail"><span>Client</span><b>{ticket.organization?.name}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
 
@@ -80,21 +137,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
             ? <select className="table-select" value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })} aria-label="Priority">{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}</select>
             : <PriorityBadge value={ticket.priority} />}
         </div>
-        <div className="detail"><span>Assignee</span>
-          {triage
-            ? <select className="table-select" value={ticket.assigneeId || ""} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee"><option value="">Unassigned</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select>
-            : <b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b>}
-        </div>
-        {triage && teams.length > 0 && (
-          <div className="field">
-            <label htmlFor="ticket-participating-teams">Participating teams (only selected teams can see this ticket)</label>
-            <select id="ticket-participating-teams" multiple size={Math.min(4, Math.max(2, teams.length))} value={selectedTeamIds} onChange={(e) => setSelectedTeamIds(Array.from(e.target.selectedOptions, (o) => o.value))}>
-              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.id === ticket.teamId ? " (owner)" : ""}</option>)}
-            </select>
-            <button className="secondary" onClick={async () => { const saved = await onUpdate(ticket.id, { teamIds: selectedTeamIds }); if (saved) setSelectedTeamIds(selectedTeamIds); }}>Save team access</button>
-          </div>
-        )}
-        {triage && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Assigning a ticket creates a task for that person automatically, and the two stay in sync.</p>}
+        {triage && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Pick the team first, then assign someone from it. Assigning creates a task for that person automatically, and the two stay in sync.</p>}
 
         {staff && task && (
           <div className="linked-task">
@@ -104,22 +147,26 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           </div>
         )}
 
-        <div className="drawer-tabs"><b>Comments ({comments.length})</b></div>
-        {comments.map((c) => (
+        <div className="drawer-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>
+          <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>History</button>
+        </div>
+        {tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
+        {tab === "comments" && comments.map((
           <div className="comment" key={c.id}>
             <b>{c.author?.name || c.author?.email}</b>
             <small>{pretty(c.visibility)} · {new Date(c.createdAt).toLocaleString()}</small>
             <p>{c.body}</p>
           </div>
         ))}
-        <form className="comment-form" onSubmit={post}>
+        {tab === "comments" && <form className="comment-form" onSubmit={post}>
           <textarea value={text} onChange={(e) => setText(e.target.value)} onPaste={handlePaste} placeholder="Write a comment… (paste an image or PDF to attach)" rows={3} aria-label="Comment" />
           {pasteHint && <small className="hint">{pasteHint}</small>}
           <div className="row">
             {staff && <select value={visibility} onChange={(e) => setVisibility(e.target.value)} aria-label="Comment visibility"><option value="CLIENT">Visible to client</option><option value="INTERNAL">Internal note</option></select>}
             <button className="primary" disabled={!text.trim()}>Post comment</button>
           </div>
-        </form>
+        </form>}
 
         {can(me, "file.upload") && (
           <>

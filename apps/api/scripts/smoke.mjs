@@ -76,18 +76,37 @@ check('client cannot change status (403)', (await sofa.patch(`/tickets/${newT.da
 check('client comment is client-visible', (await sofa.post(`/tickets/${newT.data.id}/comments`, { body: 'hello', visibility: 'CLIENT' })).status === 201);
 check('client cannot post internal comment (403)', (await sofa.post(`/tickets/${newT.data.id}/comments`, { body: 'x', visibility: 'INTERNAL' })).status === 403);
 
-section('Staff: multi-assignee task + notifications');
-const sofaOrg = (await maya.get('/organizations')).data.find((o) => o.slug === 'sofabed');
-const devWs = await openWs(dev), ishaWs = await openWs(isha);
-const t = await maya.post('/tasks', { title: `Smoke task ${Date.now()}`, organizationId: sofaOrg.id, assigneeIds: [dMe.user.id, (await isha.get('/me')).data.user.id], dueDate: '2026-12-31' });
-check('multi-assignee task created with YYYY-MM-DD date', t.status === 201);
-const mine = (await dev.get('/tasks?mine=true')).data;
-check('both assignees see it under "mine"', mine.some((x) => x.id === t.data.id) && (await isha.get('/tasks?mine=true')).data.some((x) => x.id === t.data.id));
-check('task lists 2 assignees', (await maya.get('/tasks')).data.find((x) => x.id === t.data.id)?.assignees.length === 2);
-check('assignee gets LIVE notification over WebSocket', !!(await waitFor(() => devWs.events.find((e) => e.type === 'notification'))));
-check('notification saved in DB', (await dev.get('/notifications')).data.some((n) => n.type === 'ASSIGNMENT'));
-check('reject non-staff assignee (400)', (await maya.post('/tasks', { title: 'Bad one', organizationId: sofaOrg.id, assigneeIds: [sMe.user.id] })).status === 400);
-check('read-all notifications', (await dev.post('/notifications/read-all')).status === 200);
+section('Company structure personas (needs npm run seed:company)');
+const P = {};
+for (const n of ['arjun', 'rahul', 'vikram', 'sneha', 'aditya', 'pooja', 'meera']) P[n] = await persona(`${n}.demo@tendrils.io`);
+const ID = {};
+for (const [n, p] of Object.entries(P)) ID[n] = (await p.get('/me')).data.user.id;
+const teamList = (await P.arjun.get('/teams')).data;
+const teamIdOf = (name) => teamList.find((t) => t.name === name)?.id;
+const DEV = teamIdOf('Development'), QA = teamIdOf('QA'), SEO = teamIdOf('SEO / Marketing');
+check('Development, QA and SEO teams exist', !!DEV && !!QA && !!SEO, 'run: npm run seed:company');
+const teamMembersOf = (teamId) => teamList.find((t) => t.id === teamId).members.map((m) => m.membership.user.id);
+check('Development roster = manager + employees of that team only', teamMembersOf(DEV).includes(ID.rahul) && teamMembersOf(DEV).includes(ID.sneha) && !teamMembersOf(DEV).includes(ID.meera));
+const seeT = async (who, id) => (await who.get('/tickets')).data.find((t) => t.id === id);
+
+section('Staff: multi-assignee task + notifications (team-first)');
+const sofaOrg = (await P.rahul.get('/organizations')).data.find((o) => o.slug === 'sofabed');
+const snehaWs = await openWs(P.sneha);
+const devWs = await openWs(dev), ishaWs = await openWs(isha); // used by the chat checks below
+check('task with assignees but no team is rejected (409)', (await P.rahul.post('/tasks', { title: 'No team', organizationId: sofaOrg.id, assigneeIds: [ID.sneha] })).status === 409);
+check('task assignee from another team is rejected (400)', (await P.rahul.post('/tasks', { title: 'Wrong team', organizationId: sofaOrg.id, teamId: DEV, assigneeIds: [ID.meera] })).status === 400);
+const t = await P.rahul.post('/tasks', { title: `Smoke task ${Date.now()}`, organizationId: sofaOrg.id, teamId: DEV, assigneeIds: [ID.sneha, ID.aditya], dueDate: '2026-12-31' });
+check('multi-assignee task created from one team with YYYY-MM-DD date', t.status === 201);
+const mine = (await P.sneha.get('/tasks?mine=true')).data;
+check('both assignees see it under "mine"', mine.some((x) => x.id === t.data.id) && (await P.aditya.get('/tasks?mine=true')).data.some((x) => x.id === t.data.id));
+check('task lists 2 assignees', (await P.rahul.get('/tasks')).data.find((x) => x.id === t.data.id)?.assignees.length === 2);
+check('assignee gets LIVE notification over WebSocket', !!(await waitFor(() => snehaWs.events.find((e) => e.type === 'notification'))));
+check('notification saved in DB', (await P.sneha.get('/notifications')).data.some((n) => n.type === 'ASSIGNMENT'));
+check('shared team members can be assigned (Dev task shared with QA -> Pooja)', (await P.rahul.patch(`/tasks/${t.data.id}`, { teamIds: [QA], assigneeIds: [ID.sneha, ID.pooja] })).status === 200);
+const pruned = await P.rahul.patch(`/tasks/${t.data.id}`, { teamId: QA, teamIds: [] });
+check('moving the task to QA removes assignees who are not in QA', pruned.status === 200 && (await P.vikram.get('/tasks')).data.find((x) => x.id === t.data.id)?.assignees.map((a) => a.user.id).join() === ID.pooja);
+check('reject non-staff assignee (400)', (await P.rahul.post('/tasks', { title: 'Bad one', organizationId: sofaOrg.id, teamId: DEV, assigneeIds: [sMe.user.id] })).status === 400);
+check('read-all notifications', (await P.sneha.post('/notifications/read-all')).status === 200);
 
 section('Projects & teams');
 const projects = (await maya.get('/projects')).data;
@@ -189,19 +208,6 @@ check('employee can update own task status', (await dev.patch(`/tasks/${mine1.da
 check('employee cannot reassign even own task (403)', (await dev.patch(`/tasks/${mine1.data.id}`, { assigneeIds: [iMe.user.id] })).status === 403);
 check('manager can edit and reassign any task', (await tara.patch(`/tasks/${ishaTask.data.id}`, { priority: 'LOW', assigneeIds: [iMe.user.id, dMe.user.id] })).status === 200);
 
-section('Company structure personas (needs npm run seed:company)');
-const P = {};
-for (const n of ['arjun', 'rahul', 'vikram', 'sneha', 'aditya', 'pooja', 'meera']) P[n] = await persona(`${n}.demo@tendrils.io`);
-const ID = {};
-for (const [n, p] of Object.entries(P)) ID[n] = (await p.get('/me')).data.user.id;
-const teamList = (await P.arjun.get('/teams')).data;
-const teamIdOf = (name) => teamList.find((t) => t.name === name)?.id;
-const DEV = teamIdOf('Development'), QA = teamIdOf('QA'), SEO = teamIdOf('SEO / Marketing');
-check('Development, QA and SEO teams exist', !!DEV && !!QA && !!SEO, 'run: npm run seed:company');
-const teamMembersOf = (teamId) => teamList.find((t) => t.id === teamId).members.map((m) => m.membership.user.id);
-check('Development roster = manager + employees of that team only', teamMembersOf(DEV).includes(ID.rahul) && teamMembersOf(DEV).includes(ID.sneha) && !teamMembersOf(DEV).includes(ID.meera));
-const seeT = async (who, id) => (await who.get('/tickets')).data.find((t) => t.id === id);
-
 section('RBAC: tickets');
 const plain = await P.rahul.post('/tickets', { title: `Plain ticket ${Date.now()}`, organizationId: sofaOrg.id, teamId: DEV });
 check('employee cannot edit a ticket not assigned to them (403)', (await P.sneha.patch(`/tickets/${plain.data.id}`, { status: 'TRIAGED' })).status === 403);
@@ -240,6 +246,23 @@ check('QA employee cannot change team (403)', (await P.pooja.patch(`/tickets/${T
 check('Dev+QA employee is assignable from either team', (await P.vikram.patch(`/tickets/${TID}`, { assigneeId: ID.aditya })).status === 200);
 check('moving a ticket to a participating team keeps its members valid', (await P.arjun.patch(`/tickets/${TID}`, { teamIds: [DEV] })).status === 200 && (await P.arjun.patch(`/tickets/${TID}`, { assigneeId: ID.sneha })).status === 200);
 check('boss (platform admin) can un-assign', (await P.arjun.patch(`/tickets/${TID}`, { assigneeId: null })).status === 200);
+
+section('Private notes (only the author; no mail, no notifications, no activity log)');
+const SECRET = `private-note-${Date.now()}`;
+const adminNotifsBefore = (await P.arjun.get('/notifications')).data.length;
+const note = await P.sneha.post('/notes', { title: 'My plan', body: `Remember ${SECRET}` });
+check('employee saves a private note (201)', note.status === 201 && note.data.body.includes(SECRET));
+check('author sees it, and search finds it', (await P.sneha.get('/notes/mine')).data.some((n) => n.id === note.data.id) && (await P.sneha.get(`/notes/mine?q=${SECRET.slice(0, 14)}`)).data.some((n) => n.id === note.data.id));
+check('manager does not see it', !(await P.rahul.get('/notes/mine')).data.some((n) => n.id === note.data.id));
+check('boss (platform admin) does not see it either', !(await P.arjun.get('/notes/mine')).data.some((n) => n.id === note.data.id));
+check('others cannot edit or delete it (404)', (await P.arjun.patch(`/notes/${note.data.id}`, { body: 'hijack' })).status === 404 && (await P.rahul.delete(`/notes/${note.data.id}`)).status === 404);
+check('clients cannot use notes (403)', (await sofa.post('/notes', { body: 'x' })).status === 403);
+check('no notification was created for admins', (await P.arjun.get('/notifications')).data.length === adminNotifsBefore);
+check('nothing about the note in the activity log', !JSON.stringify((await P.arjun.get('/activity')).data).includes(SECRET));
+check('nothing in the admin daily-updates view', !JSON.stringify((await P.arjun.get('/admin/updates')).data).includes(SECRET));
+check('empty note is rejected (400)', (await P.sneha.post('/notes', { body: '   ' })).status === 400);
+check('author can edit it', (await P.sneha.patch(`/notes/${note.data.id}`, { body: `Edited ${SECRET}`, title: 'Edited' })).data.body.startsWith('Edited'));
+check('author can delete it (204) and it is gone', (await P.sneha.delete(`/notes/${note.data.id}`)).status === 204 && !(await P.sneha.get('/notes/mine')).data.some((n) => n.id === note.data.id));
 
 section('Ticket history (per-ticket timeline, not the audit log)');
 const hist = (await P.arjun.get(`/tickets/${TID}/history`)).data;
