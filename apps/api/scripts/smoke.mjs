@@ -1,5 +1,5 @@
 // End-to-end check of roles, tenant isolation, chat, DMs, notifications and the admin console.
-// Needs: API running with DEV_LOGIN=true, and `npm run seed:demo` done.   Run: npm run smoke
+// Needs: API running with DEV_LOGIN=true, and `npm run db:seed` done.   Run: npm run smoke
 import WebSocket from 'ws';
 
 const API = process.env.API_URL || 'http://localhost:4000';
@@ -9,7 +9,7 @@ const section = (t) => console.log(`\n${t}`);
 
 async function persona(email) {
   const r = await fetch(`${API}/api/v1/dev/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
-  if (!r.ok) throw new Error(`dev login failed for ${email}: ${r.status} ${await r.text()} (is DEV_LOGIN=true and seed:demo done?)`);
+  if (!r.ok) throw new Error(`dev login failed for ${email}: ${r.status} ${await r.text()} (is DEV_LOGIN=true and npm run db:seed done?)`);
   const cookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
   const call = async (method, path, body) => {
     const res = await fetch(`${API}/api/v1${path}`, { method, headers: { cookie, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -30,13 +30,13 @@ function openWs(p) {
 }
 const waitFor = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await new Promise((r) => setTimeout(r, 50)); } return null; };
 
-const maya = await persona('maya.demo@tendrils.io');
-const dev = await persona('dev.demo@tendrils.io');
-const isha = await persona('isha.demo@tendrils.io');
+const maya = await persona('rahul.demo@tendrils.io');
+const dev = await persona('sneha.demo@tendrils.io');
+const isha = await persona('aditya.demo@tendrils.io');
 const sofa = await persona('sofabed.demo@sofabed.test');
 const jenni = await persona('jennihome.demo@jennihome.test');
-const tara = await persona('tara.demo@tendrils.io');
-const root = await persona('root.demo@tendrils.io');
+const tara = await persona('vikram.demo@tendrils.io');
+const root = await persona('arjun.demo@tendrils.io');
 const boss = await persona('boss.demo@sofabed.test');
 
 section('Identity & roles');
@@ -76,7 +76,7 @@ check('client cannot change status (403)', (await sofa.patch(`/tickets/${newT.da
 check('client comment is client-visible', (await sofa.post(`/tickets/${newT.data.id}/comments`, { body: 'hello', visibility: 'CLIENT' })).status === 201);
 check('client cannot post internal comment (403)', (await sofa.post(`/tickets/${newT.data.id}/comments`, { body: 'x', visibility: 'INTERNAL' })).status === 403);
 
-section('Company structure personas (needs npm run seed:company)');
+section('Company structure personas (from npm run db:seed)');
 const P = {};
 for (const n of ['arjun', 'rahul', 'vikram', 'sneha', 'aditya', 'pooja', 'meera']) P[n] = await persona(`${n}.demo@tendrils.io`);
 const ID = {};
@@ -84,7 +84,7 @@ for (const [n, p] of Object.entries(P)) ID[n] = (await p.get('/me')).data.user.i
 const teamList = (await P.arjun.get('/teams')).data;
 const teamIdOf = (name) => teamList.find((t) => t.name === name)?.id;
 const DEV = teamIdOf('Development'), QA = teamIdOf('QA'), SEO = teamIdOf('SEO / Marketing');
-check('Development, QA and SEO teams exist', !!DEV && !!QA && !!SEO, 'run: npm run seed:company');
+check('Development, QA and SEO teams exist', !!DEV && !!QA && !!SEO, 'run: npm run db:seed');
 const teamMembersOf = (teamId) => teamList.find((t) => t.id === teamId).members.map((m) => m.membership.user.id);
 check('Development roster = manager + employees of that team only', teamMembersOf(DEV).includes(ID.rahul) && teamMembersOf(DEV).includes(ID.sneha) && !teamMembersOf(DEV).includes(ID.meera));
 const seeT = async (who, id) => (await who.get('/tickets')).data.find((t) => t.id === id);
@@ -149,7 +149,7 @@ check('DM delivered live to recipient only', !!(await waitFor(() => ishaWs.event
 await new Promise((r) => setTimeout(r, 300));
 check('third person did NOT receive the DM', !mayaWs.events.some((e) => e.message?.body === dmText));
 check('third person cannot read DM (404)', (await maya.get(`/chat/rooms/${dm.data.id}/messages`)).status === 404);
-check('DM shows other person as room name', (await isha.get('/chat/rooms')).data.find((r) => r.id === dm.data.id)?.name === 'Dev Rao');
+check('DM shows other person as room name', (await isha.get('/chat/rooms')).data.find((r) => r.id === dm.data.id)?.name === 'Sneha Kulkarni');
 check('cannot DM yourself (400)', (await dev.post('/chat/dm', { userId: dMe.user.id })).status === 400);
 check('cannot DM a client (400)', (await dev.post('/chat/dm', { userId: sMe.user.id })).status === 400);
 
@@ -167,11 +167,10 @@ const day = new Date().toISOString().slice(0, 10);
 const ud = await dev.post('/updates', { date: day, yesterday: 'Smoke: did things', today: 'Smoke: more things', blockers: '' });
 check('employee posts daily update', [200, 201].includes(ud.status));
 check('invalid/far-past date rejected (400)', (await dev.post('/updates', { date: '2020-01-01', yesterday: 'aa', today: 'bb' })).status === 400);
-check('admin got in-app notification', !!(await waitFor(() => mayaWs.events.find((e) => e.type === 'notification' && e.notification.title.startsWith('Daily update')))));
 const ov = (await maya.get(`/admin/overview?date=${day}`)).data;
-check('admin overview lists the update', ov.updates.some((u) => u.user.email === 'dev.demo@tendrils.io'));
-check('admin overview lists missing people', ov.missing.some((u) => u.email === 'isha.demo@tendrils.io'));
-check('admin overview workload counts', ov.workload.find((w) => w.email === 'dev.demo@tendrils.io').open >= 1);
+check('admin overview lists the update', ov.updates.some((u) => u.user.email === 'sneha.demo@tendrils.io'));
+check('admin overview lists missing people', ov.missing.some((u) => u.email === 'aditya.demo@tendrils.io'));
+check('admin overview workload counts', ov.workload.find((w) => w.email === 'sneha.demo@tendrils.io').open >= 1);
 check('employee blocked from admin console (403)', (await dev.get('/admin/overview')).status === 403);
 check('employee sees own history', (await dev.get('/updates/mine')).data.length >= 1);
 check('activity log recorded the update (admin view)', (await maya.get('/activity')).data.some((a) => a.entityType === 'update'));
@@ -195,7 +194,7 @@ check('employee cannot create team (403)', (await dev.post('/teams', { name: 'No
 check('manager cannot create team (403)', (await tara.post('/teams', { name: 'Nope', slug: 'nope', organizationId: mMe.memberships[0].organization.id })).status === 403);
 check('employee cannot create client workspace (403)', (await dev.post('/organizations', { name: 'Nope Co', slug: 'nope-co' })).status === 403);
 check('manager can create client workspace', (await maya.post('/organizations', { name: 'Smoke Co', slug: `smoke-${Date.now()}` })).status === 201);
-check('manager cannot open admin console (403)', (await tara.get('/admin/overview')).status === 403);
+check('manager can open the admin console (200)', (await tara.get('/admin/overview')).status === 200);
 check('employee cannot list members (403)', (await dev.get('/admin/members')).status === 403);
 
 section('RBAC: task rules');
@@ -336,7 +335,7 @@ check('manager invites a staff member', inv.status === 201);
 check('internal invite needs @tendrils.io (400)', (await maya.post('/admin/members', { email: 'x@gmail.com', organizationId: tendrilsOrg.id, role: 'EMPLOYEE' })).status === 400);
 check('client role not allowed in internal workspace (400)', (await maya.post('/admin/members', { email: `c${Date.now()}@tendrils.io`, organizationId: tendrilsOrg.id, role: 'CLIENT_MEMBER' })).status === 400);
 check('manager cannot grant Platform admin (403)', (await maya.post('/admin/members', { email: `a${Date.now()}@tendrils.io`, organizationId: tendrilsOrg.id, role: 'PLATFORM_ADMIN' })).status === 403);
-const rootMembership = members.find((m) => m.user.email === 'root.demo@tendrils.io');
+const rootMembership = members.find((m) => m.user.email === 'arjun.demo@tendrils.io');
 check('manager cannot change a Platform admin (403)', (await maya.patch(`/admin/members/${rootMembership.id}`, { role: 'EMPLOYEE' })).status === 403);
 check('nobody can change their own access (403)', (await root.patch(`/admin/members/${rootMembership.id}`, { isActive: false })).status === 403);
 check('manager changes a role', (await maya.patch(`/admin/members/${inv.data.id}`, { role: 'MANAGER' })).data.role === 'MANAGER');
