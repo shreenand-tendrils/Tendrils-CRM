@@ -1,0 +1,1 @@
+export default function Panel({title,sub,action,children}){return <section className="panel"><div className="panel-head"><div><h3>{title}</h3>{sub&&<small>{sub}</small>}</div>{action}</div>{children}</section>}

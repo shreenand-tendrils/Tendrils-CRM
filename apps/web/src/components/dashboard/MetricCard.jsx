@@ -1,0 +1,1 @@
+export default function MetricCard({label,value,icon,tone="purple",foot}){const Icon=icon;return <div className="metric"><div><span>{label}</span><i className={tone}><Icon size={18}/></i></div><strong>{value??0}</strong><small>{foot}</small></div>}
