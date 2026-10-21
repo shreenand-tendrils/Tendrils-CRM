@@ -31,8 +31,8 @@ const configs = {
     ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it (choose first)", "projectTeams"], ["memberIds", "Members from those teams (you are added as lead)", "projectPeople"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
   ] },
   projectRequest: { title: "Request a project", fields: [
-    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true],
-    ["teamIds", "Which team(s) should work on it? (leave empty to let Tendrils decide)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
+    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"],
+    ["teamIds", "Which team(s) should work on it? (optional)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
@@ -94,8 +94,12 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
             <div className="field" key={name}>
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <>
-                    <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]} />
-                    {canPaste && name === "description" && <small className="hint">Paste text directly into the description. Add files separately after creating the item.</small>}
+                    <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]} onPaste={(e) => {
+                      if (!canPaste || name !== "description") return;
+                      const files = clipboardFiles(e);
+                      if (files.length) { e.preventDefault(); setPasted((old) => [...old, ...files]); }
+                    }} />
+                    {canPaste && name === "description" && <small className="hint">Text pastes directly. Pasted images/PDFs attach after saving{pasted.length ? ` · ${pasted.length} file(s) ready` : ""}.</small>}
                   </>
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />
                 : type === "teamPeople" ? (teamId

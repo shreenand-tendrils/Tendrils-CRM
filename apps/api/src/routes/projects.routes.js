@@ -72,8 +72,10 @@ router.get('/projects/:id/attachments', async (req, res) => {
 // A client asks for a project and chooses which team(s) should do it. Those teams' managers are added and told;
 // with no team chosen, every manager is told. Staff then plan it like any other project.
 router.post('/projects/request', requirePermission('project.request'), async (req, res) => {
-  const { teamIds = [], ...data } = parseBody(projectRequest, req.body);
-  if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
+  const { teamIds = [], ...data0 } = parseBody(projectRequest, req.body);
+  const clientOrgId = req.memberships.find((m) => m.organization?.type === 'CLIENT')?.organizationId;
+  const data = { ...data0, organizationId: data0.organizationId || clientOrgId };
+  if (!data.organizationId || !canSeeOrg(req, data.organizationId)) throw new AppError('Your client workspace could not be determined. Ask an admin to check your membership.', 403);
   const teams = await validTeams(teamIds, { forClient: true });
   const managers = teams.length ? await findTeamManagers(teams) : [];
   const project = await prisma.project.create({

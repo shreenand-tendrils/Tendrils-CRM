@@ -31,7 +31,8 @@ export const PERMISSIONS = {
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ALL.filter((p) => !['member.grant_admin', 'team.manage', 'project.request'].includes(p));
+// Employees can coordinate work, but access management is strictly Platform Admin-only.
+const EMPLOYEE = ALL.filter((p) => !['member.grant_admin', 'team.manage', 'project.request', 'admin.view', 'member.manage', 'org.create'].includes(p));
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),

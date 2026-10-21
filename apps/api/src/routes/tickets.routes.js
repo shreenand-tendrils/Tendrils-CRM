@@ -76,7 +76,7 @@ async function listTickets(req) {
         _count: { select: { comments: true, tasks: true, attachments: true } },
         ...(req.isInternal ? { teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } } } : {}),
         // the linked work item is internal: clients never see it
-        tasks: { where: req.isInternal ? { autoCreated: true } : {}, orderBy: { createdAt: 'asc' }, select: { id: true, title: true, status: true, createdAt: true, dueDate: true, autoCreated: true } },
+        tasks: { where: req.isInternal ? { autoCreated: true } : {}, orderBy: { createdAt: 'asc' }, select: { id: true, title: true, description: true, status: true, createdAt: true, dueDate: true, autoCreated: true, parentId: true, subtasks: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true, description: true, status: true, createdAt: true, dueDate: true, parentId: true } } } },
       },
     })
   );
@@ -191,7 +191,12 @@ router.patch('/tickets/:id', async (req, res) => {
     const emp = await employeeIds(prisma, [old.requesterId]);
     if (finishBlocked({ internal: true, canTriage: false, status: data.status, requesterIsEmployee: emp.has(old.requesterId) })) throw new AppError(NEEDS_MANAGER_REVIEW_MESSAGE, 403, 'NEEDS_MANAGER_REVIEW');
   }
-  if (['RESOLVED', 'CLOSED'].includes(data.status)) await assertTicketWorkComplete(old.id);
+  if (req.isInternal && data.status && old.visibility === 'CLIENT') {
+    const requesterIsEmployee = (await employeeIds(prisma, [old.requesterId])).has(old.requesterId);
+    if (!requesterIsEmployee && data.status === 'CLOSED') throw new AppError('Employees cannot close client tickets. Move the ticket to Resolved/Review so the client can review and approve it.', 403, 'CLIENT_APPROVAL_REQUIRED');
+    if (!requesterIsEmployee && data.status === 'RESOLVED') data.status = 'CLIENT_REVIEW';
+  }
+  if (['RESOLVED', 'CLOSED', 'CLIENT_REVIEW'].includes(data.status)) await assertTicketWorkComplete(old.id);
   if (scope === 'client' && data.status !== undefined && !clientStatusChangeAllowed(old.status, data.status)) {
     throw new AppError('You can only approve or send back a ticket that is waiting for your review.', 403, 'CLIENT_STATUS_LOCKED');
   }

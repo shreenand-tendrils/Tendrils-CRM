@@ -17,7 +17,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState("");
   const [tab, setTab] = useState("comments");
-  useEffect(() => { setTab("comments"); setEditing(false); }, [task?.id]);
+  const [reassignTeamId, setReassignTeamId] = useState("");
+  useEffect(() => { setTab("comments"); setEditing(false); setReassignTeamId(task?.teamId || ""); }, [task?.id, task?.teamId]);
   if (!task) return null;
   const upload = async (e) => {
     const file = e.target.files?.[0];
@@ -60,7 +61,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         {task.project && <div className="detail"><span>Project</span><b>{task.project.name}</b></div>}
         <div className="detail"><span>Team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
-        {can(me, "task.assign") && !task.autoCreated && <div className="detail"><span>Reassign task</span><select className="table-select" value={task.assigneeId || ""} onChange={(e) => onReassign?.(task, e.target.value || null)} aria-label="Reassign task"><option value="">Unassigned</option>{teams.filter((tm) => [task.teamId, ...(task.teamAccesses || []).map((a) => a.teamId)].includes(tm.id)).flatMap((tm) => (tm.members || []).map((m) => m.membership?.user).filter(Boolean).map((u) => ({...u, teamName: tm.name}))).filter((u, i, all) => all.findIndex((x) => x.id === u.id) === i).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>}
+        {can(me, "task.assign") && !task.autoCreated && <div className="detail" style={{ display: "grid", gap: 8, minWidth: 0 }}><span>Reassign task</span><label className="muted" htmlFor="task-reassign-team">Team</label><select id="task-reassign-team" className="table-select" value={reassignTeamId} onChange={(e) => { setReassignTeamId(e.target.value); onReassign?.(task, { teamId: e.target.value || null, assigneeId: null }); }}><option value="">Choose a team</option>{teams.filter((tm) => [task.teamId, ...(task.teamAccesses || []).map((a) => a.teamId)].includes(tm.id) || tm.members?.some((m) => m.membership?.user?.id === me?.user?.id)).map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}</select><label className="muted" htmlFor="task-reassign-person">Employee</label><select id="task-reassign-person" className="table-select" value={task.assigneeId || ""} disabled={!reassignTeamId} onChange={(e) => onReassign?.(task, { teamId: reassignTeamId, assigneeId: e.target.value || null })}><option value="">Unassigned</option>{(teams.find((tm) => tm.id === reassignTeamId)?.members || []).map((m) => m.membership?.user).filter(Boolean).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>}
         {task.creator && <div className="detail"><span>Created by</span><b>{task.creator.name || task.creator.email}</b></div>}
       </div>
       {task.autoCreated && <p className="hint">This task mirrors its ticket: changing its status moves the ticket too. Add a linked task from the ticket for extra work.</p>}

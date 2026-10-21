@@ -121,7 +121,7 @@ export const teamCreate = z.object({
 });
 
 export const projectMembersSet = z.object({ memberIds: idList, leadId: optId, teamIds: idList.optional() });
-export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
+export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id.optional(), startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
 
 export const chatMessageCreate = z.object({
   body: z.string().trim().min(1).max(4000),

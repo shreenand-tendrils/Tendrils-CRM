@@ -253,7 +253,7 @@ export default function App() {
 
       if (type === "tickets" && selected) {
         setSelected((current) =>
-          current ? { ...current, ...body } : current
+          current ? { ...current, ...res.data } : current
         );
       }
       return true;
@@ -431,7 +431,7 @@ export default function App() {
         tickets={data.tickets || []}
         teams={data.teams || []}
         me={me}
-        onReassign={(t, assigneeId) => update("tasks", t.id, { assigneeId })}
+        onReassign={(t, assignment) => update("tasks", t.id, assignment)}
         onClose={() => setSelectedTaskId(null)}
         onStatusChange={(t, status) => update("tasks", t.id, { status })}
         onOpenTask={openTask}

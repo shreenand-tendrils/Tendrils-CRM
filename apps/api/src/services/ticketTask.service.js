@@ -76,8 +76,18 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
   if (!task.autoCreated || !task.ticketId) return null;
   const ticket = await db.ticket.findUnique({ where: { id: task.ticketId } });
   if (task.status === 'DONE') await assertTaskSubtasksDone(db, task.id);
-  const next = TASK_TO_TICKET[task.status];
-  if (!ticket || !next || next === ticket.status || TICKET_TO_TASK[ticket.status] === task.status) return null; // already consistent
+  let next = TASK_TO_TICKET[task.status];
+  if (!ticket || !next) return null;
+  // A completed auto-task for a client-raised ticket is a handoff, not client approval.
+  // Keep employee-originated tickets on the existing internal workflow.
+  if (task.status === 'DONE' && ticket.visibility === 'CLIENT') {
+    const requesterIsInternal = await db.membership.findFirst({
+      where: { userId: ticket.requesterId, isActive: true, organization: { type: 'INTERNAL', isActive: true } },
+      select: { id: true },
+    });
+    if (!requesterIsInternal) next = 'CLIENT_REVIEW';
+  }
+  if (next === ticket.status || (next !== 'CLIENT_REVIEW' && TICKET_TO_TASK[ticket.status] === task.status)) return null; // already consistent unless a client-review handoff is required
   const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next } });
   await logActivity({
     actorId: actor?.id, organizationId: updated.organizationId, entityType: 'ticket', entityId: updated.id, action: 'updated',
@@ -85,6 +95,6 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
     metadata: { visibility: updated.visibility, requesterId: updated.requesterId },
   });
   await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: ticket.status, toValue: next, note: 'Moved by task progress', clientVisible: true }]);
-  if (next === 'REVIEW') await notifyReviewReady(updated, actor);
+  if (next === 'REVIEW' || next === 'CLIENT_REVIEW') await notifyReviewReady(updated, actor);
   return updated;
 }

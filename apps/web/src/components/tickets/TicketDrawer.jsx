@@ -47,7 +47,8 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
   const canEditDetails = triage || requesterCanEdit;
   const canStatus = triage || ownStatus || (me.isInternal && requesterCanEdit);
-  const reviewLocked = false; // all employees can review and close work
+  const clientRaised = ticket.visibility === "CLIENT" && ticket.employeeReview === true;
+  const reviewLocked = staff && clientRaised; // client-originated work must be reviewed by the client before closure
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
   const staff = me.isInternal;
@@ -128,7 +129,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
         <div className="detail"><span>Status</span>
           {canStatus
-            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.map((s) => { const locked = reviewLocked && ["RESOLVED", "CLOSED", "CLIENT_REVIEW"].includes(s); return <option key={s} value={s} disabled={locked}>{pretty(s)}{locked ? "" : ""}</option>; })}</select>
+            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.map((s) => { const locked = reviewLocked && s === "CLOSED"; return <option key={s} value={s} disabled={locked}>{s === "CLIENT_REVIEW" ? "Review/Help" : pretty(s)}</option>; })}</select>
             : staff ? <StatusBadge value={ticket.status} /> : <b>{CLIENT_LABEL[ticket.status] || pretty(ticket.status)}</b>}
         </div>
         <div className="detail"><span>Priority</span>
@@ -186,7 +187,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </div>
       )}
 
-      {!staff && linked.length > 0 && <div className="win-card"><h3>Tasks for this ticket</h3>{linked.map((t) => <div className="detail" key={t.id}><span>{t.title}</span><b>{CLIENT_LABEL[t.status] || pretty(t.status)} · Created {formatDate(t.createdAt)} · Due {formatDate(t.dueDate)}</b></div>)}</div>}
+      {!staff && linked.length > 0 && <div className="win-card"><h3>Tasks for this ticket</h3>{linked.map((t) => <div key={t.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--line, #e5e7eb)" }}><div className="detail"><span>{t.title}</span><b>{CLIENT_LABEL[t.status] || pretty(t.status)}</b></div>{t.description && <p style={{ whiteSpace: "pre-wrap", margin: "4px 0 8px" }}>{t.description}</p>}<small className="muted">Created {formatDate(t.createdAt)} · Due {formatDate(t.dueDate)}</small>{(t.subtasks || []).map((st) => <div key={st.id} style={{ margin: "8px 0 0 12px", paddingLeft: 10, borderLeft: "2px solid #ddd" }}><b>{st.title}</b><small style={{ display: "block" }}>{CLIENT_LABEL[st.status] || pretty(st.status)} · Created {formatDate(st.createdAt)} · Due {formatDate(st.dueDate)}</small>{st.description && <p style={{ whiteSpace: "pre-wrap" }}>{st.description}</p>}</div>)}</div>)}</div>}
       <div className="drawer-tabs" role="tablist">
         {staff && <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>}
         <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>
