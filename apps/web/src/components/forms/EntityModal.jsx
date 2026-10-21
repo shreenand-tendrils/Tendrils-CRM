@@ -27,7 +27,7 @@ const configs = {
   ] },
   project: { title: "Create a project", fields: [
     ["name", "Project name", "text", true], ["description", "Description", "textarea"], ["organizationId", "Client workspace", "clients", true],
-    ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it", "requestTeams"], ["memberIds", "Team members (you are added as lead)", "people"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
+    ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it (choose first)", "projectTeams"], ["memberIds", "Members from those teams (you are added as lead)", "projectPeople"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
   ] },
   projectRequest: { title: "Request a project", fields: [
     ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true],
@@ -58,6 +58,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
   const [orgId, setOrgId] = useState(initial?.organizationId || "");
   const [teamId, setTeamId] = useState(initial?.teamId || "");
   const [sharedIds, setSharedIds] = useState([]);
+  const [projTeams, setProjTeams] = useState([]);
   const config = configs[kind];
   const me = data.me;
   if (!config) return null;
@@ -69,7 +70,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
     const fd = new FormData(e.currentTarget);
     const payload = {};
     for (const [name, , type] of fields) {
-      const v = ["people", "teamsMulti", "teamPeople", "requestTeams"].includes(type) ? fd.getAll(name) : fd.get(name);
+      const v = ["people", "teamsMulti", "teamPeople", "requestTeams", "projectTeams", "projectPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
     }
     onSubmit(kind, payload);
@@ -93,6 +94,10 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
                 : type === "teamPeople" ? (teamId
                     ? <PeoplePicker key={pickedTeams.join("|")} name={name} users={peopleOfTeams(data.teams, pickedTeams).map((p) => ({ id: p.id, name: p.label }))} />
                     : <small className="hint">Select a team first, then pick people from it.</small>)
+                : type === "projectTeams" ? <TeamMultiSelect id={`f-${name}`} name={name} teams={data.teams || []} value={projTeams} onChange={setProjTeams} label="Pick team(s)" />
+                : type === "projectPeople" ? (projTeams.length
+                    ? <PeoplePicker key={projTeams.join("|")} name={name} users={peopleOfTeams(data.teams, projTeams).map((p) => ({ id: p.id, name: p.label }))} />
+                    : <small className="hint">Select the team(s) first, then pick members from them.</small>)
                 : type === "requestTeams" ? <TeamMultiSelect id={`f-${name}`} name={name} teams={(me.isInternal ? data.teams : data.requestableTeams) || []} defaultValue={[]} label="Pick team(s)" />
                 : type === "teamsMulti" ? <><TeamMultiSelect id={`f-${name}`} name={name} teams={optionsFor("teams", data, orgId).filter(([v]) => v).map(([id, tname]) => ({ id, name: tname }))} value={sharedIds} onChange={setSharedIds} lockedId={teamId} disabled={!teamId} label={label} />{!teamId && <small className="hint">Choose the team first.</small>}</>
                 : SELECTS.includes(type) ? (

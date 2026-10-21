@@ -9,11 +9,14 @@ import PeoplePicker from "../components/ui/PeoplePicker";
 import { api } from "../api";
 import { can } from "../lib/rbac";
 import { formatDate, pretty } from "../lib/formatters";
+import { peopleOfTeams } from "../lib/teams";
 
 function TeamModal({ project, users, teams = [], onClose, onSaved, notify }) {
   const [teamIds, setTeamIds] = useState((project.teams || []).map((t) => t.teamId));
   const current = (project.members || []).map((m) => m.userId);
   const [ids, setIds] = useState(current);
+  const allowed = new Set([...peopleOfTeams(teams, teamIds).map((p) => p.id), ...current]); // keep people already on the project
+  const memberChoices = teamIds.length ? users.filter((u) => allowed.has(u.id)) : users;
   const [lead, setLead] = useState((project.members || []).find((m) => m.role === "LEAD")?.userId || "");
   const [saving, setSaving] = useState(false);
 
@@ -34,8 +37,10 @@ function TeamModal({ project, users, teams = [], onClose, onSaved, notify }) {
       <div className="modal">
         <div className="modal-head"><span><small>PROJECT TEAM</small><h2>{project.name}</h2></span><button type="button" onClick={onClose}><X /></button></div>
         <div className="modal-body">
-          <div className="field"><label>Members</label><PeoplePicker users={users} defaultValue={current} onChange={setIds} /></div>
           {!!teams.length && <div className="field"><label>Teams this project is for</label><div className="check-grid">{teams.map((t) => <label key={t.id} className="check"><input type="checkbox" checked={teamIds.includes(t.id)} onChange={() => setTeamIds((cur) => (cur.includes(t.id) ? cur.filter((x) => x !== t.id) : [...cur, t.id]))} /> {t.name}</label>)}</div></div>}
+          <div className="field"><label>Members{teamIds.length ? " (from the selected teams)" : ""}</label>
+            <PeoplePicker key={teamIds.join("|")} users={memberChoices} defaultValue={ids} onChange={setIds} />
+            {!teamIds.length && <small className="hint">Tick team(s) above to limit this list to their people.</small>}</div>
           <div className="field"><label htmlFor="lead">Project lead</label>
             <select id="lead" value={lead} onChange={(e) => setLead(e.target.value)}>
               <option value="">— Keep current —</option>

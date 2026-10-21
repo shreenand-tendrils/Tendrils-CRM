@@ -3,6 +3,8 @@ import { prisma } from '../db.js';
 import { orgScope, requirePermission, canSeeOrg } from '../middleware/index.js';
 import { logActivity, notifyUser, notifyPeople, findTeamManagers, findTriagers, assertAssignees } from '../services/index.js';
 import { AppError } from '../errors/AppError.js';
+import { assigneesOutsideTeams } from '../services/ticketRouting.js';
+import { loadTeamMemberIds } from '../services/index.js';
 import { parseBody } from '../validators/validate.js';
 import { projectCreate, projectMembersSet, projectRequest } from '../validators/schemas.js';
 
@@ -40,6 +42,7 @@ router.post('/projects', requirePermission('project.create'), async (req, res) =
   const teams = await validTeams(teamIds);
   const others = [...new Set(memberIds)].filter((u) => u !== req.currentUser.id);
   await assertAssignees(others);
+  if (teams.length && assigneesOutsideTeams(others, teams, await loadTeamMemberIds(teams)).length) throw new AppError('Project members must belong to the selected teams.', 400, 'MEMBER_NOT_IN_TEAM');
 
   const project = await prisma.project.create({
     data: {
@@ -94,6 +97,9 @@ router.put('/projects/:id/members', requirePermission('user.list'), async (req, 
   const ids = [...new Set(memberIds)];
   if (!ids.length) throw new AppError('A project needs at least one member', 400);
   await assertAssignees(ids);
+  const projectTeams = newTeams ?? (await prisma.projectTeam.findMany({ where: { projectId: project.id }, select: { teamId: true } })).map((t) => t.teamId);
+  const before0 = new Set(project.members.map((m) => m.userId));
+  if (projectTeams.length && assigneesOutsideTeams(ids.filter((u) => !before0.has(u)), projectTeams, await loadTeamMemberIds(projectTeams)).length) throw new AppError('New members must belong to the project’s teams.', 400, 'MEMBER_NOT_IN_TEAM');
   const lead = ids.includes(leadId) ? leadId : project.members.find((m) => m.role === 'LEAD' && ids.includes(m.userId))?.userId ?? ids[0];
 
   await prisma.$transaction([
