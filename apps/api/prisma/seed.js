@@ -217,6 +217,16 @@ async function main() {
     create: { userId: u.sneha.id, date: yesterday, yesterday: 'Started the footer link fix', today: 'Finish the fix and start the checkout bug', blockers: 'Waiting for staging credentials' },
   });
 
+  // Teams that clients should not pick, and one client-requested project that goes to two teams.
+  await prisma.team.updateMany({ where: { slug: 'management-operations' }, data: { clientVisible: false } });
+  if (!(await prisma.project.count({ where: { name: 'Sofabed mobile app (requested)' } }))) {
+    await prisma.project.create({ data: {
+      name: 'Sofabed mobile app (requested)', description: 'Requested by the client: a simple mobile app for browsing the catalogue.', organizationId: org.sofabed.id, status: 'PLANNING', requestedByClient: true,
+      teams: { create: [{ teamId: team.development.id }, { teamId: team.qa.id }] },
+      members: { create: [{ userId: u.rahul.id }] },
+      chatRoom: { create: { name: 'Sofabed mobile app (requested)', type: 'PROJECT' } },
+    } });
+  }
   await prisma.seedMarker.upsert({ where: { key: SEED_KEY }, update: {}, create: { key: SEED_KEY } });
   console.log('Seed ready. DEV LOGIN accounts (role: team):');
   for (const p of STAFF) console.log(`  ${p.role.padEnd(15)} ${p.email.padEnd(28)} ${p.teams.join(', ')}`);

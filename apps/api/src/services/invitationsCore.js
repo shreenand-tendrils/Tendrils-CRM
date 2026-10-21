@@ -12,7 +12,7 @@ export async function assertTeamsFor(db, orgType, teamIds = []) {
   const ids = [...new Set(teamIds)];
   if (!ids.length) return ids;
   if (orgType !== 'INTERNAL') throw new AppError('Only internal (staff) members can be placed in teams', 400, 'TEAMS_INTERNAL_ONLY');
-  const found = await db.team.count({ where: { id: { in: ids }, organization: { type: 'INTERNAL' } } });
+  const found = await db.team.count({ where: { id: { in: ids }, isActive: true, organization: { type: 'INTERNAL' } } });
   if (found !== ids.length) throw new AppError('One or more teams were not found', 400, 'INVALID_TEAM');
   return ids;
 }

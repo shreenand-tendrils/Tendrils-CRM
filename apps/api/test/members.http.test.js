@@ -90,23 +90,30 @@ test('access: anonymous 401, employee and client 403 on admin APIs', async () =>
 });
 
 test('email invitation: lower-cased, any domain, multiple teams, re-invite refreshes (no duplicates)', async () => {
-  const r = await call(mgr, 'POST', '/admin/invitations', { email: ' New.Hire@Gmail.com ', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'] });
+  const r = await call(root, 'POST', '/admin/invitations', { email: ' New.Hire@Gmail.com ', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'] });
   assert.equal(r.status, 201);
   assert.equal(r.body.email, 'new.hire@gmail.com'); assert.deepEqual(r.body.teamIds, ['t1', 't2']); assert.equal(r.body.memberType, 'internal');
-  await call(mgr, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'MANAGER', teamIds: ['t1'] });
+  await call(root, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'MANAGER', teamIds: ['t1'] });
   const pending = (await call(mgr, 'GET', '/admin/invitations')).body.filter((i) => i.email === 'new.hire@gmail.com');
   assert.equal(pending.length, 1); assert.equal(pending[0].role, 'MANAGER');
 });
 
+test('managers cannot place people in teams; only the root admin can', async () => {
+  assert.equal((await call(mgr, 'POST', '/admin/invitations', { email: 'x@y.io', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1'] })).status, 403);
+  assert.equal((await call(mgr, 'PUT', '/admin/members/anything/teams', { teamIds: ['t1'] })).status, 403);
+  assert.equal((await call(mgr, 'POST', '/admin/invitations', { email: 'x@y.io', organizationId: 'int', role: 'EMPLOYEE' })).status, 201, 'no teams is fine');
+});
+
 test('invitation guards: admin grant, role/workspace fit, teams internal-only, existing member', async () => {
   const bad = (body) => call(mgr, 'POST', '/admin/invitations', { organizationId: 'int', role: 'EMPLOYEE', ...body });
+  const badRoot = (body) => call(root, 'POST', '/admin/invitations', { organizationId: 'int', role: 'EMPLOYEE', ...body });
   assert.equal((await bad({ email: 'a@b.io', role: 'PLATFORM_ADMIN' })).status, 403, 'manager cannot grant Platform admin');
   assert.equal((await call(root, 'POST', '/admin/invitations', { email: 'boss@b.io', organizationId: 'int', role: 'PLATFORM_ADMIN' })).status, 201, 'platform admin can');
   assert.equal((await bad({ email: 'a@b.io', role: 'CLIENT_ADMIN' })).status, 400, 'client role in staff workspace');
   assert.equal((await bad({ email: 'a@b.io', organizationId: 'cli', role: 'MANAGER' })).status, 400, 'staff role in client workspace');
-  const c = await bad({ email: 'a@b.io', organizationId: 'cli', role: 'CLIENT_MEMBER', teamIds: ['t1'] });
+  const c = await badRoot({ email: 'a@b.io', organizationId: 'cli', role: 'CLIENT_MEMBER', teamIds: ['t1'] });
   assert.equal(c.status, 400); assert.match(c.body.error, /internal/i);
-  assert.equal((await bad({ email: 'a@b.io', teamIds: ['ghost'] })).status, 400);
+  assert.equal((await badRoot({ email: 'a@b.io', teamIds: ['ghost'] })).status, 400);
   assert.equal((await bad({ email: emp.email })).status, 409, 'already a member');
   assert.equal((await bad({ email: 'not-an-email' })).status, 400);
   assert.equal((await call(mgr, 'POST', '/admin/invitations', { email: 'ok@client.io', organizationId: 'cli', role: 'CLIENT_ADMIN' })).status, 201, 'client onboarding invite');
@@ -123,15 +130,15 @@ test('resend cooldown, revoke', async () => {
 });
 
 test('manual provisioning with teams, then edit teams, role and deactivation', async () => {
-  const r = await call(mgr, 'POST', '/admin/members', { email: 'Zed@Corp.io', name: 'Zed', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'], notify: false });
+  const r = await call(root, 'POST', '/admin/members', { email: 'Zed@Corp.io', name: 'Zed', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'], notify: false });
   assert.equal(r.status, 201); assert.deepEqual(r.body.teams.map((t) => t.id).sort(), ['t1', 't2']);
   const mid = r.body.id;
-  const one = await call(mgr, 'PUT', `/admin/members/${mid}/teams`, { teamIds: ['t2'] });
+  const one = await call(root, 'PUT', `/admin/members/${mid}/teams`, { teamIds: ['t2'] });
   assert.deepEqual(one.body.teams.map((t) => t.id), ['t2']);
-  assert.equal((await call(mgr, 'PUT', `/admin/members/${mid}/teams`, { teamIds: ['nope'] })).status, 400);
+  assert.equal((await call(root, 'PUT', `/admin/members/${mid}/teams`, { teamIds: ['nope'] })).status, 400);
   const clientM = await call(mgr, 'POST', '/admin/members', { email: 'cm@client.io', organizationId: 'cli', role: 'CLIENT_MEMBER', notify: false });
   assert.equal(clientM.status, 201); assert.equal(clientM.body.memberType, 'client');
-  assert.equal((await call(mgr, 'PUT', `/admin/members/${clientM.body.id}/teams`, { teamIds: ['t1'] })).status, 400, 'clients cannot join teams');
+  assert.equal((await call(root, 'PUT', `/admin/members/${clientM.body.id}/teams`, { teamIds: ['t1'] })).status, 400, 'clients cannot join teams');
   assert.equal((await call(mgr, 'PATCH', `/admin/members/${mid}`, { isActive: false })).body.isActive, false);
   assert.equal((await call(mgr, 'PATCH', `/admin/members/${memberships.find((m) => m.userId === mgr.id).id}`, { role: 'EMPLOYEE' })).status, 403, 'cannot edit own access');
   assert.equal((await call(mgr, 'PATCH', `/admin/members/${memberships.find((m) => m.userId === root.id).id}`, { role: 'MANAGER' })).status, 403, 'manager cannot demote Platform admin');

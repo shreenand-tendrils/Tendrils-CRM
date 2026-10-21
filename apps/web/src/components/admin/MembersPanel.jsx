@@ -76,7 +76,7 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
           <select id="m-org" required value={form.organizationId} onChange={(e) => pickOrg(e.target.value)}><option value="">Select…</option>{orgs.map((o) => <option key={o.id} value={o.id}>{o.name}{o.type === "INTERNAL" ? " (internal)" : " (client)"}</option>)}</select></div>
         <div className="field"><label htmlFor="m-role">Role</label>
           <select id="m-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>{rolesFor(orgType(form.organizationId)).map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}</select></div>
-        {form.organizationId && isInternalForm && <div className="field wide"><label>Teams (pick one or more)</label><TeamChecks teams={internalTeams} value={form.teamIds} onChange={(teamIds) => setForm({ ...form, teamIds })} /></div>}
+        {can(me, "team.manage") && form.organizationId && isInternalForm && <div className="field wide"><label>Teams (pick one or more)</label><TeamChecks teams={internalTeams} value={form.teamIds} onChange={(teamIds) => setForm({ ...form, teamIds })} /></div>}
         {mode === "direct" && <label className="check"><input type="checkbox" checked={form.notify} onChange={(e) => setForm({ ...form, notify: e.target.checked })} /> Email them that they now have access</label>}
         <button className="primary" disabled={busy || !form.organizationId}>{mode === "invite" ? <><Send size={16} /> Send invitation</> : <><UserPlus size={16} /> Add person</>}</button>
       </form>
@@ -101,7 +101,7 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
                         {[...new Set([m.role, ...rolesFor(m.organization.type)])].map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                       </select>
                     </td>
-                    {!clientTab && <td data-label="Teams"><span className="chips">{m.teams.map((t) => <i className="chip-link" key={t.id}>{t.name}</i>)}{!m.teams.length && <small className="muted">None</small>}</span><button className="icon-btn" title="Edit teams" aria-label={`Edit teams for ${m.user.email}`} onClick={() => setEditTeams(m)}><Users size={14} /></button></td>}
+                    {!clientTab && <td data-label="Teams"><span className="chips">{m.teams.map((t) => <i className="chip-link" key={t.id}>{t.name}</i>)}{!m.teams.length && <small className="muted">None</small>}</span>{can(me, "team.manage") && <button className="icon-btn" title="Edit teams" aria-label={`Edit teams for ${m.user.email}`} onClick={() => setEditTeams(m)}><Users size={14} /></button>}</td>}
                     <td data-label="Status"><button className={m.isActive ? "secondary" : "primary"} disabled={locked} style={{ minHeight: 38 }} onClick={() => change(m, { isActive: !m.isActive })}>{m.isActive ? "Deactivate" : "Reactivate"}</button></td>
                   </tr>
                 );

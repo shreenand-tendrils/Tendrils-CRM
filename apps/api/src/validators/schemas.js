@@ -49,6 +49,7 @@ export const projectCreate = z.object({
   startDate: optDate,
   dueDate: optDate,
   memberIds: idList.optional(),
+  teamIds: idList.optional(),
 });
 
 export const taskCreate = z.object({
@@ -119,7 +120,8 @@ export const teamCreate = z.object({
   description: z.string().optional(),
 });
 
-export const projectMembersSet = z.object({ memberIds: idList, leadId: optId });
+export const projectMembersSet = z.object({ memberIds: idList, leadId: optId, teamIds: idList.optional() });
+export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
 
 export const chatMessageCreate = z.object({
   body: z.string().trim().min(1).max(4000),

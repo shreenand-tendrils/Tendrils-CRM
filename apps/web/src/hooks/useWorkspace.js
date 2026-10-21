@@ -19,8 +19,8 @@ export function useWorkspace() {
         ["dashboard"], ["organizations"], ["projects"], ["tickets"], ["notifications"], ["activity"],
         ["tasks", me.isInternal], ["teams", has("team.view")], ["users", has("user.list")],
       ].filter(([, ok = true]) => ok).map(([k]) => k);
-      const results = await Promise.all(wanted.map((k) => api.get(`/${k}`)));
-      const next = { me, tasks: [], teams: [], users: [] };
+      const [results, req] = await Promise.all([Promise.all(wanted.map((k) => api.get(`/${k}`))), api.get("/teams/requestable").catch(() => ({ data: [] }))]);
+      const next = { me, tasks: [], teams: [], users: [], requestableTeams: req.data };
       wanted.forEach((k, i) => { next[k] = results[i].data; });
       setData(next);
       setError("");

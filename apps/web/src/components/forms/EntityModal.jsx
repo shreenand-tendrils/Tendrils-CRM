@@ -13,6 +13,7 @@ const configs = {
     ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
     ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
     ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
+    ["teamIds", "Which team(s) should handle this? (leave empty to let the managers decide)", "requestTeams", false, (me) => !me.isInternal],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
@@ -26,7 +27,11 @@ const configs = {
   ] },
   project: { title: "Create a project", fields: [
     ["name", "Project name", "text", true], ["description", "Description", "textarea"], ["organizationId", "Client workspace", "clients", true],
-    ["status", "Status", "projectStatus"], ["memberIds", "Team members (you are added as lead)", "people"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
+    ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it", "requestTeams"], ["memberIds", "Team members (you are added as lead)", "people"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
+  ] },
+  projectRequest: { title: "Request a project", fields: [
+    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true],
+    ["teamIds", "Which team(s) should work on it? (leave empty to let Tendrils decide)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
@@ -64,7 +69,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
     const fd = new FormData(e.currentTarget);
     const payload = {};
     for (const [name, , type] of fields) {
-      const v = ["people", "teamsMulti", "teamPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
+      const v = ["people", "teamsMulti", "teamPeople", "requestTeams"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
     }
     onSubmit(kind, payload);
@@ -88,6 +93,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
                 : type === "teamPeople" ? (teamId
                     ? <PeoplePicker key={pickedTeams.join("|")} name={name} users={peopleOfTeams(data.teams, pickedTeams).map((p) => ({ id: p.id, name: p.label }))} />
                     : <small className="hint">Select a team first, then pick people from it.</small>)
+                : type === "requestTeams" ? <TeamMultiSelect id={`f-${name}`} name={name} teams={(me.isInternal ? data.teams : data.requestableTeams) || []} defaultValue={[]} label="Pick team(s)" />
                 : type === "teamsMulti" ? <><TeamMultiSelect id={`f-${name}`} name={name} teams={optionsFor("teams", data, orgId).filter(([v]) => v).map(([id, tname]) => ({ id, name: tname }))} value={sharedIds} onChange={setSharedIds} lockedId={teamId} disabled={!teamId} label={label} />{!teamId && <small className="hint">Choose the team first.</small>}</>
                 : SELECTS.includes(type) ? (
                   <select id={`f-${name}`} name={name} required={required} defaultValue={initial?.[name] ?? ""} disabled={type === "teamAssignees" && !teamId}

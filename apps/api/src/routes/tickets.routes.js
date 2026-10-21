@@ -5,7 +5,7 @@ import { ticketScope, canSeeOrg, requirePermission } from '../middleware/index.j
 import {
   logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, findTeamManagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
 } from '../services/index.js';
-import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee } from '../services/ticketRouting.js';
+import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, normalizeTeamPicks } from '../services/ticketRouting.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -84,10 +84,20 @@ async function createWithUniqueKey(data, slug, client = prisma) {
 
 router.post('/tickets', requirePermission('ticket.create'), async (req, res) => {
   const parsed = parseBody(ticketCreate, req.body);
-  const { teamIds = [], ...data } = parsed;
+  let { teamIds = [], ...data } = parsed;
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!req.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
-  if (!req.isInternal && (data.teamId || teamIds.length)) throw new AppError('Client users cannot assign internal teams.', 403);
+  // Clients may only ASK for teams (the ones the admin made visible to clients); managers of those teams get it.
+  const clientPicks = !req.isInternal ? normalizeTeamPicks(data.teamId, teamIds) : null;
+  if (clientPicks) {
+    const ids = [clientPicks.teamId, ...clientPicks.teamIds].filter(Boolean);
+    if (ids.length) {
+      const ok = await prisma.team.count({ where: { id: { in: ids }, isActive: true, clientVisible: true, organization: { type: 'INTERNAL' } } });
+      if (ok !== ids.length) throw new AppError('Pick one of the teams offered in the list.', 400, 'INVALID_TEAM');
+    }
+    data = { ...data, teamId: clientPicks.teamId || undefined };
+    teamIds = clientPicks.teamIds;
+  }
   const crossTeam = req.can('ticket.triage') || req.can('work.cross_team');
   if (!crossTeam && data.assigneeId && data.assigneeId !== req.currentUser.id) {
     throw new AppError("You don't have permission to assign tickets to others (ticket.triage).", 403);
@@ -111,7 +121,7 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
     if (!isMemberOfAnyTeam(data.assigneeId, accessTeamIds, members)) throw new AppError('The assignee must be a member of the ticket’s team.', 400, 'ASSIGNEE_NOT_IN_TEAM');
   }
   if (accessTeamIds.length) {
-    const valid = await prisma.team.findMany({ where: { id: { in: accessTeamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } });
+    const valid = await prisma.team.findMany({ where: { id: { in: accessTeamIds }, isActive: true, organization: { type: 'INTERNAL' } }, select: { id: true } });
     if (valid.length !== accessTeamIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
   }
   const org = await prisma.organization.findUnique({ where: { id: data.organizationId } });
@@ -137,7 +147,10 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   }
   // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
   if (!req.isInternal) {
-    await notifyPeople({ userIds: (await findTriagers()).map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });
+    // Team chosen by the client => that team's managers; no team (or a team with no manager) => all managers.
+    let audience = accessTeamIds.length ? await findTeamManagers(accessTeamIds) : [];
+    if (!audience.length) audience = await findTriagers();
+    await notifyPeople({ userIds: audience.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });
   }
 
   // Assigned ticket => work item for the assignee, automatically.

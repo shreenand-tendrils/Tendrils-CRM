@@ -103,3 +103,15 @@ test('task comments notify the creator and assignees, never the author, no dupli
   assert.deepEqual(taskCommentRecipients(task, 'zzz').sort(), ['a', 'b', 'c']);
   assert.deepEqual(taskCommentRecipients({ creatorId: 'c' }, 'c'), []);
 });
+
+import { normalizeTeamPicks } from '../src/services/ticketRouting.js';
+test('only the root admin manages teams; clients can request projects, staff cannot', () => {
+  assert.ok(ctx('PLATFORM_ADMIN').can('team.manage'));
+  assert.ok(!ctx('MANAGER').can('team.manage') && !ctx('EMPLOYEE').can('team.manage') && !ctx('CLIENT_ADMIN').can('team.manage'));
+  assert.ok(ctx('CLIENT_ADMIN').can('project.request') && ctx('CLIENT_MEMBER').can('project.request'));
+  assert.ok(!ctx('MANAGER').can('project.request'));
+});
+test('client team picks: first owns, the rest are shared, duplicates dropped', () => {
+  assert.deepEqual(normalizeTeamPicks(undefined, ['a', 'b', 'a']), { teamId: 'a', teamIds: ['b'] });
+  assert.deepEqual(normalizeTeamPicks(undefined, []), { teamId: null, teamIds: [] });
+});

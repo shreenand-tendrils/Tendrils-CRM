@@ -17,7 +17,8 @@ export const PERMISSIONS = {
   'ticket.comment_internal': 'Write internal comments',
   'file.upload': 'Upload attachments',
   'team.view': 'View teams',
-  'team.create': 'Create teams',
+  'team.manage': 'Create, edit and remove teams and manage their members (Platform admin)',
+  'project.request': 'Request a project from chosen teams (clients)',
   'user.list': 'See the staff directory',
   'chat.use': 'Use team chat',
   'update.post': 'Post daily updates',
@@ -30,14 +31,14 @@ export const PERMISSIONS = {
 const ALL = Object.keys(PERMISSIONS);
 
 const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post', 'work.cross_team'];
-const MANAGER = ALL.filter((p) => p !== 'member.grant_admin');
+const MANAGER = ALL.filter((p) => !['member.grant_admin', 'team.manage', 'project.request'].includes(p));
 
 export const ROLE_PERMISSIONS = {
-  PLATFORM_ADMIN: ALL,
+  PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),
   MANAGER,
   EMPLOYEE,
-  CLIENT_ADMIN: ['ticket.create', 'file.upload'],
-  CLIENT_MEMBER: ['ticket.create', 'file.upload'],
+  CLIENT_ADMIN: ['ticket.create', 'file.upload', 'project.request'],
+  CLIENT_MEMBER: ['ticket.create', 'file.upload', 'project.request'],
 };
 export const ROLE_LABELS = {
   PLATFORM_ADMIN: 'Platform admin', MANAGER: 'Manager', EMPLOYEE: 'Employee',

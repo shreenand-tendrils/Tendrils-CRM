@@ -45,3 +45,9 @@ export function planAssignee({ old, data, accessIds, membersByTeam, routingTouch
 export function assigneesOutsideTeams(ids = [], teamIds = [], membersByTeam) {
   return ids.filter((id) => !isMemberOfAnyTeam(id, teamIds, membersByTeam));
 }
+
+/** A client may pick one or more teams: the first owns the ticket, the rest are shared. Returns { teamId, teamIds }. */
+export function normalizeTeamPicks(teamId, teamIds = []) {
+  const picks = [...new Set([teamId, ...teamIds].filter(Boolean))];
+  return { teamId: picks[0] || null, teamIds: picks.slice(1) };
+}

@@ -152,8 +152,11 @@ model Team {
   name String
   slug String
   description String?
+  isActive Boolean @default(true)
+  clientVisible Boolean @default(true)
   organizationId String
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+  projectLinks ProjectTeam[]
   members TeamMember[]
   tasks Task[]
   ticketAccesses TicketTeamAccess[]
@@ -180,6 +183,8 @@ model Project {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
   tickets Ticket[]
   tasks Task[]
+  requestedByClient Boolean @default(false)
+  teams ProjectTeam[]
   members ProjectMember[]
   chatRoom ChatRoom?
   updates ProjectUpdate[]
@@ -532,4 +537,15 @@ model Reminder {
 model SeedMarker {
   key String @id
   ranAt DateTime @default(now())
+}
+
+// Which internal teams a project is for (chosen by the client when requesting it, or by staff when creating it).
+model ProjectTeam {
+  projectId String
+  teamId String
+  createdAt DateTime @default(now())
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  team Team @relation(fields:[teamId],references:[id],onDelete:Cascade)
+  @@id([projectId,teamId])
+  @@index([teamId])
 }

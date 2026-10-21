@@ -211,7 +211,9 @@ export default function App() {
         const endpoint =
           kind === "project"
             ? "/projects"
-            : kind === "task"
+            : kind === "projectRequest"
+              ? "/projects/request"
+              : kind === "task"
               ? "/tasks"
               : "/tickets";
 
@@ -273,7 +275,7 @@ export default function App() {
   };
 
   const newAction = () => {
-    const target = { "/": "ticket", "/tickets": "ticket", "/tasks": "task", "/projects": "project", "/clients": "client" }[path];
+    const target = { "/": "ticket", "/tickets": "ticket", "/tasks": "task", "/projects": can(me, "project.create") ? "project" : "projectRequest", "/clients": "client" }[path];
     if (target) openModal(target);
   };
 
@@ -282,7 +284,7 @@ export default function App() {
     "/": can(me, "ticket.create") && "New ticket",
     "/tickets": can(me, "ticket.create") && "New ticket",
     "/tasks": can(me, "task.create") && "New task",
-    "/projects": can(me, "project.create") && "New project",
+    "/projects": (can(me, "project.create") && "New project") || (can(me, "project.request") && "Request project"),
     "/clients": can(me, "org.create") && "New client",
   }[path] || null;
 
@@ -364,7 +366,7 @@ export default function App() {
             {/* <Route path="/updates" element={guard(can(me, "update.post"), "daily updates", <UpdatesPage notify={notify} onRefresh={refresh} />)} /> */}
             <Route path="/admin" element={guard(can(me, "admin.view"), "the admin console", <AdminPage me={me} notify={notify} orgs={data.organizations || []} teams={data.teams || []} presetOrgId={new URLSearchParams(loc.search).get("org") || ""} />)} />
             <Route path="/clients" element={<ClientsPage data={data} />} />
-            <Route path="/teams" element={guard(can(me, "team.view"), "teams", <TeamsPage data={data} />)} />
+            <Route path="/teams" element={guard(can(me, "team.view"), "teams", <TeamsPage data={data} me={me} onRefresh={refresh} notify={notify} />)} />
             <Route path="/activity" element={<ActivityPage data={data} />} />
             <Route path="/notifications" element={<NotificationsPage data={data} onRefresh={refresh} />} />
             <Route path="/settings" element={<SettingsPage me={me} />} />

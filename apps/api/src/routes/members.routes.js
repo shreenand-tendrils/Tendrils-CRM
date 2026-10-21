@@ -49,6 +49,7 @@ function assertGrant(req, role, org) {
 // ---- Manual provisioning: the person can sign in with Google immediately.
 router.post('/admin/members', guard, async (req, res) => {
   const { email, name, organizationId, role, teamIds = [], notify } = parseBody(memberInvite, req.body);
+  if (teamIds.length && !req.can('team.manage')) throw new AppError('Only a Platform admin can place people in teams.', 403);
   const org = await loadOrg(organizationId);
   assertGrant(req, role, org);
   const teams = await assertTeamsFor(prisma, org.type, teamIds);
@@ -83,7 +84,7 @@ router.patch('/admin/members/:id', guard, async (req, res) => {
 });
 
 // ---- Multiple teams per member.
-router.put('/admin/members/:id/teams', guard, async (req, res) => {
+router.put('/admin/members/:id/teams', guard, requirePermission('team.manage'), async (req, res) => {
   const target = await prisma.membership.findUnique({ where: { id: req.params.id }, include });
   if (!target) throw new AppError('Member not found', 404);
   const { teamIds } = parseBody(memberTeamsSet, req.body);
@@ -100,6 +101,7 @@ router.get('/admin/invitations', guard, async (_req, res) =>
 
 router.post('/admin/invitations', guard, async (req, res) => {
   const { email, organizationId, role, teamIds = [] } = parseBody(invitationCreate, req.body);
+  if (teamIds.length && !req.can('team.manage')) throw new AppError('Only a Platform admin can place people in teams.', 403);
   const org = await loadOrg(organizationId);
   assertGrant(req, role, org);
   const teams = await assertTeamsFor(prisma, org.type, teamIds);

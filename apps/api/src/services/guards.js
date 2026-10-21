@@ -25,8 +25,8 @@ export async function assertTicketInOrg(ticketId, organizationId) {
 
 export async function assertInternalTeam(teamId) {
   if (!teamId) return;
-  const t = await prisma.team.findFirst({ where: { id: teamId, organization: { type: 'INTERNAL' } }, select: { id: true } });
-  if (!t) throw new AppError('Team not found', 400, 'INVALID_TEAM');
+  const t = await prisma.team.findFirst({ where: { id: teamId, isActive: true, organization: { type: 'INTERNAL' } }, select: { id: true } });
+  if (!t) throw new AppError('Team not found or no longer active', 400, 'INVALID_TEAM');
 }
 
 /** Every id must be an active member of an INTERNAL organization. */

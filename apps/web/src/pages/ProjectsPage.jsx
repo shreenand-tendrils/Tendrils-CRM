@@ -10,7 +10,8 @@ import { api } from "../api";
 import { can } from "../lib/rbac";
 import { formatDate, pretty } from "../lib/formatters";
 
-function TeamModal({ project, users, onClose, onSaved, notify }) {
+function TeamModal({ project, users, teams = [], onClose, onSaved, notify }) {
+  const [teamIds, setTeamIds] = useState((project.teams || []).map((t) => t.teamId));
   const current = (project.members || []).map((m) => m.userId);
   const [ids, setIds] = useState(current);
   const [lead, setLead] = useState((project.members || []).find((m) => m.role === "LEAD")?.userId || "");
@@ -19,7 +20,7 @@ function TeamModal({ project, users, onClose, onSaved, notify }) {
   const save = async () => {
     setSaving(true);
     try {
-      await api.put(`/projects/${project.id}/members`, { memberIds: ids, leadId: lead || undefined });
+      await api.put(`/projects/${project.id}/members`, { memberIds: ids, leadId: lead || undefined, teamIds });
       notify("Team updated");
       onSaved();
       onClose();
@@ -34,6 +35,7 @@ function TeamModal({ project, users, onClose, onSaved, notify }) {
         <div className="modal-head"><span><small>PROJECT TEAM</small><h2>{project.name}</h2></span><button type="button" onClick={onClose}><X /></button></div>
         <div className="modal-body">
           <div className="field"><label>Members</label><PeoplePicker users={users} defaultValue={current} onChange={setIds} /></div>
+          {!!teams.length && <div className="field"><label>Teams this project is for</label><div className="check-grid">{teams.map((t) => <label key={t.id} className="check"><input type="checkbox" checked={teamIds.includes(t.id)} onChange={() => setTeamIds((cur) => (cur.includes(t.id) ? cur.filter((x) => x !== t.id) : [...cur, t.id]))} /> {t.name}</label>)}</div></div>}
           <div className="field"><label htmlFor="lead">Project lead</label>
             <select id="lead" value={lead} onChange={(e) => setLead(e.target.value)}>
               <option value="">— Keep current —</option>
@@ -62,13 +64,14 @@ export default function ProjectsPage({ data, onRefresh, notify }) {
         {rows.map((project) => (
           <article className="project-card" key={project.id}>
             <div className="project-icon"><FolderKanban /></div>
-            <span className="status">{pretty(project.status)}</span>
+            <span className="status">{pretty(project.status)}{project.requestedByClient ? " · Requested by client" : ""}</span>
             <h3>{project.name}</h3>
             <p>{project.description || "A shared space for project work, tasks and client updates."}</p>
             <div className="project-meta">
               <span>{project.organization?.name || "Internal"}</span>
               <span><CalendarDays size={13} />{formatDate(project.dueDate)}</span>
             </div>
+            {!!project.teams?.length && <div className="chips">{project.teams.map((t) => <i className="chip-link" key={t.teamId}>{t.team?.name}</i>)}</div>}
             <div className="project-counts">
               <span>{project._count?.tickets || 0} tickets</span>
               <span>{project._count?.tasks || 0} tasks</span>
@@ -87,7 +90,7 @@ export default function ProjectsPage({ data, onRefresh, notify }) {
         {!rows.length && <EmptyState icon={<FolderKanban />} title="No projects yet" text="Create a project to organize tasks and client requests." />}
       </div>
       {updatesFor && <ProjectUpdatesModal project={updatesFor} canPost={canPost(updatesFor)} onClose={() => setUpdatesFor(null)} notify={notify} />}
-      {teamFor && <TeamModal project={teamFor} users={data.users || []} onClose={() => setTeamFor(null)} onSaved={onRefresh} notify={notify} />}
+      {teamFor && <TeamModal project={teamFor} users={data.users || []} teams={data.teams || []} onClose={() => setTeamFor(null)} onSaved={onRefresh} notify={notify} />}
     </Panel>
   );
 }
