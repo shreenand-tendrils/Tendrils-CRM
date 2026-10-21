@@ -1,1 +1,0 @@
-import axios from 'axios';export const api=axios.create({baseURL:'/api/v1',withCredentials:true});api.interceptors.response.use(r=>r,e=>{if(e.response?.status===401)window.dispatchEvent(new Event('tendrils:unauthorized'));return Promise.reject(e)});export const authUrl='/auth/signin/google';

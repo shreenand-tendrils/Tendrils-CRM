@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { AppError } from '../errors/AppError.js';
 import { DEV_COOKIE, isDemoEmail, signDevToken, devEmailFromCookieHeader } from '../services/devAuth.js';
 import { loadContextByEmail } from '../services/session.js';
+import { CANONICAL_EMAILS } from '../services/demoPeople.js';
 
 // Mounted only when DEV_LOGIN=true and NODE_ENV !== 'production' (see routes/index.js).
 const router = Router();
@@ -31,6 +32,14 @@ router.get('/users', async (_req, res) => {
       teams: (m?.teamMemberships || []).map((tm) => tm.team.name).sort(),
     };
   });
+  // Safety net: one row per person. If the same name appears twice, keep the seeded (canonical) account.
+  const best = new Map();
+  for (const r of rows) {
+    const k = String(r.name || r.email).trim().toLowerCase();
+    const cur = best.get(k);
+    if (!cur || (!CANONICAL_EMAILS.has(cur.email.toLowerCase()) && CANONICAL_EMAILS.has(r.email.toLowerCase()))) best.set(k, r);
+  }
+  rows.length = 0; rows.push(...best.values());
   rows.sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || String(a.name).localeCompare(String(b.name)));
   res.json(rows);
 });
