@@ -429,7 +429,9 @@ export default function App() {
         task={(data.tasks || []).find((t) => t.id === selectedTaskId) || null}
         tasks={data.tasks || []}
         tickets={data.tickets || []}
+        teams={data.teams || []}
         me={me}
+        onReassign={(t, assigneeId) => update("tasks", t.id, { assigneeId })}
         onClose={() => setSelectedTaskId(null)}
         onStatusChange={(t, status) => update("tasks", t.id, { status })}
         onOpenTask={openTask}

@@ -16,7 +16,7 @@ export async function notifyPeople({ userIds, actorId, type = 'SYSTEM', title, b
 /** Active internal people who triage incoming client work (managers and admins). */
 export async function findTriagers() {
   return prisma.user.findMany({
-    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'MANAGER'] }, organization: { type: 'INTERNAL', isActive: true } } } },
+    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'EMPLOYEE'] }, organization: { type: 'INTERNAL', isActive: true } } } },
     select: { id: true },
   });
 }
@@ -33,7 +33,7 @@ export async function findClientUsers(organizationId, { adminsOnly = false, user
 export async function findTeamManagers(teamIds = []) {
   if (!teamIds.length) return [];
   return prisma.user.findMany({
-    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'MANAGER'] }, organization: { type: 'INTERNAL', isActive: true }, teamMemberships: { some: { teamId: { in: teamIds } } } } } },
+    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'EMPLOYEE'] }, organization: { type: 'INTERNAL', isActive: true }, teamMemberships: { some: { teamId: { in: teamIds } } } } } },
     select: { id: true },
   });
 }

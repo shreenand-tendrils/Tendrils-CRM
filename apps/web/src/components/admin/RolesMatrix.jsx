@@ -7,7 +7,7 @@ export default function RolesMatrix() {
   useEffect(() => { api.get("/admin/rbac").then((r) => setRbac(r.data)).catch(() => {}); }, []);
   if (!rbac) return <small className="muted">Loading…</small>;
   return (
-    <Panel title="Roles & permissions" sub="The same table the API enforces. Platform admins and managers can change who holds which role.">
+    <Panel title="Roles & permissions" sub="The same table the API enforces. Platform admins manage access; every employee can route work for their teams.">
       <div className="role-scroll table-wrap">
         <table className="data-table role-matrix">
           <thead><tr><th>Permission</th>{rbac.roles.map((r) => <th key={r.role}>{r.label}</th>)}</tr></thead>

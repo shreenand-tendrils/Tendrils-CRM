@@ -17,12 +17,12 @@ const ago = (days, hours = 0) => new Date(Date.now() - days * DAY - hours * HOUR
 const ahead = (days) => new Date(Date.now() + days * DAY);
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const TEAMS = ['Product', 'Graphics / Creative', 'IT / Infrastructure', 'Development', 'SEO / Marketing', 'QA', 'Management / Operations'];
+const TEAMS = ['IT', 'SEO', 'Graphics', 'Products', 'Marketing', 'Facebook ads', 'google ads'];
 
 // Old demo accounts from earlier versions: switched off so they never show up in the DEV LOGIN switcher.
 const RETIRED = ['maya', 'tara', 'dev', 'isha', 'root'].map((n) => `${n}.demo@tendrils.io`);
 
-const SEED_KEY = 'demo-data-v1';
+const SEED_KEY = 'demo-data-v2-teams';
 
 async function main() {
   const already = await prisma.seedMarker.findUnique({ where: { key: SEED_KEY } });
@@ -97,15 +97,15 @@ async function main() {
       },
     });
   };
-  await task({ title: 'Build new homepage hero', slug: 'sofabed', projectId: web.id, teamSlug: 'development', creator: 'rahul', assignees: ['sneha', 'aditya'], status: 'IN_PROGRESS', priority: 'HIGH', due: 3 });
-  await task({ title: 'Fix checkout bug (overdue)', slug: 'sofabed', projectId: web.id, teamSlug: 'development', creator: 'rahul', assignees: ['sneha'], status: 'TODO', priority: 'URGENT', due: -2 });
-  await task({ title: 'Regression test: checkout flow', slug: 'sofabed', projectId: web.id, teamSlug: 'qa', creator: 'vikram', assignees: ['pooja'], status: 'BACKLOG', priority: 'MEDIUM', due: 5 });
-  await task({ title: 'Design hero banner artwork', slug: 'sofabed', projectId: web.id, teamSlug: 'graphics-creative', creator: 'nisha', assignees: ['karan'], status: 'IN_PROGRESS', priority: 'HIGH', due: 2 });
-  await task({ title: 'Keyword research', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo-marketing', creator: 'kavya', assignees: ['meera'], status: 'BACKLOG', priority: 'MEDIUM', due: 7 });
-  await task({ title: 'Rewrite product meta titles', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo-marketing', creator: 'kavya', assignees: ['meera', 'kavya'], status: 'TODO', priority: 'MEDIUM', due: 4 });
-  await task({ title: 'Set up staging server', slug: 'jennifer-furniture', projectId: catalog.id, teamSlug: 'it-infrastructure', creator: 'anil', assignees: ['nikhil'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1 });
-  await task({ title: 'Write migration plan', slug: 'jennifer-furniture', projectId: catalog.id, teamSlug: 'product', creator: 'priya', assignees: ['ritu'], status: 'TODO', priority: 'MEDIUM', due: 6 });
-  await task({ title: 'Moodboard and colour options', slug: 'comfort-furniture', projectId: brand.id, teamSlug: 'graphics-creative', creator: 'nisha', assignees: ['karan'], status: 'TODO', priority: 'LOW', due: 5 });
+  await task({ title: 'Build new homepage hero', slug: 'sofabed', projectId: web.id, teamSlug: 'it', creator: 'rahul', assignees: ['sneha', 'aditya'], status: 'IN_PROGRESS', priority: 'HIGH', due: 3 });
+  await task({ title: 'Fix checkout bug (overdue)', slug: 'sofabed', projectId: web.id, teamSlug: 'it', creator: 'rahul', assignees: ['sneha'], status: 'TODO', priority: 'URGENT', due: -2 });
+  await task({ title: 'Regression test: checkout flow', slug: 'sofabed', projectId: web.id, teamSlug: 'it', creator: 'vikram', assignees: ['pooja'], status: 'BACKLOG', priority: 'MEDIUM', due: 5 });
+  await task({ title: 'Design hero banner artwork', slug: 'sofabed', projectId: web.id, teamSlug: 'graphics', creator: 'nisha', assignees: ['karan'], status: 'IN_PROGRESS', priority: 'HIGH', due: 2 });
+  await task({ title: 'Keyword research', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo', creator: 'kavya', assignees: ['meera'], status: 'BACKLOG', priority: 'MEDIUM', due: 7 });
+  await task({ title: 'Rewrite product meta titles', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo', creator: 'kavya', assignees: ['meera', 'kavya'], status: 'TODO', priority: 'MEDIUM', due: 4 });
+  await task({ title: 'Set up staging server', slug: 'jennifer-furniture', projectId: catalog.id, teamSlug: 'it', creator: 'anil', assignees: ['nikhil'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1 });
+  await task({ title: 'Write migration plan', slug: 'jennifer-furniture', projectId: catalog.id, teamSlug: 'products', creator: 'priya', assignees: ['ritu'], status: 'TODO', priority: 'MEDIUM', due: 6 });
+  await task({ title: 'Moodboard and colour options', slug: 'comfort-furniture', projectId: brand.id, teamSlug: 'graphics', creator: 'nisha', assignees: ['karan'], status: 'TODO', priority: 'LOW', due: 5 });
 
   // ---- tickets: routed to a team, assigned from it, with history + their auto-created task ----
   // events: [daysAgo, actorKey, type, extra]. STATUS events carry fromValue/toValue.
@@ -152,30 +152,30 @@ async function main() {
   };
 
   await ticket({ key: 'SOF-100001', org: 'sofabed', project: web, requester: 'neha', title: 'Banner image looks blurry', description: 'The homepage banner is pixelated on large screens.',
-    team: 'graphics-creative', routedBy: 'priya', assignee: 'karan', assignedBy: 'nisha', status: 'IN_PROGRESS', priority: 'MEDIUM', due: 4, age: 3,
+    team: 'graphics', routedBy: 'priya', assignee: 'karan', assignedBy: 'nisha', status: 'IN_PROGRESS', priority: 'MEDIUM', due: 4, age: 3,
     statuses: [[2.6, 'nisha', 'TRIAGED'], [2, 'karan', 'IN_PROGRESS']],
     comments: [[2.5, 'nisha', 'Looks like the source file is 800px wide. Karan will recreate it at 2400px.', 'CLIENT'], [2.4, 'nisha', 'Check if the old banner is used on the landing pages too.', 'INTERNAL']] });
   await ticket({ key: 'SOF-100002', org: 'sofabed', project: web, requester: 'rahul', visibility: 'INTERNAL', title: 'Refactor product schema', description: 'Internal clean-up before the new catalogue goes live.',
-    team: 'development', shared: ['qa'], routedBy: 'rahul', assignee: 'aditya', assignedBy: 'rahul', status: 'IN_PROGRESS', priority: 'MEDIUM', due: 10, age: 5,
+    team: 'it', shared: ['it'], routedBy: 'rahul', assignee: 'aditya', assignedBy: 'rahul', status: 'IN_PROGRESS', priority: 'MEDIUM', due: 10, age: 5,
     statuses: [[4, 'aditya', 'IN_PROGRESS']] });
   await ticket({ key: 'SOF-100003', org: 'sofabed', project: web, requester: 'rohan', title: 'Need invoice export', description: 'Can we export all invoices as CSV from the admin?', status: 'OPEN', priority: 'MEDIUM', age: 0.3 });
   await ticket({ key: 'SOF-100004', org: 'sofabed', project: web, requester: 'neha', title: 'Footer links broken on mobile', description: 'Privacy and Terms links do nothing on phones.',
-    team: 'development', shared: ['qa'], routedBy: 'rahul', assignee: 'sneha', assignedBy: 'rahul', status: 'CLIENT_REVIEW', priority: 'HIGH', due: 1, age: 6,
+    team: 'it', shared: ['it'], routedBy: 'rahul', assignee: 'sneha', assignedBy: 'rahul', status: 'CLIENT_REVIEW', priority: 'HIGH', due: 1, age: 6,
     statuses: [[5.5, 'rahul', 'TRIAGED'], [5, 'sneha', 'IN_PROGRESS'], [1, 'sneha', 'REVIEW'], [0.5, 'rahul', 'CLIENT_REVIEW']],
     comments: [[0.5, 'rahul', 'Fixed and deployed to staging. Please check on your phone.', 'CLIENT']] });
   await ticket({ key: 'JEN-100001', org: 'jennihome', project: seo, requester: 'tanvi', title: 'Add size chart to product pages', description: 'Customers keep asking for sizes before buying.',
-    team: 'seo-marketing', shared: ['development'], routedBy: 'priya', assignee: 'meera', assignedBy: 'kavya', status: 'TRIAGED', priority: 'MEDIUM', due: 8, age: 2,
+    team: 'seo', shared: ['it'], routedBy: 'priya', assignee: 'meera', assignedBy: 'kavya', status: 'TRIAGED', priority: 'MEDIUM', due: 8, age: 2,
     statuses: [[1.5, 'kavya', 'TRIAGED']] });
   await ticket({ key: 'JFN-100001', org: 'jennifer-furniture', project: catalog, requester: 'divya', title: 'Product feed is missing prices', description: 'About 40 products have no price after the import.',
-    team: 'it-infrastructure', routedBy: 'priya', assignee: 'nikhil', assignedBy: 'anil', status: 'IN_PROGRESS', priority: 'HIGH', due: 2, age: 4,
+    team: 'it', routedBy: 'priya', assignee: 'nikhil', assignedBy: 'anil', status: 'IN_PROGRESS', priority: 'HIGH', due: 2, age: 4,
     statuses: [[3.5, 'anil', 'TRIAGED'], [3, 'nikhil', 'IN_PROGRESS']] });
   await ticket({ key: 'COM-100001', org: 'comfort-furniture', project: brand, requester: 'imran', title: 'Logo colours look different on mobile', description: 'The orange looks more red on Android phones.', status: 'OPEN', priority: 'LOW', age: 0.6 });
 
   // Team-to-team work: Sneha (Development employee) raised a linked task for the QA team, with a subtask under it.
   const sof4 = await prisma.ticket.findUnique({ where: { key: 'SOF-100004' } });
   if (sof4) {
-    const qaTask = await task({ title: 'QA: verify footer links on phones', slug: 'sofabed', projectId: web.id, ticketId: sof4.id, teamSlug: 'qa', shared: ['development'], creator: 'sneha', assignees: ['pooja'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1 });
-    await task({ title: 'Test on Android and iOS', slug: 'sofabed', projectId: web.id, parentId: qaTask.id, teamSlug: 'qa', creator: 'pooja', assignees: ['pooja'], status: 'TODO', priority: 'MEDIUM', due: 1 });
+    const qaTask = await task({ title: 'QA: verify footer links on phones', slug: 'sofabed', projectId: web.id, ticketId: sof4.id, teamSlug: 'it', shared: ['it'], creator: 'sneha', assignees: ['pooja'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1 });
+    await task({ title: 'Test on Android and iOS', slug: 'sofabed', projectId: web.id, parentId: qaTask.id, teamSlug: 'it', creator: 'pooja', assignees: ['pooja'], status: 'TODO', priority: 'MEDIUM', due: 1 });
     if (!(await prisma.comment.count({ where: { taskId: qaTask.id } }))) {
       await prisma.comment.createMany({ data: [
         { body: 'Footer fix is on staging. Please check iOS Safari first, it was the worst one.', visibility: 'INTERNAL', authorId: u.sneha.id, taskId: qaTask.id, createdAt: ago(0.3) },
@@ -192,7 +192,7 @@ async function main() {
   });
 
   // Teams that clients should not pick, and one client-requested project that goes to two teams.
-  await prisma.team.updateMany({ where: { slug: 'management-operations' }, data: { clientVisible: false } });
+  await prisma.team.updateMany({ where: { slug: 'marketing' }, data: { clientVisible: false } });
   if (!(await prisma.project.count({ where: { name: 'Sofabed mobile app (requested)' } }))) {
     await prisma.project.create({ data: {
       name: 'Sofabed mobile app (requested)', description: 'Requested by the client: a simple mobile app for browsing the catalogue.', organizationId: org.sofabed.id, status: 'PLANNING', requestedByClient: true,

@@ -130,7 +130,7 @@ router.patch('/tasks/:id', async (req, res) => {
   if (data.status === 'DONE' && old.autoCreated && old.ticketId && !req.can('ticket.triage')) {
     const tk = await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { requesterId: true } });
     const emp = await employeeIds(prisma, [tk?.requesterId]);
-    if (finishBlocked({ internal: true, canTriage: false, status: 'RESOLVED', requesterIsEmployee: emp.has(tk?.requesterId) })) throw new AppError('This task mirrors a ticket that needs a manager’s review. Move it to Review and your manager will resolve or close it.', 403, 'NEEDS_MANAGER_REVIEW');
+    if (finishBlocked({ internal: true, canTriage: false, status: 'RESOLVED', requesterIsEmployee: emp.has(tk?.requesterId) })) throw new AppError('This task mirrors a ticket that needs a employee review. Move it to Review and an employee can resolve or close it.', 403, 'NEEDS_MANAGER_REVIEW');
   }
   if (data.status === 'DONE') await assertTaskSubtasksDone(prisma, old.id);
   if (data.parentId !== undefined && data.parentId !== old.parentId) {

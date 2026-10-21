@@ -59,7 +59,7 @@ router.get('/tickets', async (req, res) => {
   const list = await listTickets(req);
   if (!req.isInternal) return res.json(list);
   const emp = await employeeIds(prisma, list.map((t) => t.requesterId));
-  res.json(list.map((t) => ({ ...t, managerReview: !emp.has(t.requesterId) })));
+  res.json(list.map((t) => ({ ...t, employeeReview: !emp.has(t.requesterId) })));
 });
 
 async function listTickets(req) {
@@ -76,7 +76,7 @@ async function listTickets(req) {
         _count: { select: { comments: true, tasks: true, attachments: true } },
         ...(req.isInternal ? { teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } } } : {}),
         // the linked work item is internal: clients never see it
-        ...(req.isInternal ? { tasks: { where: { autoCreated: true }, take: 1, select: { id: true, status: true, assigneeId: true } } } : {}),
+        tasks: { where: req.isInternal ? { autoCreated: true } : {}, orderBy: { createdAt: 'asc' }, select: { id: true, title: true, status: true, createdAt: true, dueDate: true, autoCreated: true } },
       },
     })
   );
@@ -99,7 +99,7 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   let { teamIds = [], ...data } = parsed;
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!req.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
-  // Clients may only ASK for teams (the ones the admin made visible to clients); managers of those teams get it.
+  // Clients may only ASK for teams (the ones the admin made visible to clients); employees of those teams get it.
   const clientPicks = !req.isInternal ? normalizeTeamPicks(data.teamId, teamIds) : null;
   if (clientPicks) {
     const ids = [clientPicks.teamId, ...clientPicks.teamIds].filter(Boolean);
@@ -152,14 +152,14 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
       ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
     ]);
   }
-  // Staff who route a ticket to a team that is not theirs tell that team's managers, so it gets picked up.
+  // Staff who route a ticket to a team that is not theirs tell that team's employees, so it gets picked up.
   if (req.isInternal && accessTeamIds.some((id) => !ownTeamIds.includes(id))) {
     const managers = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
     await notifyPeople({ userIds: managers.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${req.currentUser.name || req.currentUser.email}: ${t.title}`, href: ticketUrl(t) });
   }
   // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
   if (!req.isInternal) {
-    // Team chosen by the client => that team's managers; no team (or a team with no manager) => all managers.
+    // Team chosen by the client => that team's employees; no team (or a team with no manager) => all employees.
     let audience = accessTeamIds.length ? await findTeamManagers(accessTeamIds) : [];
     if (!audience.length) audience = await findTriagers();
     await notifyPeople({ userIds: audience.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });

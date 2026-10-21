@@ -42,10 +42,10 @@ export async function assertAssignees(ids = []) {
 
 export const getInternalOrgId = (req) => req.memberships.find((m) => m.organization.type === 'INTERNAL')?.organizationId;
 
-/** Active managers/admins of the internal org (recipients of daily updates). */
+/** Active employees/platform admins of the internal org (recipients of daily updates). */
 export function findAdmins() {
   return prisma.user.findMany({
-    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'MANAGER'] }, organization: { type: 'INTERNAL' } } } },
+    where: { memberships: { some: { isActive: true, role: { in: ['PLATFORM_ADMIN', 'EMPLOYEE'] }, organization: { type: 'INTERNAL' } } } },
     select: { id: true, name: true, email: true },
   });
 }

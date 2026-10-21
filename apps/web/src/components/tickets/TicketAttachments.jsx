@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Paperclip, Download, Eye } from "lucide-react";
+import { Paperclip, Download, Eye, Trash2 } from "lucide-react";
 import { api } from "../../api";
 
 const size = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -19,6 +19,12 @@ export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch { setErr("Could not download this file."); }
   };
+  const remove = async (f) => {
+    if (!window.confirm(`Delete ${f.originalName}? Ticket history will remain unchanged.`)) return;
+    setErr("");
+    try { await api.delete(`/files/${f.id}`); await load(); }
+    catch (e) { setErr(e.response?.data?.error || "Could not delete this file."); }
+  };
   const view = async (f) => {
     setErr("");
     try {
@@ -35,6 +41,7 @@ export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
           <span style={{ flex: 1 }}><b>{f.originalName}</b><small style={{ display: "block" }}>{size(f.size)} · {new Date(f.createdAt).toLocaleString()}</small></span>
           {/^(image\/|application\/pdf)/.test(f.mimeType || "") && <button className="secondary" onClick={() => view(f)} aria-label={`View ${f.originalName}`}><Eye size={14} /></button>}
           <button className="secondary" onClick={() => download(f)} aria-label={`Download ${f.originalName}`}><Download size={14} /></button>
+          <button className="secondary" onClick={() => remove(f)} aria-label={`Delete ${f.originalName}`} title="Delete file"><Trash2 size={14} /></button>
         </div>
       ))}
       {err && <small className="hint">{err}</small>}

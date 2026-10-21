@@ -1,20 +1,25 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Panel from "../components/ui/Panel";
 import TicketTable from "../components/tickets/TicketTable";
 import { useAppStore } from "../store";
 import { can } from "../lib/rbac";
 import { pretty } from "../lib/formatters";
 
-const STATUSES = ["OPEN", "TRIAGED", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT_REVIEW", "RESOLVED", "CLOSED"];
+const STATUSES = ["OPEN", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT_REVIEW", "RESOLVED", "CLOSED"];
 const PRIORITIES = ["URGENT", "HIGH", "MEDIUM", "LOW"];
 const DONE = ["RESOLVED", "CLOSED"];
+const STATUS_LABELS = { OPEN: "Open", TRIAGED: "In Progress", IN_PROGRESS: "Open - QA", BLOCKED: "Need more Info", REVIEW: "Review/Test", CLIENT_REVIEW: "Review/Help", RESOLVED: "Resolved", CLOSED: "Closed" };
 
 export default function TicketsPage({ data, onSelect }) {
   const { search } = useAppStore();
+  const [params] = useSearchParams();
   const me = data.me;
   const staff = !!me?.isInternal;
   const [view, setView] = useState("all"); // all | mine | unrouted | overdue
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(params.get("status") || "OPEN");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [priority, setPriority] = useState("");
   const [teamId, setTeamId] = useState("");
   const all = data.tickets || [];
@@ -30,12 +35,14 @@ export default function TicketsPage({ data, onSelect }) {
     const viewFn = views.find(([id]) => id === view)?.[2] || (() => true);
     const q = (search || "").toLowerCase();
     return all.filter((t) => viewFn(t)
-      && (!status || t.status === status)
+      && (!status || (status === "OPEN" ? !DONE.includes(t.status) : status === "CLOSED" ? DONE.includes(t.status) : t.status === status))
+      && (!fromDate || new Date(t.createdAt) >= new Date(`${fromDate}T00:00:00`))
+      && (!toDate || new Date(t.createdAt) < new Date(`${toDate}T23:59:59.999`))
       && (!priority || t.priority === priority)
       && (!teamId || t.teamId === teamId || (t.teamAccesses || []).some((a) => a.teamId === teamId))
       && (!q || `${t.key} ${t.title} ${t.organization?.name || ""}`.toLowerCase().includes(q)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, view, status, priority, teamId, search, me?.user?.id]);
+  }, [all, view, status, fromDate, toDate, priority, teamId, search, me?.user?.id]);
 
   const count = (id) => all.filter(views.find(([v]) => v === id)[2]).length;
 
@@ -48,8 +55,10 @@ export default function TicketsPage({ data, onSelect }) {
           </button>
         ))}
         <select className="table-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
-          <option value="">Any status</option>{STATUSES.map((s) => <option key={s} value={s}>{pretty(s)}</option>)}
+          <option value="">Any status</option><option value="OPEN">Open</option>{STATUSES.filter((s) => s !== "OPEN").map((s) => <option key={s} value={s}>{pretty(s)}</option>)}
         </select>
+        <label className="muted">Created from <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} aria-label="Created from date" /></label>
+        <label className="muted">to <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} aria-label="Created to date" /></label>
         <select className="table-select" value={priority} onChange={(e) => setPriority(e.target.value)} aria-label="Filter by priority">
           <option value="">Any priority</option>{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}
         </select>

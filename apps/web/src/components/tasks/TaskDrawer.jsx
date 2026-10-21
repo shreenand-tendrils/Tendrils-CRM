@@ -13,7 +13,7 @@ import TicketAttachments from "../tickets/TicketAttachments";
 import { collectThread, taskPeople, taskTeams } from "../../lib/workThread";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
-export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, doneLocked }) {
+export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, doneLocked, teams = [], onReassign }) {
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState("");
   const [tab, setTab] = useState("comments");
@@ -49,15 +49,18 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
       <div className="win-card">
         <div className="detail"><span>Status</span>
           {editable
-            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => <option key={v} value={v} disabled={v === "DONE" && doneLocked?.(task) && task.status !== "DONE"}>{l}{v === "DONE" && doneLocked?.(task) && task.status !== "DONE" ? " (manager only)" : ""}</option>)}</select>
+            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => <option key={v} value={v} disabled={v === "DONE" && doneLocked?.(task) && task.status !== "DONE"}>{l}{v === "DONE" && doneLocked?.(task) && task.status !== "DONE" ? "" : ""}</option>)}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
+        <div className="detail"><span>Created</span><b>{formatDate(task.createdAt)}</b></div>
+        <div className="detail"><span>Days open</span><b>{Math.max(0, Math.floor((Date.now() - new Date(task.createdAt || Date.now()).getTime()) / 86400000))} days</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(task.dueDate)}</b></div>
         <div className="detail"><span>Client</span><b>{task.organization?.name || "—"}</b></div>
         {task.project && <div className="detail"><span>Project</span><b>{task.project.name}</b></div>}
         <div className="detail"><span>Team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
+        {can(me, "task.assign") && !task.autoCreated && <div className="detail"><span>Reassign task</span><select className="table-select" value={task.assigneeId || ""} onChange={(e) => onReassign?.(task, e.target.value || null)} aria-label="Reassign task"><option value="">Unassigned</option>{teams.filter((tm) => [task.teamId, ...(task.teamAccesses || []).map((a) => a.teamId)].includes(tm.id)).flatMap((tm) => (tm.members || []).map((m) => m.membership?.user).filter(Boolean).map((u) => ({...u, teamName: tm.name}))).filter((u, i, all) => all.findIndex((x) => x.id === u.id) === i).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>}
         {task.creator && <div className="detail"><span>Created by</span><b>{task.creator.name || task.creator.email}</b></div>}
       </div>
       {task.autoCreated && <p className="hint">This task mirrors its ticket: changing its status moves the ticket too. Add a linked task from the ticket for extra work.</p>}
@@ -74,8 +77,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <h2>{task.title}</h2>
         {editing ? (
           <div className="field">
-            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
-              onPaste={(e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); files.forEach(attach); setDesc((v) => appendLine(v, files.map((f) => PASTE_MARK(f.name)).join("\n"))); }} />
+            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Describe the task here" />
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (

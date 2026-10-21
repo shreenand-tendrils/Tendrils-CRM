@@ -140,7 +140,7 @@ export const dailyUpdateUpsert = z.object({
 
 export const dmCreate = z.object({ userId: id });
 
-const ROLES = ['PLATFORM_ADMIN', 'MANAGER', 'EMPLOYEE', 'CLIENT_ADMIN', 'CLIENT_MEMBER'];
+const ROLES = ['PLATFORM_ADMIN', 'EMPLOYEE', 'CLIENT_ADMIN', 'CLIENT_MEMBER'];
 const email = z.string().trim().toLowerCase().email().max(200);
 // Manual provisioning (admin adds the person directly; they can sign in with Google straight away).
 export const memberInvite = z.object({

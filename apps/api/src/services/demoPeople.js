@@ -1,13 +1,13 @@
 // Single source of truth for the demo people (used by prisma/seed.js, prisma/dedupe-demo-users.js and routes/dev.routes.js).
-// role: PLATFORM_ADMIN = Boss / root admin, MANAGER = team manager, EMPLOYEE = team member
+// role: PLATFORM_ADMIN = platform administrator, EMPLOYEE = internal employee
 export const STAFF = [
   { key: 'arjun', email: 'arjun.demo@tendrils.io', name: 'Arjun Mehta', role: 'PLATFORM_ADMIN', teams: ['management-operations'] },
-  { key: 'rahul', email: 'rahul.demo@tendrils.io', name: 'Rahul Verma', role: 'MANAGER', teams: ['development'] },
-  { key: 'nisha', email: 'nisha.demo@tendrils.io', name: 'Nisha Rao', role: 'MANAGER', teams: ['graphics-creative'] },
-  { key: 'kavya', email: 'kavya.demo@tendrils.io', name: 'Kavya Nair', role: 'MANAGER', teams: ['seo-marketing'] },
-  { key: 'vikram', email: 'vikram.demo@tendrils.io', name: 'Vikram Singh', role: 'MANAGER', teams: ['qa'] },
-  { key: 'anil', email: 'anil.demo@tendrils.io', name: 'Anil Kumar', role: 'MANAGER', teams: ['it-infrastructure'] },
-  { key: 'priya', email: 'priya.demo@tendrils.io', name: 'Priya Shah', role: 'MANAGER', teams: ['product', 'management-operations'] },
+  { key: 'rahul', email: 'rahul.demo@tendrils.io', name: 'Rahul Verma', role: 'EMPLOYEE', teams: ['development'] },
+  { key: 'nisha', email: 'nisha.demo@tendrils.io', name: 'Nisha Rao', role: 'EMPLOYEE', teams: ['graphics-creative'] },
+  { key: 'kavya', email: 'kavya.demo@tendrils.io', name: 'Kavya Nair', role: 'EMPLOYEE', teams: ['seo-marketing'] },
+  { key: 'vikram', email: 'vikram.demo@tendrils.io', name: 'Vikram Singh', role: 'EMPLOYEE', teams: ['qa'] },
+  { key: 'anil', email: 'anil.demo@tendrils.io', name: 'Anil Kumar', role: 'EMPLOYEE', teams: ['it-infrastructure'] },
+  { key: 'priya', email: 'priya.demo@tendrils.io', name: 'Priya Shah', role: 'EMPLOYEE', teams: ['product', 'management-operations'] },
   { key: 'sneha', email: 'sneha.demo@tendrils.io', name: 'Sneha Kulkarni', role: 'EMPLOYEE', teams: ['development'] },
   { key: 'aditya', email: 'aditya.demo@tendrils.io', name: 'Aditya Joshi', role: 'EMPLOYEE', teams: ['development', 'qa'] },
   { key: 'karan', email: 'karan.demo@tendrils.io', name: 'Karan Patil', role: 'EMPLOYEE', teams: ['graphics-creative'] },

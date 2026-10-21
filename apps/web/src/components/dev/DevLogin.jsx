@@ -42,7 +42,7 @@ export default function DevLogin({ variant = "signin" }) {
     <div className="dev-login">
       <div className="dev-title">DEV LOGIN · testing only</div>
       {group("Root admin / Boss", by("PLATFORM_ADMIN"))}
-      {group("Managers", by("MANAGER"))}
+      {group("Employees", [...by("MANAGER"), ...by("EMPLOYEE")])}
       {group("Employees", by("EMPLOYEE"))}
       {group("Client boss (client admin)", by("CLIENT_ADMIN"))}
       {group("Client members", by("CLIENT_MEMBER"))}

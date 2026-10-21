@@ -15,8 +15,9 @@ import WorkThread from "../work/WorkThread";
 import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
 
 const STATUSES = ["OPEN", "TRIAGED", "IN_PROGRESS", "BLOCKED", "REVIEW", "CLIENT_REVIEW", "RESOLVED", "CLOSED"];
-const CLIENT_LABEL = { OPEN: "Received", TRIAGED: "Reviewed by the team", IN_PROGRESS: "In progress", BLOCKED: "In progress", REVIEW: "In progress", CLIENT_REVIEW: "Waiting for your review", RESOLVED: "Done", CLOSED: "Closed" };
+const CLIENT_LABEL = { OPEN: "Open", TRIAGED: "In Progress", IN_PROGRESS: "In Progress", BLOCKED: "Need more Info", REVIEW: "Review/Test", CLIENT_REVIEW: "Review/Help", RESOLVED: "Resolved", CLOSED: "Closed" };
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const STATUS_LABELS = { OPEN: "Open", TRIAGED: "In Progress", IN_PROGRESS: "Open - QA", BLOCKED: "Need more Info", REVIEW: "Review/Test", CLIENT_REVIEW: "Review/Help", RESOLVED: "Resolved", CLOSED: "Closed" };
 
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete }) {
   const [text, setText] = useState("");
@@ -46,12 +47,12 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
   const canEditDetails = triage || requesterCanEdit;
   const canStatus = triage || ownStatus || (me.isInternal && requesterCanEdit);
-  const reviewLocked = me.isInternal && ticket.managerReview && !can(me, "ticket.triage"); // client/manager tickets need a manager to review before they go out, resolve or close
+  const reviewLocked = false; // all employees can review and close work
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
-  const linked = tasks.filter((t) => t.ticketId === ticket.id);
-  const linkedRoots = buildTree(collectThread(tasks, { ticketId: ticket.id })).map((n) => n.task);
   const staff = me.isInternal;
+  const linked = staff ? tasks.filter((t) => t.ticketId === ticket.id) : (ticket.tasks || []);
+  const linkedRoots = buildTree(collectThread(tasks, { ticketId: ticket.id })).map((n) => n.task);
   // Teams that are SAVED on the ticket decide who can be assigned. Unsaved changes in the pickers do not.
   const savedShared = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.teamId);
   const groups = assigneeGroups(teams, ticket.teamId, savedShared);
@@ -127,7 +128,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
         <div className="detail"><span>Status</span>
           {canStatus
-            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.map((s) => { const locked = reviewLocked && ["RESOLVED", "CLOSED", "CLIENT_REVIEW"].includes(s); return <option key={s} value={s} disabled={locked}>{pretty(s)}{locked ? " (manager only)" : ""}</option>; })}</select>
+            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.map((s) => { const locked = reviewLocked && ["RESOLVED", "CLOSED", "CLIENT_REVIEW"].includes(s); return <option key={s} value={s} disabled={locked}>{pretty(s)}{locked ? "" : ""}</option>; })}</select>
             : staff ? <StatusBadge value={ticket.status} /> : <b>{CLIENT_LABEL[ticket.status] || pretty(ticket.status)}</b>}
         </div>
         <div className="detail"><span>Priority</span>
@@ -175,8 +176,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <label htmlFor="ticket-edit-title">Ticket title</label>
           <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
           <label htmlFor="ticket-edit-description">Description</label>
-          <textarea id="ticket-edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
-            onPaste={(e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); files.forEach((f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)); setEditDescription((v) => appendLine(v, files.map((f) => PASTE_MARK(f.name)).join("\n"))); }} />
+          <textarea id="ticket-edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} placeholder="Describe the request here" />
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
       ) : (
@@ -186,6 +186,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </div>
       )}
 
+      {!staff && linked.length > 0 && <div className="win-card"><h3>Tasks for this ticket</h3>{linked.map((t) => <div className="detail" key={t.id}><span>{t.title}</span><b>{CLIENT_LABEL[t.status] || pretty(t.status)} · Created {formatDate(t.createdAt)} · Due {formatDate(t.dueDate)}</b></div>)}</div>}
       <div className="drawer-tabs" role="tablist">
         {staff && <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>}
         <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>

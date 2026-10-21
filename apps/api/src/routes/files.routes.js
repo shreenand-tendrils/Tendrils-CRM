@@ -60,6 +60,20 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
   res.status(201).json({ id: a.id, originalName: a.originalName, size: a.size, mimeType: a.mimeType });
 });
 
+router.delete('/files/:id', async (req, res) => {
+  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
+  if (!a) return res.status(404).json({ error: 'File not found' });
+  const target = a.ticket ? a.ticket : a.task ? a.task : a.project;
+  const kind = a.ticket ? 'ticket' : a.task ? 'task' : 'project';
+  if (!canAccessTarget(req, target, kind)) return res.status(404).json({ error: 'File not found' });
+  const elevated = req.isInternal && (req.can('ticket.triage') || req.can('task.assign'));
+  if (a.uploadedById !== req.currentUser.id && !elevated) return res.status(403).json({ error: 'Only the uploader or an authorized employee can delete this file.' });
+  // Deliberately retain ticket history events: removing a file never rewrites the ticket audit trail.
+  await prisma.attachment.delete({ where: { id: a.id } });
+  await discard({ path: path.join(dir, path.basename(a.storageKey)) });
+  res.json({ ok: true });
+});
+
 router.get('/files/:id/download', async (req, res) => {
   const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) return res.status(404).json({ error: 'File not found' });
