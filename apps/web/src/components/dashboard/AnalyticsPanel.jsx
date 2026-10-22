@@ -47,7 +47,7 @@ export default function AnalyticsPanel({ staff }) {
           </Link>
         ))}
       </div>
-      <Panel title="Ticket analytics" sub="Opened and closed tickets in the dates you choose">
+      <Panel title="Ticket analytics" sub="A clearer view of workload, turnaround and overdue work across your selected date range">
         <div className="row" style={{ flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" }}>
           <label className="hint">From <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
           <label className="hint">To <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
@@ -58,17 +58,17 @@ export default function AnalyticsPanel({ staff }) {
         {err && <p className="hint">{err}</p>}
         {data && (
           <>
-            <div className="row" style={{ flexWrap: "wrap", gap: 10 }}>
+            <div className="row analytics-summary" style={{ flexWrap: "wrap", gap: 10, alignItems: "stretch" }}>
               {stat("Opened in range", t.opened)}{stat("Closed in range", t.closed)}
               {stat("Avg days to close", t.avgDaysToClose, "Average days from opening to closing, for tickets closed in this range")}
               {stat("Avg days open now", t.avgDaysOpen, "Average age of tickets that are not closed yet")}
               {stat("Overdue", t.overdue, "Not closed and past the due date")}
               {staff && k && <>{stat("Open tasks", k.open)}{stat("Overdue tasks", k.overdue)}{stat("Tasks done in range", k.done)}{stat("Avg days to finish a task", k.avgDaysToDone)}</>}
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", height: 170, marginTop: 16, overflowX: "auto", paddingBottom: 4 }} role="img" aria-label="Tickets opened and closed per month">
+            <div className="ticket-analytics-chart" style={{ display: "flex", gap: 12, alignItems: "flex-end", minHeight: 190, marginTop: 20, overflowX: "auto", padding: "16px 12px 8px", borderRadius: 12, background: "var(--surface-subtle, rgba(127,127,127,.06))" }} role="img" aria-label="Tickets opened and closed per month">
               {data.months.map((m) => (
-                <div key={m.month} style={{ textAlign: "center", minWidth: 54 }}>
-                  <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 130, justifyContent: "center" }}>
+                <div key={m.month} style={{ textAlign: "center", minWidth: 62, flex: "1 0 62px" }}>
+                  <div style={{ display: "flex", gap: 5, alignItems: "flex-end", height: 132, justifyContent: "center", borderBottom: "1px solid var(--border, #ddd)" }}>
                     <div title={`${m.opened} opened`} style={{ width: 18, height: `${(m.opened / max) * 100}%`, minHeight: m.opened ? 3 : 0, background: "#5746e8", borderRadius: "4px 4px 0 0" }} />
                     <div title={`${m.closed} closed`} style={{ width: 18, height: `${(m.closed / max) * 100}%`, minHeight: m.closed ? 3 : 0, background: "#0f9d8a", borderRadius: "4px 4px 0 0" }} />
                   </div>
@@ -76,7 +76,7 @@ export default function AnalyticsPanel({ staff }) {
                 </div>
               ))}
             </div>
-            <small className="hint"><i style={{ background: "#5746e8", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Opened &nbsp; <i style={{ background: "#0f9d8a", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Closed (per month)</small>
+            <div className="row" style={{ gap: 14, flexWrap: "wrap", marginTop: 10 }}><small className="hint"><i style={{ background: "#5746e8", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Opened</small><small className="hint"><i style={{ background: "#0f9d8a", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Closed (per month)</small></div>
           </>
         )}
       </Panel>

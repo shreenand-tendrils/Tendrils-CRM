@@ -66,3 +66,14 @@ See `docs/MEMBERS_AND_ACCESS.md` (sign-in model, onboarding, setup, testing). Si
 
 ## v4.4: fixed sidebar + shared documents
 A viewport-fixed sidebar now keeps the user controls visible while its navigation scrolls independently. A Documents page supports private workspace/client files. Apply the new migration with `npm run db:deploy` (production) or `npm run db:migrate -- --name shared_documents` (development), then run `npm run db:generate`. See `docs/SECURITY_REVIEW_V4_4.md`. Chat is not yet encrypted at rest or end-to-end; do not use this build to claim that it is.
+
+## v4.6 — team-scoped tickets and work distribution
+
+See [`docs/TEAM_SCOPED_WORK.md`](docs/TEAM_SCOPED_WORK.md) for the explicit multi-team ticket/task access model, migration, payloads, and security verification checklist. Apply database changes with `npm run db:deploy` and regenerate Prisma Client with `npm run db:generate`.
+
+
+## Clean demo database (4.8.22)
+
+For a completely fresh local/demo database, back up any data you need and run `npm run db:reset-demo` from the repository root. This is destructive: it drops the database schema, reapplies migrations, and runs the Prisma demo seed. The seed includes one shared Advertising team (Facebook Ads + Google Ads), unique demo emails, employees across teams, client admin/member accounts, projects, tasks and routed sample tickets.
+
+Client-created tickets require an owning team and start OPEN/unassigned. Employees route tickets from their team queue; assignee choices are restricted to the selected owner/participating teams.

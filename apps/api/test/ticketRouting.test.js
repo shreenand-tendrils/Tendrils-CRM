@@ -133,7 +133,7 @@ test('groups put the owner team first and include participants', () => {
 });
 
 test('ticket team label for the table', () => {
-  assert.equal(ticketTeamLabel({ teamId: 'dev', teamAccesses: [{ teamId: 'dev', team: { name: 'Development' } }, { teamId: 'qa', team: { name: 'QA' } }] }), 'Development +1');
+  assert.equal(ticketTeamLabel({ teamId: 'dev', teamAccesses: [{ teamId: 'dev', team: { name: 'Development' } }, { teamId: 'qa', team: { name: 'QA' } }] }), 'Development + QA');
   assert.equal(ticketTeamLabel({ teamId: null, teamAccesses: [] }), null);
 });
 

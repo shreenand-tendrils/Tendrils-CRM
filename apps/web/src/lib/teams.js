@@ -26,13 +26,13 @@ export function assigneeGroups(teams = [], ownerTeamId, participantIds = []) {
 
 export const isInTeams = (teams, teamIds, userId) => teamIds.some((id) => teamPeople(teams, id).some((p) => p.id === userId));
 
-/** Plain-language summary of a ticket's teams for tables: "Development (+QA)". */
+/** Full owning/shared team names for staff and client ticket tables. */
 export function ticketTeamLabel(ticket) {
   const accesses = ticket?.teamAccesses || [];
   if (!accesses.length) return null;
   const owner = accesses.find((a) => a.teamId === ticket.teamId) || accesses[0];
-  const others = accesses.filter((a) => a !== owner);
-  return `${owner.team?.name || "Team"}${others.length ? ` +${others.length}` : ""}`;
+  const others = accesses.filter((a) => a.teamId !== owner.teamId);
+  return [owner.team?.name || "Team", ...others.map((a) => a.team?.name).filter(Boolean)].join(" + ");
 }
 
 /** Everyone in any of the given teams, de-duplicated (a person in two teams appears once). */

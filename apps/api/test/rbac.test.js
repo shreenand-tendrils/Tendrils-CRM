@@ -160,3 +160,15 @@ test('ticket delete: admins any, requester only while untouched', () => {
   assert.ok(ctx('PLATFORM_ADMIN').can('ticket.delete') && ctx('PLATFORM_ADMIN').can('ticket.delete'));
   assert.ok(!ctx('EMPLOYEE').can('ticket.delete') && !ctx('CLIENT_ADMIN').can('ticket.delete'));
 });
+
+
+import { incompleteWorkTasks } from '../src/services/ticketWorkRules.js';
+test('ticket review is blocked by unfinished linked tasks/subtasks, but not the ticket mirror task', () => {
+  const tasks = [
+    { id: 'mirror', title: 'Ticket mirror', autoCreated: true, status: 'DONE' },
+    { id: 'done', title: 'Finished work', autoCreated: false, status: 'DONE' },
+    { id: 'todo', title: 'Open work', autoCreated: false, status: 'IN_PROGRESS' },
+  ];
+  assert.deepEqual(incompleteWorkTasks(tasks).map((task) => task.id), ['todo']);
+  assert.deepEqual(incompleteWorkTasks(tasks.filter((task) => task.id !== 'todo')), []);
+});

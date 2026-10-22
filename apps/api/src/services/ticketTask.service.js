@@ -2,6 +2,8 @@ import { logActivity } from './activity.js';
 import { AppError } from '../errors/AppError.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
 import { statusKey, ticketToTaskStatus, TASK_TO_TICKET, taskTitleFor } from './ticketTaskMaps.js';
+import { incompleteWorkTasks } from './ticketWorkRules.js';
+export { incompleteWorkTasks } from './ticketWorkRules.js';
 
 // Tickets and their auto-created task stay in step:
 //  * a ticket with an assignee always has exactly one auto task (Task.autoCreated) for that assignee
@@ -57,19 +59,39 @@ export async function syncTaskFromTicket(db, ticket, { prevAssigneeId = null, ch
 }
 
 
+async function collectTicketTasks(db, ticketId) {
+  let frontier = await db.task.findMany({ where: { ticketId }, select: { id: true, parentId: true, title: true, status: true, autoCreated: true } });
+  const seen = new Map();
+  while (frontier.length) {
+    const current = frontier.filter((task) => !seen.has(task.id));
+    if (!current.length) break;
+    for (const task of current) seen.set(task.id, task);
+    frontier = await db.task.findMany({ where: { parentId: { in: current.map((task) => task.id) } }, select: { id: true, parentId: true, title: true, status: true, autoCreated: true } });
+  }
+  return [...seen.values()];
+}
+
+export async function assertTicketWorkComplete(db, ticketId) {
+  const incomplete = incompleteWorkTasks(await collectTicketTasks(db, ticketId));
+  if (incomplete.length) {
+    // Keep internal task names out of API errors because clients can also trigger this guard.
+    throw new AppError('Cannot submit this ticket for review or close it until all linked tasks and subtasks are DONE.', 409, 'TICKET_WORK_INCOMPLETE');
+  }
+}
+
 export async function assertTaskSubtasksDone(db, taskId) {
   let frontier = await db.task.findMany({ where: { parentId: taskId }, select: { id: true, title: true, status: true } });
   const seen = new Set();
   while (frontier.length) {
-    const current = frontier.filter((t) => !seen.has(t.id));
+    const current = frontier.filter((task) => !seen.has(task.id));
     if (!current.length) break;
-    for (const t of current) {
-      seen.add(t.id);
-      if (t.status !== 'DONE') {
-        throw new AppError(`Cannot complete this task until subtask "${t.title}" is DONE.`, 409, 'SUBTASKS_INCOMPLETE');
+    for (const task of current) {
+      seen.add(task.id);
+      if (task.status !== 'DONE') {
+        throw new AppError(`Cannot complete this task until subtask "${task.title}" is DONE.`, 409, 'SUBTASKS_INCOMPLETE');
       }
     }
-    frontier = await db.task.findMany({ where: { parentId: { in: current.map((t) => t.id) } }, select: { id: true, title: true, status: true } });
+    frontier = await db.task.findMany({ where: { parentId: { in: current.map((task) => task.id) } }, select: { id: true, title: true, status: true } });
   }
 }
 
@@ -80,6 +102,7 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
   if (task.status === 'DONE') await assertTaskSubtasksDone(db, task.id);
   const next = TASK_TO_TICKET[task.status];
   if (!ticket || !next || ticketToTaskStatus(ticket.status, ticket.progress) === task.status) return null; // already consistent
+  if (next.status === 'REVIEW_TEST' || next.status === 'CLOSED') await assertTicketWorkComplete(db, ticket.id);
   const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next.status, progress: next.progress, closedAt: null } });
   await logActivity({
     actorId: actor?.id, organizationId: updated.organizationId, entityType: 'ticket', entityId: updated.id, action: 'updated',

@@ -61,7 +61,7 @@ export default function TicketsPage({ data, onSelect }) {
           </select>
         )}
       </div>
-      <TicketTable tickets={tickets} onSelect={onSelect} showTask={staff} />
+      <TicketTable tickets={tickets} onSelect={onSelect} showTask={staff} showTeam />
     </Panel>
   );
 }

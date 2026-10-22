@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { ticketScope, canSeeOrg, requirePermission } from '../middleware/index.js';
 import {
-  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, findTeamManagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
+  logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, assertTicketWorkComplete, notifyPeople, findTriagers, findTeamManagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
 } from '../services/index.js';
 import { deriveProgress, progressValid } from '../services/ticketTaskMaps.js';
 import { canDeleteTicket } from '../services/ticketReviewRules.js';
@@ -40,20 +40,7 @@ const ticketLog = (req, t, action, summary) =>
     metadata: { visibility: t.visibility, requesterId: t.requesterId },
   });
 
-async function assertTicketWorkComplete(ticketId) {
-  const roots = await prisma.task.findMany({ where: { ticketId }, select: { id: true, title: true, status: true, autoCreated: true } });
-  const seen = new Set();
-  let frontier = roots;
-  while (frontier.length) {
-    const current = frontier.filter((task) => !seen.has(task.id));
-    if (!current.length) break;
-    for (const task of current) {
-      seen.add(task.id);
-      if (!task.autoCreated && task.status !== 'DONE') throw new AppError(`Cannot resolve or close this ticket until all linked tasks and subtasks are DONE.`, 409, 'TICKET_WORK_INCOMPLETE');
-    }
-    frontier = await prisma.task.findMany({ where: { parentId: { in: current.map((t) => t.id) } }, select: { id: true, title: true, status: true, autoCreated: true } });
-  }
-}
+
 
 router.get('/tickets', async (req, res) => res.json(await listTickets(req)));
 
@@ -69,7 +56,8 @@ async function listTickets(req) {
         assignee: { select: { id: true, name: true, email: true } },
         requester: { select: { id: true, name: true, email: true } },
         _count: { select: { comments: true, tasks: true, attachments: { where: { inline: false } } } },
-        ...(req.isInternal ? { teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } } } : {}),
+        // Team names are safe client-facing routing metadata: clients need to see which team owns each request.
+        teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } },
         // the linked work item is internal: clients never see it
         ...(req.isInternal ? { tasks: { where: { autoCreated: true }, take: 1, select: { id: true, status: true, assigneeId: true } } } : {}),
       },
@@ -181,7 +169,11 @@ router.patch('/tickets/:id', async (req, res) => {
   if (scope === 'none' || forbidden.length) {
     throw new AppError(scope === 'none' ? "You can't edit this ticket." : `Your role can't change: ${forbidden.join(', ')}.`, 403);
   }
-  if (['REVIEW_TEST', 'CLOSED'].includes(data.status)) await assertTicketWorkComplete(old.id);
+  // Employees cannot close tickets directly. Completed client work must be submitted for review.
+  if (req.isInternal && !req.can('ticket.triage') && data.status === 'CLOSED') {
+    throw new AppError('Employees cannot mark a ticket as done. Submit it for client review instead.', 403, 'CLIENT_REVIEW_REQUIRED');
+  }
+  if (['REVIEW_TEST', 'CLOSED'].includes(data.status) && data.status !== old.status) await assertTicketWorkComplete(prisma, old.id);
   if (scope === 'client' && data.status !== undefined && !clientStatusChangeAllowed(old.status, data.status)) {
     throw new AppError('You can only approve or send back a ticket that is waiting for your review.', 403, 'CLIENT_STATUS_LOCKED');
   }

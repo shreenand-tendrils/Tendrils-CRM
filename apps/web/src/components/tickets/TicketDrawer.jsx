@@ -59,7 +59,11 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
   const linked = tasks.filter((t) => t.ticketId === ticket.id);
-  const linkedRoots = buildTree(collectThread(tasks, { ticketId: ticket.id })).map((n) => n.task);
+  const linkedTree = buildTree(collectThread(tasks, { ticketId: ticket.id }));
+  const linkedRoots = linkedTree.map((n) => n.task);
+  const countIncompleteWork = (nodes) => nodes.reduce((total, node) => total + ((!node.task.autoCreated && node.task.status !== "DONE") ? 1 : 0) + countIncompleteWork(node.children || []), 0);
+  const incompleteWorkCount = countIncompleteWork(linkedTree);
+  const reviewBlocked = incompleteWorkCount > 0;
   const staff = me.isInternal;
   // Teams that are SAVED on the ticket decide who can be assigned. Unsaved changes in the pickers do not.
   const savedShared = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.teamId);
@@ -124,7 +128,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
             </optgroup>
           ))}
         </select>
-        <small className="hint">Only people from the saved team(s) can be assigned.</small>
+        <small className="hint">Choose the destination team, save the routing, then assign to an employee from that team. The list includes only members of the selected team(s); employees can assign to themselves or a teammate.</small>
       </div>
     </div>
   ) : (
@@ -143,9 +147,10 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
         <div className="detail"><span>Status</span>
           {canStatus
-            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABEL[st]}</option>)}</select>
+            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
             : staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}
         </div>
+        {staff && reviewBlocked && <p className="hint" role="status"><Info size={13} style={{ verticalAlign: -2 }} /> Review is locked: {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " still needs" : "s still need"} to be marked Done.</p>}
         {staff && (PROGRESS_FOR[ticket.status] || []).length > 0 && (
           <div className="detail"><span>Progress</span>
             {canStatus
