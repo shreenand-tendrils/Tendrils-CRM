@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Trash2, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -208,7 +209,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <label htmlFor="ticket-edit-description">Description</label>
           <textarea id="ticket-edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
             onPaste={async (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); try { const marks = []; for (const f of files) { if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { ticketId: ticket.id })).id)); else await onUpload({ target: { files: [f], value: "" } }, ticket.id); } if (marks.length) setEditDescription((v) => appendLine(v, marks.join("\n"))); } catch { setPasteHint("Could not paste the image."); } }} />
-          {editing && /\[\[img:/.test(editDescription) && <RichText text={editDescription} style={{ marginTop: 8, maxWidth: 420 }} />
+          {editing && /\[\[img:/.test(editDescription) && <RichText text={editDescription} style={{ marginTop: 8, maxWidth: 420 }} />}
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
       ) : (
