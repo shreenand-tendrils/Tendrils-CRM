@@ -9,23 +9,23 @@ import TeamMultiSelect from "../ui/TeamMultiSelect";
 import { peopleOfTeams } from "../../lib/teams";
 import { daysPassed, dayLabel } from "../../lib/ticketStatus";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
-import { can, canEditTask } from "../../lib/rbac";
+import { can, canEditTask, canReviewTask } from "../../lib/rbac";
 import { COLUMNS } from "./TaskBoard";
 import Window from "../ui/Window";
 import WorkThread from "../work/WorkThread";
 import TaskComments from "./TaskComments";
 import TicketAttachments from "../tickets/TicketAttachments";
-import { collectThread, taskPeople, taskTeams } from "../../lib/workThread";
+import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
 export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState("");
   const [ownerTeam, setOwnerTeam] = useState(task?.teamId || "");
-  const [sharedTeams, setSharedTeams] = useState((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId).map((a) => a.teamId));
+  const [sharedTeams, setSharedTeams] = useState((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId));
   const [assigneeIds, setAssigneeIds] = useState((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean));
   const [tab, setTab] = useState("comments");
-  useEffect(() => { setTab("comments"); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId).map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
+  useEffect(() => { setTab("comments"); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
   if (!task) return null;
   const upload = async (e) => {
     const file = e.target.files?.[0];
@@ -46,18 +46,19 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const nComments = task._count?.comments || 0, nFiles = task._count?.attachments || 0;
   const ticketFull = tickets.find((t) => t.id === task.ticketId);
   const ticket = ticketFull || (task.ticket ? { id: task.ticket.id, key: task.ticket.key, title: task.ticket.title, status: task.ticket.status } : null);
-  const { owner, shared } = taskTeams(task);
+  const { owner, shared, reviewers } = taskTeams(task);
   const people = taskPeople(task);
   const editable = canEditTask(me, task);
   const thread = collectThread(tasks, { ticketId: task.ticketId, focusId: task.id });
   const kind = task.autoCreated ? "Auto task" : task.parentId ? "Subtask" : "Task";
+  const pendingSubtasks = incompleteSubtaskCount(task.id, tasks);
 
   const side = (
     <>
       <div className="win-card">
         <div className="detail"><span>Status</span>
           {editable
-            ? <select disabled={(task.status === "DONE" && !can(me, "task.update_any")) || (task.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(ticket?.status))} className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (task.autoCreated || !can(me, "task.update_any")) && task.status !== "DONE"; return <option key={v} value={v} disabled={doneBlocked}>{l}{doneBlocked ? (task.autoCreated ? " (client approval required)" : " (reviewer approval required)") : ""}</option>; })}</select>
+            ? <select disabled={(task.status === "DONE" && !canReviewTask(me, task)) || (task.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(ticket?.status))} className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (task.autoCreated || !canReviewTask(me, task)) && task.status !== "DONE"; const subtasksBlocked = ["REVIEW", "DONE"].includes(v) && pendingSubtasks > 0 && task.status !== v; return <option key={v} value={v} disabled={doneBlocked || subtasksBlocked}>{l}{doneBlocked ? (task.autoCreated ? " (ticket approval required)" : " (review team approval required)") : subtasksBlocked ? ` (${pendingSubtasks} unfinished subtask${pendingSubtasks === 1 ? "" : "s"})` : ""}</option>; })}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
@@ -66,7 +67,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <div className="detail"><span>{task.completedAt ? "Done in" : "Open for"}</span><b>{dayLabel(daysPassed(task, "completedAt"))}</b></div>
         <div className="detail"><span>Client</span><b>{task.organization?.name || "—"}</b></div>
         {task.project && <div className="detail"><span>Project</span><b>{task.project.name}</b></div>}
-        <div className="detail"><span>Team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
+        <div className="detail"><span>Work team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
+        {reviewers.length > 0 && <div className="detail"><span>Review team</span><b>{reviewers.join(", ")}</b></div>}
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
         {task.creator && <div className="detail"><span>Created by</span><b>{task.creator.name || task.creator.email}</b></div>}
       </div>
@@ -85,8 +87,10 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           <button className="primary" disabled={!ownerTeam} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { teamId: ownerTeam, teamIds: sharedTeams.filter((x) => x !== ownerTeam), assigneeIds }); notify?.("Task reassigned"); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not reassign", "error"); } }}>Save reassignment</button>
         </div>
       )}
+      {pendingSubtasks > 0 && <p className="hint" role="status">Finish the {pendingSubtasks} unfinished subtask{pendingSubtasks === 1 ? "" : "s"} before submitting this task for review or marking it Done.</p>}
       {task.autoCreated && <p className="hint">This task mirrors its ticket: Open → In progress, Review/Test → Review, Review/Help → Blocked, and only client approval closes the ticket and marks this task Done. Don’t change a mirror task while the ticket is waiting for the client; reassign it from the ticket window.</p>}
-      {!task.autoCreated && !can(me, "task.update_any") && <p className="hint">Submit finished work by moving the task to Review. Only an authorized reviewer can mark it Done.</p>}
+      {!task.autoCreated && (task.teamAccesses || []).some((a) => a.accessRole === "REVIEWER") && <p className="hint">Cross-team task: submit finished work to <b>{(task.teamAccesses || []).filter((a) => a.accessRole === "REVIEWER").map((a) => a.team?.name).filter(Boolean).join(", ") || "the requesting team"}</b> by moving it to Review. The requesting team reviews the result and marks it Done.</p>}
+      {!task.autoCreated && !(task.teamAccesses || []).some((a) => a.accessRole === "REVIEWER") && !can(me, "task.update_any") && <p className="hint">Submit finished work by moving the task to Review. An authorized reviewer must approve it before it can be marked Done.</p>}
       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
         {can(me, "task.create") && !task.autoCreated && <button className="primary" onClick={() => onAddSubtask(task)}><Plus size={14} /> Add subtask</button>}
         {ticketFull && <button className="secondary" onClick={() => onOpenTicket(ticketFull)}><TicketIcon size={14} /> Open {ticketFull.key}</button>}

@@ -7,6 +7,7 @@ import {
 } from '../services/index.js';
 import { assigneesOutsideTeams } from '../services/ticketRouting.js';
 import { taskCommentRecipients } from '../services/taskComments.js';
+import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview } from '../services/taskReviewRules.js';
 import { commentCreate } from '../validators/schemas.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -28,11 +29,51 @@ const include = {
 };
 const asRows = (ids) => ids.map((userId) => ({ userId }));
 const link = (t) => `/?task=${t.id}`;
+let reviewAccessBackfillPromise = null;
+
+// Existing cross-team tasks predate the REVIEWER access role. Backfill them once per
+// API process so the originating team can still see and review work already in flight.
+async function ensureLegacyTaskReviewAccess() {
+  if (!reviewAccessBackfillPromise) {
+    reviewAccessBackfillPromise = (async () => {
+      const tasks = await prisma.task.findMany({
+        where: { autoCreated: false, teamId: { not: null }, creatorId: { not: null }, teamAccesses: { none: { accessRole: 'REVIEWER' } } },
+        select: { id: true, teamId: true, creatorId: true },
+      });
+      if (!tasks.length) return;
+      const creatorIds = [...new Set(tasks.map((t) => t.creatorId))];
+      const memberships = await prisma.membership.findMany({
+        where: { userId: { in: creatorIds }, isActive: true, organization: { type: 'INTERNAL' } },
+        include: { teamMemberships: { select: { teamId: true } } },
+      });
+      const teamsByUser = new Map();
+      for (const membership of memberships) {
+        const ids = teamsByUser.get(membership.userId) || [];
+        ids.push(...membership.teamMemberships.map((tm) => tm.teamId));
+        teamsByUser.set(membership.userId, ids);
+      }
+      for (const task of tasks) {
+        for (const teamId of taskReviewerTeamIds(teamsByUser.get(task.creatorId) || [], task.teamId)) {
+          await prisma.taskTeamAccess.upsert({
+            where: { taskId_teamId: { taskId: task.id, teamId } },
+            create: { taskId: task.id, teamId, accessRole: 'REVIEWER', addedById: task.creatorId },
+            update: { accessRole: 'REVIEWER' },
+          });
+        }
+      }
+    })().catch((err) => {
+      reviewAccessBackfillPromise = null;
+      console.error('[task review access] legacy backfill failed:', err.message);
+    });
+  }
+  return reviewAccessBackfillPromise;
+}
 
 // Tasks are internal work items: clients get an empty list (so the shared workspace
 // load still succeeds) and cannot create or edit them.
 router.get('/tasks', async (req, res) => {
   if (!req.isInternal) return res.json([]);
+  await ensureLegacyTaskReviewAccess();
   const mine = req.query.mine === 'true' ? { OR: [{ assigneeId: req.currentUser.id }, { assignees: { some: { userId: req.currentUser.id } } }] } : {};
   res.json(await prisma.task.findMany({ where: { AND: [orgScope(req), taskTeamScope(req), mine] }, orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }], take: 300, include }));
 });
@@ -100,6 +141,16 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
     const inherited = data.ticketId ? await tx.ticketTeamAccess.findMany({ where: { ticketId: data.ticketId }, select: { teamId: true } }) : [];
     const allAccess = [...new Set([...accessIds, ...inherited.map((x) => x.teamId), ...(parentId ? (await tx.taskTeamAccess.findMany({ where: { taskId: parentId }, select: { teamId: true } })).map((x) => x.teamId) : [])])];
     if (allAccess.length) await tx.taskTeamAccess.createMany({ data: allAccess.map((teamId) => ({ taskId: created.id, teamId, accessRole: teamId === data.teamId ? 'OWNER' : 'PARTICIPANT', addedById: req.currentUser.id })), skipDuplicates: true });
+    // For cross-team work, keep the creator's team as the review authority without
+    // treating it as a destination/assignee team. That team closes the task after review.
+    const reviewerTeamIds = taskReviewerTeamIds(ownTeamIds, data.teamId);
+    for (const teamId of reviewerTeamIds) {
+      await tx.taskTeamAccess.upsert({
+        where: { taskId_teamId: { taskId: created.id, teamId } },
+        create: { taskId: created.id, teamId, accessRole: 'REVIEWER', addedById: req.currentUser.id },
+        update: { accessRole: 'REVIEWER' },
+      });
+    }
     return created;
   });
   await logActivity({
@@ -126,17 +177,21 @@ router.patch('/tasks/:id', async (req, res) => {
   if ((teamIds || data.teamId !== undefined) && !req.can('task.assign')) throw new AppError('Only authorized task assigners can change participating teams.', 403);
   if (data.teamId) { const validTeam = await prisma.team.findFirst({ where: { id: data.teamId, organization: { type: 'INTERNAL' } }, select: { id: true } }); if (!validTeam) throw new AppError('Invalid task team.', 400, 'INVALID_TEAM'); }
   if (teamIds) { const validTeams = teamIds.length ? await prisma.team.findMany({ where: { id: { in: teamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } }) : []; if (validTeams.length !== new Set(teamIds).size) throw new AppError('One or more task teams are invalid.', 400, 'INVALID_TEAM'); }
+  const actorTeamIds = [...new Set((req.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
+  const reviewerTeamIds = (old.teamAccesses || []).filter((a) => a.accessRole === 'REVIEWER').map((a) => a.teamId);
+  const actorCanReview = canApproveTask({ canUpdateAny: req.can('task.update_any'), actorTeamIds, reviewerTeamIds });
+  const hasTeamReviewer = taskNeedsTeamReview(reviewerTeamIds);
   if (data.status === 'DONE' && old.autoCreated) {
-    throw new AppError('This task mirrors a ticket. It becomes Done only when the client approves the ticket.', 403, 'TICKET_APPROVAL_REQUIRED');
+    throw new AppError('This task mirrors a ticket. It becomes Done only through the ticket approval action.', 403, 'TICKET_APPROVAL_REQUIRED');
   }
-  if (data.status === 'DONE' && !req.can('task.update_any')) {
-    throw new AppError('Employees must submit tasks for review. Only an authorized reviewer can mark a task Done.', 403, 'TASK_REVIEW_REQUIRED');
+  if (data.status === 'DONE' && !actorCanReview) {
+    throw new AppError(hasTeamReviewer ? 'The team that requested this task must review it before marking it Done.' : 'Employees must submit tasks for review. Only an authorized reviewer can mark a task Done.', 403, 'TASK_REVIEW_REQUIRED');
   }
   if (data.status === 'DONE' && old.status !== 'REVIEW' && old.status !== 'DONE') {
-    throw new AppError('A task must be submitted for review before a reviewer can mark it Done.', 409, 'TASK_NOT_IN_REVIEW');
+    throw new AppError('A task must be submitted to Review before a reviewer can mark it Done.', 409, 'TASK_NOT_IN_REVIEW');
   }
-  if (old.status === 'DONE' && data.status !== undefined && data.status !== 'DONE' && !req.can('task.update_any')) {
-    throw new AppError('Only an authorized reviewer can reopen a completed task.', 403, 'TASK_REOPEN_FORBIDDEN');
+  if (old.status === 'DONE' && data.status !== undefined && data.status !== 'DONE' && !actorCanReview) {
+    throw new AppError('Only the reviewing team can reopen a completed task.', 403, 'TASK_REOPEN_FORBIDDEN');
   }
   if (old.autoCreated && data.status !== undefined && data.status !== old.status) {
     const mirrorTicket = await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { status: true } });
@@ -169,7 +224,7 @@ router.patch('/tasks/:id', async (req, res) => {
   let nextIds = ids;
   {
     const ownerNext = data.teamId !== undefined ? data.teamId : old.teamId;
-    const sharedNext = teamIds !== undefined ? teamIds : (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId).map((a) => a.teamId);
+    const sharedNext = teamIds !== undefined ? teamIds : (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId && a.accessRole !== 'REVIEWER').map((a) => a.teamId);
     const teamsNext = [...new Set([...(ownerNext ? [ownerNext] : []), ...sharedNext])];
     const teamsChanged = teamIds !== undefined || data.teamId !== undefined;
     if (nextIds || teamsChanged) {
@@ -189,15 +244,29 @@ router.patch('/tasks/:id', async (req, res) => {
     data.assignees = { deleteMany: {}, create: asRows(nextIds) };
   }
 
-  const task = await prisma.$transaction(async (tx) => {
+  const { task, syncedTicket } = await prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({ where: { id: old.id }, data });
     if (teamIds || data.teamId !== undefined) {
-      const all = [...new Set([...(data.teamId !== undefined ? (data.teamId ? [data.teamId] : []) : (old.teamId ? [old.teamId] : [])), ...(teamIds || [])])];
-      await tx.taskTeamAccess.deleteMany({ where: { taskId: old.id } });
-      if (all.length) await tx.taskTeamAccess.createMany({ data: all.map((teamId) => ({ taskId: old.id, teamId, accessRole: teamId === (data.teamId ?? old.teamId) ? 'OWNER' : 'PARTICIPANT', addedById: req.currentUser.id })) });
+      const ownerId = data.teamId !== undefined ? data.teamId : old.teamId;
+      const all = [...new Set([...(ownerId ? [ownerId] : []), ...(teamIds || [])])];
+      const oldReviewerIds = (old.teamAccesses || []).filter((a) => a.accessRole === 'REVIEWER').map((a) => a.teamId);
+      const creatorMemberships = old.creatorId ? await tx.membership.findMany({ where: { userId: old.creatorId, isActive: true, organization: { type: 'INTERNAL' } }, include: { teamMemberships: { select: { teamId: true } } } }) : [];
+      const creatorTeamIds = creatorMemberships.flatMap((m) => m.teamMemberships.map((tm) => tm.teamId));
+      const reviewerIds = [...new Set([...oldReviewerIds, ...taskReviewerTeamIds(creatorTeamIds, ownerId)])].filter((id) => id !== ownerId);
+      await tx.taskTeamAccess.deleteMany({ where: { taskId: old.id, accessRole: { not: 'REVIEWER' } } });
+      await tx.taskTeamAccess.deleteMany({ where: { taskId: old.id, accessRole: 'REVIEWER', teamId: { in: all } } });
+      const normalAccess = all.filter((teamId) => !reviewerIds.includes(teamId));
+      if (normalAccess.length) await tx.taskTeamAccess.createMany({ data: normalAccess.map((teamId) => ({ taskId: old.id, teamId, accessRole: teamId === ownerId ? 'OWNER' : 'PARTICIPANT', addedById: req.currentUser.id })) });
+      for (const teamId of reviewerIds) {
+        await tx.taskTeamAccess.upsert({
+          where: { taskId_teamId: { taskId: old.id, teamId } },
+          create: { taskId: old.id, teamId, accessRole: 'REVIEWER', addedById: req.currentUser.id },
+          update: { accessRole: 'REVIEWER' },
+        });
+      }
     }
-    if (data.status && data.status !== old.status) await syncTicketFromTask(tx, updated, { actor: req.currentUser });
-    return updated;
+    const ticketSync = data.status && data.status !== old.status ? await syncTicketFromTask(tx, updated, { actor: req.currentUser }) : null;
+    return { task: updated, syncedTicket: ticketSync };
   });
   await logActivity({
     actorId: req.currentUser.id, organizationId: task.organizationId, entityType: 'task', entityId: task.id,
@@ -206,6 +275,13 @@ router.patch('/tasks/:id', async (req, res) => {
   if (nextIds) {
     const before = new Set([old.assigneeId, ...old.assignees.map((a) => a.userId)].filter(Boolean));
     for (const userId of nextIds.filter((u) => !before.has(u))) await notifyAssignment({ userId, actor: req.currentUser, title: task.title, kind: 'task', href: link(task) });
+  }
+  if (data.status === 'REVIEW' && hasTeamReviewer) {
+    const reviewers = await findTeamManagers(reviewerTeamIds);
+    await notifyPeople({ userIds: reviewers.map((u) => u.id), actorId: req.currentUser.id, type: 'STATUS_CHANGE', title: `Task ready for your review: ${task.title}`, body: `${req.currentUser.name || req.currentUser.email} submitted this cross-team task for review.`, href: link(task) });
+  }
+  if (syncedTicket?.status === 'REVIEW_TEST' && syncedTicket.requesterId) {
+    await notifyPeople({ userIds: [syncedTicket.requesterId], actorId: req.currentUser.id, type: 'STATUS_CHANGE', title: `${syncedTicket.key} is ready for your review`, body: `All linked work for "${syncedTicket.title}" is complete. Please approve it or send it back with feedback.`, href: `/?ticket=${syncedTicket.id}` });
   }
   res.json(task);
 });

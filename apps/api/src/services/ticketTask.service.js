@@ -1,7 +1,7 @@
 import { logActivity } from './activity.js';
 import { AppError } from '../errors/AppError.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
-import { statusKey, ticketToTaskStatus, TASK_TO_TICKET, taskTitleFor } from './ticketTaskMaps.js';
+import { statusKey, ticketToTaskStatus, TASK_TO_TICKET, taskTitleFor, shouldSubmitClientTicketForReview } from './ticketTaskMaps.js';
 import { incompleteWorkTasks } from './ticketWorkRules.js';
 export { incompleteWorkTasks } from './ticketWorkRules.js';
 
@@ -95,20 +95,45 @@ export async function assertTaskSubtasksDone(db, taskId) {
   }
 }
 
-/** When the auto task changes status, move the ticket along with it. */
+/** Keep ticket state in sync with its mirror task and with completion of real linked work. */
 export async function syncTicketFromTask(db, task, { actor } = {}) {
-  if (!task.autoCreated || !task.ticketId) return null;
-  const ticket = await db.ticket.findUnique({ where: { id: task.ticketId } });
-  if (task.status === 'DONE') await assertTaskSubtasksDone(db, task.id);
-  const next = TASK_TO_TICKET[task.status];
-  if (!ticket || !next || ticketToTaskStatus(ticket.status, ticket.progress) === task.status) return null; // already consistent
-  if (next.status === 'REVIEW_TEST' || next.status === 'CLOSED') await assertTicketWorkComplete(db, ticket.id);
-  const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next.status, progress: next.progress, closedAt: null } });
+  if (!task.ticketId) return null;
+
+  // A ticket's auto-created task is a mirror. Its status drives the ticket, except DONE,
+  // which can only arrive through the ticket's authorized approval action.
+  if (task.autoCreated) {
+    const ticket = await db.ticket.findUnique({ where: { id: task.ticketId } });
+    if (!ticket) return null;
+    if (task.status === 'DONE') await assertTaskSubtasksDone(db, task.id);
+    const next = TASK_TO_TICKET[task.status];
+    if (!next || ticketToTaskStatus(ticket.status, ticket.progress) === task.status) return null;
+    if (next.status === 'REVIEW_TEST' || next.status === 'CLOSED') await assertTicketWorkComplete(db, ticket.id);
+    const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next.status, progress: next.progress, closedAt: next.status === 'CLOSED' ? new Date() : null } });
+    await logActivity({
+      actorId: actor?.id, organizationId: updated.organizationId, entityType: 'ticket', entityId: updated.id, action: 'updated',
+      summary: `Ticket ${updated.key} moved to ${next.status.replaceAll('_', ' ').toLowerCase()} (task progress)`,
+      metadata: { visibility: updated.visibility, requesterId: updated.requesterId },
+    });
+    await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: statusKey(ticket.status, ticket.progress), toValue: statusKey(next.status, next.progress), note: 'Moved by task progress', clientVisible: true }]);
+    return updated;
+  }
+
+  // Real linked work completing is the trigger for a CLIENT ticket's review hand-off.
+  // Do not fail a task update just because other linked tasks are still in progress.
+  if (task.status !== 'DONE') return null;
+  const ticket = await db.ticket.findUnique({ where: { id: task.ticketId }, include: { organization: { select: { type: true } } } });
+  if (!ticket) return null;
+  const incomplete = incompleteWorkTasks(await collectTicketTasks(db, ticket.id));
+  if (!shouldSubmitClientTicketForReview({ taskStatus: task.status, ticketStatus: ticket.status, organizationType: ticket.organization?.type, visibility: ticket.visibility, incompleteWorkCount: incomplete.length })) return null;
+
+  const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: 'REVIEW_TEST', progress: 'RESOLVED', closedAt: null } });
+  // The mirror task must reflect the ticket's client-review state, not remain Done/In progress.
+  await syncTaskFromTicket(db, updated, { changed: ['status', 'progress'], actor });
   await logActivity({
     actorId: actor?.id, organizationId: updated.organizationId, entityType: 'ticket', entityId: updated.id, action: 'updated',
-    summary: `Ticket ${updated.key} moved to ${next.status.replaceAll('_', ' ').toLowerCase()} (task progress)`,
+    summary: `Ticket ${updated.key} submitted for client review after linked work completed`,
     metadata: { visibility: updated.visibility, requesterId: updated.requesterId },
   });
-  await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: statusKey(ticket.status, ticket.progress), toValue: statusKey(next.status, next.progress), note: 'Moved by task progress', clientVisible: true }]);
+  await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: statusKey(ticket.status, ticket.progress), toValue: statusKey('REVIEW_TEST', 'RESOLVED'), note: 'All linked work completed; submitted for client review', clientVisible: true }]);
   return updated;
 }

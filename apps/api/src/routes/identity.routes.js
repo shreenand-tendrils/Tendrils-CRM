@@ -10,6 +10,7 @@ router.get('/me', (req, res) =>
     isManager: isManager(req),
     permissions: [...req.permissions],
     roles: [...new Set(req.memberships.map((m) => m.role))],
+    teamIds: [...new Set(req.memberships.flatMap((m) => m.teamMemberships.map((x) => x.teamId)))],
     memberships: req.memberships.map((m) => ({
       id: m.id, role: m.role, organization: m.organization, teams: m.teamMemberships.map((x) => x.team.name),
     })),

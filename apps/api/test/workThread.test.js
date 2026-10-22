@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectThread, buildTree, mergeTimeline } from '../../web/src/lib/workThread.js';
+import { collectThread, buildTree, mergeTimeline, incompleteSubtaskCount } from '../../web/src/lib/workThread.js';
 
 const T = (id, extra = {}) => ({ id, createdAt: `2026-10-0${id.length}T00:00:00Z`, ...extra });
 
@@ -21,4 +21,15 @@ test('mergeTimeline keeps only route events and orders them with root tasks by t
   const events = [{ id: 'e2', type: 'ASSIGNEE', createdAt: '2026-10-03T00:00:00Z' }, { id: 'e1', type: 'CREATED', createdAt: '2026-10-01T00:00:00Z' }, { id: 'c', type: 'COMMENT', createdAt: '2026-10-02T00:00:00Z' }];
   const roots = [{ task: { id: 'x', createdAt: '2026-10-02T12:00:00Z' }, children: [] }];
   assert.deepEqual(mergeTimeline(events, roots).map((i) => i.event?.id || i.node.task.id), ['e1', 'x', 'e2']);
+});
+
+test('incompleteSubtaskCount counts unfinished nested work and ignores completed subtasks', () => {
+  const tasks = [
+    T('root', { status: 'IN_PROGRESS' }),
+    T('child', { parentId: 'root', status: 'DONE' }),
+    T('grandchild', { parentId: 'child', status: 'TODO' }),
+    T('child2', { parentId: 'root', status: 'REVIEW' }),
+  ];
+  assert.equal(incompleteSubtaskCount('root', tasks), 2);
+  assert.equal(incompleteSubtaskCount('child', tasks), 1);
 });

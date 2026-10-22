@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { permissionsFor, ROLE_PERMISSIONS, PERMISSIONS } from '../src/rbac/permissions.js';
 import { canEditTask, canViewTicket, ticketEditScope, checkMemberChange, roleFitsOrgType } from '../src/rbac/policies.js';
-import { ticketToTaskStatus, TASK_TO_TICKET, deriveProgress, progressValid } from '../src/services/ticketTaskMaps.js';
+import { ticketToTaskStatus, TASK_TO_TICKET, deriveProgress, progressValid, shouldSubmitClientTicketForReview } from '../src/services/ticketTaskMaps.js';
 
 const internal = { type: 'INTERNAL' }, client = { type: 'CLIENT' };
 const ctx = (role, id = 'u1', org = role.startsWith('CLIENT') ? client : internal, orgId = 'o1') => {
@@ -36,6 +36,10 @@ test('task policy', () => {
   assert.ok(canEditTask(ctx('PLATFORM_ADMIN', 'me'), { creatorId: 'x', assigneeId: 'y', assignees: [] }));
   assert.ok(!canEditTask(ctx('CLIENT_ADMIN', 'me'), { creatorId: 'me' }));
   assert.ok(canEditTask(ctx('PLATFORM_ADMIN', 'me'), { creatorId: 'x' }));
+  const reviewerMemberships = [{ role: 'EMPLOYEE', organizationId: 'internal', organization: internal, teamMemberships: [{ teamId: 'requesting-team' }] }];
+  const reviewerPermissions = permissionsFor(reviewerMemberships);
+  const reviewerCtx = { currentUser: { id: 'reviewer' }, memberships: reviewerMemberships, permissions: reviewerPermissions, can: (p) => reviewerPermissions.has(p) };
+  assert.ok(canEditTask(reviewerCtx, { creatorId: 'other', assigneeId: 'receiver', teamAccesses: [{ teamId: 'requesting-team', accessRole: 'REVIEWER' }] }), 'requesting team can open and review cross-team work');
 });
 
 test('ticket policy: view + edit scope', () => {
@@ -175,4 +179,14 @@ test('ticket review is blocked by unfinished linked tasks/subtasks, but not the 
   ];
   assert.deepEqual(incompleteWorkTasks(tasks).map((task) => task.id), ['todo']);
   assert.deepEqual(incompleteWorkTasks(tasks.filter((task) => task.id !== 'todo')), []);
+});
+
+test('client tickets enter review only after all real linked tasks are Done', () => {
+  const base = { taskStatus: 'DONE', ticketStatus: 'OPEN', organizationType: 'CLIENT', visibility: 'CLIENT', incompleteWorkCount: 0 };
+  assert.equal(shouldSubmitClientTicketForReview(base), true);
+  assert.equal(shouldSubmitClientTicketForReview({ ...base, incompleteWorkCount: 1 }), false);
+  assert.equal(shouldSubmitClientTicketForReview({ ...base, organizationType: 'INTERNAL' }), false);
+  assert.equal(shouldSubmitClientTicketForReview({ ...base, ticketStatus: 'REVIEW_HELP' }), false);
+  assert.equal(shouldSubmitClientTicketForReview({ ...base, ticketStatus: 'CLOSED' }), false);
+  assert.equal(shouldSubmitClientTicketForReview({ ...base, taskStatus: 'REVIEW' }), false);
 });

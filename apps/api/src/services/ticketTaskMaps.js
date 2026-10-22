@@ -25,3 +25,8 @@ export const TASK_TO_TICKET = {
   REVIEW: { status: 'REVIEW_TEST', progress: 'RESOLVED' }, BLOCKED: { status: 'REVIEW_HELP', progress: 'NEED_MORE_INFO' }, DONE: { status: 'CLOSED', progress: null },
 };
 export const taskTitleFor = (t) => `[${t.key}] ${t.title}`;
+
+/** A client-originated ticket is ready for client review only after every real linked task is Done. */
+export const shouldSubmitClientTicketForReview = ({ taskStatus, ticketStatus, organizationType, visibility, incompleteWorkCount }) =>
+  taskStatus === 'DONE' && organizationType === 'CLIENT' && visibility === 'CLIENT' &&
+  !['REVIEW_TEST', 'REVIEW_HELP', 'CLOSED'].includes(ticketStatus) && incompleteWorkCount === 0;

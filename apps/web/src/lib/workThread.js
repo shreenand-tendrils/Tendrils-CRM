@@ -44,6 +44,29 @@ export const personName = (u) => u?.name || u?.email || "";
 export const taskPeople = (t) => (t.assignees?.length ? t.assignees.map((a) => personName(a.user)) : t.assignee ? [personName(t.assignee)] : []).filter(Boolean);
 export const taskTeams = (t) => {
   const owner = t.team?.name || (t.teamAccesses || []).find((a) => a.teamId === t.teamId)?.team?.name || null;
-  const shared = (t.teamAccesses || []).filter((a) => a.teamId !== t.teamId).map((a) => a.team?.name).filter(Boolean);
-  return { owner, shared };
+  const shared = (t.teamAccesses || []).filter((a) => a.teamId !== t.teamId && a.accessRole !== 'REVIEWER').map((a) => a.team?.name).filter(Boolean);
+  const reviewers = (t.teamAccesses || []).filter((a) => a.accessRole === 'REVIEWER').map((a) => a.team?.name).filter(Boolean);
+  return { owner, shared, reviewers };
+};
+
+/** Count unfinished descendants so a task cannot be submitted for review before its subtasks. */
+export const incompleteSubtaskCount = (taskId, tasks = []) => {
+  const children = new Map();
+  for (const task of tasks) {
+    if (!task.parentId) continue;
+    if (!children.has(task.parentId)) children.set(task.parentId, []);
+    children.get(task.parentId).push(task);
+  }
+  const seen = new Set();
+  const walk = (id) => {
+    let count = 0;
+    for (const child of children.get(id) || []) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      if (child.status !== "DONE") count += 1;
+      count += walk(child.id);
+    }
+    return count;
+  };
+  return walk(taskId);
 };

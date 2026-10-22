@@ -5,6 +5,9 @@ const me = (ctx) => ctx.currentUser.id;
 
 export function canEditTask(ctx, task) {
   if (ctx.can('task.update_any')) return true;
+  const myTeamIds = new Set((ctx.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)));
+  const isReviewTeam = (task.teamAccesses || []).some((a) => a.accessRole === 'REVIEWER' && myTeamIds.has(a.teamId));
+  if (isReviewTeam) return true;
   if (!ctx.can('task.update_own')) return false;
   return task.creatorId === me(ctx) || task.assigneeId === me(ctx) || (task.assignees || []).some((a) => (a.userId ?? a.user?.id) === me(ctx));
 }

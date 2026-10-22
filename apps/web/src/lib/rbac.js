@@ -1,9 +1,16 @@
 // Mirrors server-side RBAC so the UI only offers what the API will accept. The API remains the authority.
 export const can = (me, permission) => !!me?.permissions?.includes(permission);
 
-export const canEditTask = (me, task) => {
-  if (!me) return false;
+export const canReviewTask = (me, task) => {
+  if (!me || !task) return false;
   if (can(me, 'task.update_any')) return true;
+  const mine = new Set(me.teamIds || []);
+  return (task.teamAccesses || []).some((a) => a.accessRole === 'REVIEWER' && mine.has(a.teamId));
+};
+
+export const canEditTask = (me, task) => {
+  if (!me || !task) return false;
+  if (canReviewTask(me, task)) return true;
   if (!can(me, 'task.update_own')) return false;
   const id = me.user.id;
   return task.creatorId === id || task.assigneeId === id || (task.assignees || []).some((a) => a.user?.id === id);
