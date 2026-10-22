@@ -1,6 +1,6 @@
 -- 1) No more Manager role: every Manager becomes an Employee (employees now hold the manager permissions).
-UPDATE "Membership" SET "role" = 'EMPLOYEE' WHERE "role" = 'MANAGER';
-UPDATE "Invitation" SET "role" = 'EMPLOYEE' WHERE "role" = 'MANAGER';
+UPDATE "Membership" SET "role" = 'EMPLOYEE' WHERE "role"::text = 'MANAGER';
+UPDATE "Invitation" SET "role" = 'EMPLOYEE' WHERE "role"::text = 'MANAGER';
 
 -- 2) New ticket status + progress model, open/close timestamps, inline (pasted) images.
 CREATE TYPE "TicketProgress" AS ENUM ('IN_PROGRESS', 'QA', 'NEED_MORE_INFO', 'RESOLVED');
