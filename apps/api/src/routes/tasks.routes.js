@@ -7,7 +7,8 @@ import {
 } from '../services/index.js';
 import { assigneesOutsideTeams } from '../services/ticketRouting.js';
 import { taskCommentRecipients } from '../services/taskComments.js';
-import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview } from '../services/taskReviewRules.js';
+import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview, reviewAuthorityOf, canFinishTask, REVIEW_HINT } from '../services/taskReviewRules.js';
+import { recordClientReviewRequest } from '../services/taskClientReview.js';
 import { commentCreate } from '../validators/schemas.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -18,7 +19,7 @@ const userSelect = { id: true, name: true, email: true, image: true };
 const include = {
   organization: { select: { id: true, name: true } },
   project: { select: { id: true, name: true } },
-  ticket: { select: { id: true, key: true, title: true, status: true } },
+  ticket: { select: { id: true, key: true, title: true, status: true, visibility: true, organization: { select: { type: true } } } },
   parent: { select: { id: true, title: true, status: true } },
   team: { select: { id: true, name: true } },
   teamAccesses: { include: { team: { select: { id: true, name: true } } } },
@@ -75,7 +76,16 @@ router.get('/tasks', async (req, res) => {
   if (!req.isInternal) return res.json([]);
   await ensureLegacyTaskReviewAccess();
   const mine = req.query.mine === 'true' ? { OR: [{ assigneeId: req.currentUser.id }, { assignees: { some: { userId: req.currentUser.id } } }] } : {};
-  res.json(await prisma.task.findMany({ where: { AND: [orgScope(req), taskTeamScope(req), mine] }, orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }], take: 300, include }));
+  const rows = await prisma.task.findMany({ where: { AND: [orgScope(req), taskTeamScope(req), mine] }, orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }], take: 300, include });
+  // `reviewBy` tells the UI who reviews each task (see taskReviewRules.js), so the screen never guesses.
+  res.json(rows.map((t) => ({
+    ...t,
+    reviewBy: reviewAuthorityOf({
+      autoCreated: t.autoCreated, parentId: t.parentId, ticketIsClient: t.ticket?.organization?.type === 'CLIENT' && t.ticket?.visibility === 'CLIENT',
+      reviewerTeamIds: t.teamAccesses.filter((a) => a.accessRole === 'REVIEWER').map((a) => a.teamId), creatorId: t.creatorId,
+      assigneeIds: [...new Set([t.assigneeId, ...t.assignees.map((a) => a.userId)].filter(Boolean))],
+    }),
+  })));
 });
 
 router.post('/tasks', requirePermission('task.create'), async (req, res) => {
@@ -90,8 +100,13 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
   await assertTicketInOrg(data.ticketId, data.organizationId);
   await assertAssignees(ids);
   if (parentId) {
-    const parent = await prisma.task.findFirst({ where: { id: parentId, organizationId: data.organizationId, ...taskTeamScope(req) }, select: { id: true } });
+    const parent = await prisma.task.findFirst({ where: { id: parentId, organizationId: data.organizationId, ...taskTeamScope(req) }, select: { id: true, status: true, autoCreated: true, ticketId: true, projectId: true } });
     if (!parent) throw new AppError('Parent task not found or not accessible.', 404);
+    if (parent.autoCreated) throw new AppError('This record mirrors its ticket. Add a linked task to the ticket instead of a subtask.', 400, 'MIRROR_NO_SUBTASKS');
+    if (['REVIEW', 'DONE'].includes(parent.status)) throw new AppError('Move the parent task back to In progress before adding subtasks.', 409, 'PARENT_IN_REVIEW');
+    // A subtask always belongs to the same ticket/project as its parent so the ticket rolls up all of its work.
+    if (!data.ticketId && parent.ticketId) data.ticketId = parent.ticketId;
+    if (!data.projectId && parent.projectId) data.projectId = parent.projectId;
   }
   if (teamIds.length && !cross) throw new AppError('Only authorized task assigners can distribute work across teams.', 403);
   const ownTeamIds = [...new Set(req.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
@@ -179,19 +194,25 @@ router.patch('/tasks/:id', async (req, res) => {
   if (teamIds) { const validTeams = teamIds.length ? await prisma.team.findMany({ where: { id: { in: teamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } }) : []; if (validTeams.length !== new Set(teamIds).size) throw new AppError('One or more task teams are invalid.', 400, 'INVALID_TEAM'); }
   const actorTeamIds = [...new Set((req.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
   const reviewerTeamIds = (old.teamAccesses || []).filter((a) => a.accessRole === 'REVIEWER').map((a) => a.teamId);
+  const workTeamIds = [...new Set([...(old.teamAccesses || []).filter((a) => a.accessRole !== 'REVIEWER').map((a) => a.teamId), old.teamId].filter(Boolean))];
+  const assigneeIdsNow = [...new Set([old.assigneeId, ...old.assignees.map((a) => a.userId)].filter(Boolean))];
+  const ticketRow = old.ticketId ? await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { status: true, visibility: true, requesterId: true, assigneeId: true, organizationId: true, key: true, title: true, organization: { select: { type: true } } } }) : null;
+  const ticketIsClient = ticketRow?.organization?.type === 'CLIENT' && ticketRow?.visibility === 'CLIENT';
+  const authority = reviewAuthorityOf({ autoCreated: old.autoCreated, parentId: old.parentId, ticketIsClient, reviewerTeamIds, creatorId: old.creatorId, assigneeIds: assigneeIdsNow });
   const actorCanReview = canApproveTask({ canUpdateAny: req.can('task.update_any'), actorTeamIds, reviewerTeamIds });
-  const hasTeamReviewer = taskNeedsTeamReview(reviewerTeamIds);
-  if (data.status === 'DONE' && old.autoCreated) {
+  const mayFinish = canFinishTask({ authority, actorId: req.currentUser.id, canUpdateAny: req.can('task.update_any'), actorTeamIds, reviewerTeamIds, workTeamIds, creatorId: old.creatorId, assigneeIds: assigneeIdsNow });
+  const hasTeamReviewer = authority === 'TEAM';
+  if (data.status === 'DONE' && authority === 'TICKET') {
     throw new AppError('This task mirrors a ticket. It becomes Done only through the ticket approval action.', 403, 'TICKET_APPROVAL_REQUIRED');
   }
-  if (data.status === 'DONE' && !actorCanReview) {
-    throw new AppError(hasTeamReviewer ? 'The team that requested this task must review it before marking it Done.' : 'Employees must submit tasks for review. Only an authorized reviewer can mark a task Done.', 403, 'TASK_REVIEW_REQUIRED');
+  if (data.status === 'DONE' && old.status !== 'DONE' && !mayFinish) {
+    throw new AppError(REVIEW_HINT[authority] || 'You cannot mark this task Done.', 403, 'TASK_REVIEW_REQUIRED');
   }
-  if (data.status === 'DONE' && old.status !== 'REVIEW' && old.status !== 'DONE') {
-    throw new AppError('A task must be submitted to Review before a reviewer can mark it Done.', 409, 'TASK_NOT_IN_REVIEW');
+  if (data.status === 'DONE' && authority !== 'NONE' && old.status !== 'REVIEW' && old.status !== 'DONE') {
+    throw new AppError('A task must be submitted to Review before it can be marked Done.', 409, 'TASK_NOT_IN_REVIEW');
   }
-  if (old.status === 'DONE' && data.status !== undefined && data.status !== 'DONE' && !actorCanReview) {
-    throw new AppError('Only the reviewing team can reopen a completed task.', 403, 'TASK_REOPEN_FORBIDDEN');
+  if (old.status === 'DONE' && data.status !== undefined && data.status !== 'DONE' && !(authority === 'TICKET' ? actorCanReview : mayFinish)) {
+    throw new AppError(authority === 'CLIENT' ? 'This task was approved by the client. Ask a platform admin to reopen it.' : 'Only the reviewer can reopen a completed task.', 403, 'TASK_REOPEN_FORBIDDEN');
   }
   if (old.autoCreated && data.status !== undefined && data.status !== old.status) {
     const mirrorTicket = await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { status: true } });
@@ -275,6 +296,13 @@ router.patch('/tasks/:id', async (req, res) => {
   if (nextIds) {
     const before = new Set([old.assigneeId, ...old.assignees.map((a) => a.userId)].filter(Boolean));
     for (const userId of nextIds.filter((u) => !before.has(u))) await notifyAssignment({ userId, actor: req.currentUser, title: task.title, kind: 'task', href: link(task) });
+  }
+  if (data.status === 'REVIEW' && old.status !== 'REVIEW' && authority === 'CLIENT' && ticketRow) {
+    await recordClientReviewRequest(prisma, { task, ticket: { id: old.ticketId, ...ticketRow }, actor: req.currentUser });
+  }
+  if (data.status === 'REVIEW' && old.status !== 'REVIEW' && authority === 'PEER') {
+    const mates = await findTeamManagers(workTeamIds);
+    await notifyPeople({ userIds: mates.filter((u) => !assigneeIdsNow.includes(u.id)).map((u) => u.id), actorId: req.currentUser.id, type: 'STATUS_CHANGE', title: `Task ready for review: ${task.title}`, body: `${req.currentUser.name || req.currentUser.email} submitted it for a teammate to check.`, href: link(task), email: false });
   }
   if (data.status === 'REVIEW' && hasTeamReviewer) {
     const reviewers = await findTeamManagers(reviewerTeamIds);

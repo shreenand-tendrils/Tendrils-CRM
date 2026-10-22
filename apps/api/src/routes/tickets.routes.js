@@ -14,7 +14,8 @@ import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, normalizeTeamPicks }
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
-import { ticketCreate, ticketUpdate, commentCreate } from '../validators/schemas.js';
+import { ticketCreate, ticketUpdate, commentCreate, taskClientReview } from '../validators/schemas.js';
+import { reviewTaskAsClient } from '../services/taskClientReview.js';
 
 const router = Router();
 const authorSelect = { author: { select: { id: true, name: true, email: true } } };
@@ -47,7 +48,7 @@ router.get('/tickets', async (req, res) => res.json(await listTickets(req)));
 async function listTickets(req) {
   const q = req.query.q ? String(req.query.q) : '';
   const search = q ? { OR: [{ title: { contains: q, mode: 'insensitive' } }, { key: { contains: q, mode: 'insensitive' } }] } : {};
-  return (
+  const rows = (
     await prisma.ticket.findMany({
       where: { AND: [ticketScope(req), search] }, orderBy: { updatedAt: 'desc' }, take: 150,
       include: {
@@ -63,6 +64,10 @@ async function listTickets(req) {
       },
     })
   );
+  // How many top-level tasks of each ticket wait for review (clients see these as "ready for your review").
+  const waiting = rows.length ? await prisma.task.groupBy({ by: ['ticketId'], where: { ticketId: { in: rows.map((r) => r.id) }, status: 'REVIEW', autoCreated: false, parentId: null }, _count: { _all: true } }) : [];
+  const byTicket = Object.fromEntries(waiting.map((w) => [w.ticketId, w._count._all]));
+  return rows.map((r) => ({ ...r, tasksInReview: byTicket[r.id] || 0 }));
 }
 
 async function createWithUniqueKey(data, slug, client = prisma) {
@@ -291,12 +296,22 @@ router.delete('/tickets/:id', async (req, res) => {
 router.get('/tickets/:id/tasks', async (req, res) => {
   const t = await loadVisibleTicket(req);
   res.json(await prisma.task.findMany({
-    where: { ticketId: t.id }, orderBy: { createdAt: 'asc' },
+    where: { ticketId: t.id, autoCreated: false }, orderBy: { createdAt: 'asc' }, // the auto-created mirror record is plumbing, never shown
     select: {
       id: true, title: true, description: true, status: true, priority: true, dueDate: true, createdAt: true, completedAt: true, parentId: true, autoCreated: true,
       team: { select: { id: true, name: true } }, assignees: { select: { user: { select: { id: true, name: true, email: true } } } },
     },
   }));
+});
+
+
+// Client review of one task: approve it, or send it back with what to change. The last approval closes the ticket.
+router.post('/tickets/:id/tasks/:taskId/review', async (req, res) => {
+  const t = await loadVisibleTicket(req);
+  if (req.isInternal || ticketEditScope(req, t) !== 'client') throw new AppError('Only the client who raised this ticket can review its tasks.', 403, 'CLIENT_ONLY');
+  const { decision, note } = parseBody(taskClientReview, req.body);
+  const out = await reviewTaskAsClient({ ticket: t, taskId: req.params.taskId, decision, note, actor: req.currentUser });
+  res.json({ task: { id: out.task.id, status: out.task.status }, ticketStatus: out.ticket.status, closed: out.closed });
 });
 
 router.get('/tickets/:id/attachments', async (req, res) => {

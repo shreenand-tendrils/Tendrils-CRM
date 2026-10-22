@@ -168,3 +168,5 @@ export const projectUpdateCreate = z.object({
 export const memberUpdate = z
   .object({ role: z.enum(ROLES).optional(), isActive: z.boolean().optional() })
   .refine((v) => v.role !== undefined || v.isActive !== undefined, 'Nothing to change');
+
+export const taskClientReview = z.object({ decision: z.enum(['APPROVE', 'CHANGES']), note: z.string().trim().max(2000).optional() });

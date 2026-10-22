@@ -59,7 +59,7 @@ export async function syncTaskFromTicket(db, ticket, { prevAssigneeId = null, ch
 }
 
 
-async function collectTicketTasks(db, ticketId) {
+export async function collectTicketTasks(db, ticketId) {
   let frontier = await db.task.findMany({ where: { ticketId }, select: { id: true, parentId: true, title: true, status: true, autoCreated: true } });
   const seen = new Map();
   while (frontier.length) {

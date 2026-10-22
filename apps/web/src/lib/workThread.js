@@ -31,7 +31,7 @@ export function buildTree(tasks = []) {
   return (kids.get(null) || []).sort(byCreated).map(node);
 }
 
-export const ROUTE_EVENT_TYPES = ["CREATED", "TEAM", "TEAM_ACCESS", "ASSIGNEE", "STATUS"];
+export const ROUTE_EVENT_TYPES = ["CREATED", "TEAM", "TEAM_ACCESS", "ASSIGNEE", "STATUS", "TASK_REVIEW"];
 
 /** Route events (oldest first) with the root tasks placed by the time they were created. */
 export function mergeTimeline(events = [], roots = []) {
@@ -70,3 +70,16 @@ export const incompleteSubtaskCount = (taskId, tasks = []) => {
   };
   return walk(taskId);
 };
+
+/** Direct children of a task, oldest first. */
+export const subtasksOf = (taskId, tasks = []) => tasks.filter((t) => t.parentId === taskId).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+/** { done, total } over every nested subtask, for the "2/5 subtasks" chip. */
+export function subtaskStats(taskId, tasks = []) {
+  const children = new Map();
+  for (const t of tasks) if (t.parentId) { if (!children.has(t.parentId)) children.set(t.parentId, []); children.get(t.parentId).push(t); }
+  let done = 0, total = 0; const seen = new Set();
+  const walk = (id) => { for (const c of children.get(id) || []) { if (seen.has(c.id)) continue; seen.add(c.id); total += 1; if (c.status === "DONE") done += 1; walk(c.id); } };
+  walk(taskId);
+  return { done, total };
+}

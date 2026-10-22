@@ -1,0 +1,48 @@
+/* Task/ticket workflow UI. Everything is min-width:0 and wraps so nothing pushes the layout sideways. */
+.task-card { min-width: 0; overflow-wrap: anywhere; }
+.task-card > b { overflow-wrap: anywhere; }
+.task-meta { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.task-meta .chip-link { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.chip-link.soft { background: #f3f4fa; color: #4a5368; }
+.chip-link.ok { background: #e3f6ec; color: #17794a; }
+.task-wait { border-radius: 8px; background: #efe9ff; color: #5b3fd0; font-size: 12.5px; font-weight: 600; padding: 5px 9px; }
+.icon-count { display: inline-flex; align-items: center; gap: 3px; }
+.task-card-foot { min-width: 0; }
+
+.wf-bar { display: flex; flex-direction: column; gap: 10px; border: 1px solid #d9d4ff; background: #f7f6ff; border-radius: 14px; padding: 14px 16px; min-width: 0; }
+.wf-steps { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 0; padding: 0; font-size: 13px; color: #6b7287; }
+.wf-steps li { display: inline-flex; align-items: center; gap: 6px; }
+.wf-steps i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #c9cde0; background: #fff; }
+.wf-steps li.past i { background: #17794a; border-color: #17794a; }
+.wf-steps li.now { color: #5746e8; font-weight: 700; }
+.wf-steps li.now i { background: #5746e8; border-color: #5746e8; box-shadow: 0 0 0 3px #e0dcff; }
+.wf-review { display: flex; gap: 6px; align-items: flex-start; margin: 0; font-size: 13px; color: #4a5368; }
+.wf-review svg { flex: none; margin-top: 2px; color: #5746e8; }
+.wf-actions { flex-wrap: wrap; gap: 8px; align-items: center; }
+.wf-actions .hint { margin: 0; }
+
+.subtasks { display: flex; flex-direction: column; gap: 8px; border: 1px solid #e6e9f4; border-radius: 14px; padding: 12px 14px; background: #fff; min-width: 0; }
+.subtasks header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.subtasks h4 { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #6b7287; }
+.subtasks ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.subtasks li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
+.subtasks li small { grid-column: 2 / 4; margin-top: -4px; }
+.subtasks li.done .linklike { text-decoration: line-through; color: #8a90a6; }
+.linklike { background: none; border: 0; padding: 0; text-align: left; font: inherit; color: #1f2540; cursor: pointer; overflow-wrap: anywhere; }
+.linklike:hover { color: #5746e8; text-decoration: underline; }
+.progress { height: 6px; border-radius: 99px; background: #eceef6; overflow: hidden; }
+.progress i { display: block; height: 100%; background: #17794a; border-radius: 99px; transition: width .2s; }
+.subtask-add { display: flex; gap: 8px; }
+.subtask-add input { flex: 1; min-width: 0; }
+
+.ticket-progress { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; }
+.review-rows { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.review-row { display: flex; flex-direction: column; gap: 8px; border: 1px solid #e3e6f2; border-radius: 12px; padding: 10px 12px; background: #fff; min-width: 0; }
+.review-row.asks { border-color: #b9aefc; background: #f7f6ff; }
+.review-row .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.review-row .top b { min-width: 0; overflow-wrap: anywhere; }
+.review-row .kids { margin: 0; padding-left: 18px; font-size: 13px; color: #4a5368; }
+.review-row .kids .done { text-decoration: line-through; color: #8a90a6; }
+.review-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.review-actions textarea { width: 100%; }
+@media (max-width: 640px) { .wf-bar, .subtasks { padding: 12px; } }

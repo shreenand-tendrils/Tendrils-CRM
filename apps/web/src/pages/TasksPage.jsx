@@ -15,12 +15,15 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
   const [project, setProject] = useState("");
   const meId = data.me?.user?.id;
 
-  const tasks = useMemo(() => (data.tasks || []).filter((t) => {
+  const [showSubtasks, setShowSubtasks] = useState(false);
+  const allTasks = useMemo(() => (data.tasks || []).filter((t) => !t.autoCreated), [data.tasks]); // the ticket's auto record is plumbing, never a card
+  const tasks = useMemo(() => allTasks.filter((t) => {
+    if (!showSubtasks && !mine && t.parentId) return false; // subtasks live inside their task
     if (mine && !(t.assignees || []).some((a) => a.user.id === meId) && t.assigneeId !== meId) return false;
     if (priority && t.priority !== priority) return false;
     if (project && t.projectId !== project) return false;
     return !search || `${t.title} ${t.project?.name || ""} ${t.organization?.name || ""}`.toLowerCase().includes(search.toLowerCase());
-  }), [data.tasks, mine, priority, project, search, meId]);
+  }), [allTasks, showSubtasks, mine, priority, project, search, meId]);
 
   const toolbar = (
     <div className="toolbar">
@@ -29,6 +32,7 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
         <button className={layout === "list" ? "on" : ""} onClick={() => setLayout("list")}><List size={13} /> List</button>
       </div>
       <button className={"chip" + (mine ? " on" : "")} onClick={() => setMine(!mine)}>My tasks</button>
+      <button className={"chip" + (showSubtasks ? " on" : "")} onClick={() => setShowSubtasks(!showSubtasks)}>Show subtasks</button>
       <select value={priority} onChange={(e) => setPriority(e.target.value)}>
         <option value="">All priorities</option>
         {["URGENT", "HIGH", "MEDIUM", "LOW"].map((p) => <option key={p} value={p}>{p[0] + p.slice(1).toLowerCase()}</option>)}
@@ -42,10 +46,10 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
   );
 
   return (
-    <Panel title="Tasks" sub="Tasks created from assigned tickets appear here automatically">
+    <Panel title="Tasks" sub="The work behind your tickets. Subtasks sit inside their task; tickets themselves live under Tickets.">
       {toolbar}
       {layout === "board" ? (
-        <TaskBoard tasks={tasks} me={data.me} onCreate={onCreate} onStatusChange={onStatusChange} onOpen={onOpen} doneLocked={doneLocked} />
+        <TaskBoard tasks={tasks} allTasks={allTasks} me={data.me} onCreate={onCreate} onStatusChange={onStatusChange} onOpen={onOpen} />
       ) : (
         <div className="table-wrap">
           <table className="data-table">

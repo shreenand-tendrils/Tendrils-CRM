@@ -426,6 +426,8 @@ export default function App() {
         tasks={data.tasks || []}
         onAddTask={(t) => openModal("task", { organizationId: t.organization?.id || t.organizationId, ticketId: t.id, teamId: t.teamId || "", projectId: t.projectId || t.project?.id || "" })}
         onOpenTask={openTask}
+        onRefresh={refresh}
+        notify={notify}
         onDelete={deleteTicket}
         onClose={() => setSelected(null)}
         onUpdate={(id, body) => update("tickets", id, body)}

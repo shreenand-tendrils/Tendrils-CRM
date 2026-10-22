@@ -15,3 +15,29 @@ test('only the requester/reviewer team or an authorized global reviewer can appr
   assert.equal(canApproveTask({ canUpdateAny: true, actorTeamIds: ['receiving-team'], reviewerTeamIds }), true);
   assert.equal(canApproveTask({ actorTeamIds: ['receiving-team'], reviewerTeamIds: [] }), false);
 });
+
+import { reviewAuthorityOf, canFinishTask } from '../src/services/taskReviewRules.js';
+
+test('review authority: who reviews which task', () => {
+  assert.equal(reviewAuthorityOf({ autoCreated: true }), 'TICKET');
+  assert.equal(reviewAuthorityOf({ parentId: 'p', ticketIsClient: true }), 'NONE', 'subtasks are the doer’s checklist');
+  assert.equal(reviewAuthorityOf({ ticketIsClient: true, creatorId: 'a', assigneeIds: ['b'] }), 'CLIENT');
+  assert.equal(reviewAuthorityOf({ reviewerTeamIds: ['t'], creatorId: 'a', assigneeIds: ['b'] }), 'TEAM');
+  assert.equal(reviewAuthorityOf({ creatorId: 'a', assigneeIds: ['b'] }), 'PEER');
+  assert.equal(reviewAuthorityOf({ creatorId: 'a', assigneeIds: ['a'] }), 'NONE', 'self-managed task');
+  assert.equal(reviewAuthorityOf({ creatorId: 'a', assigneeIds: [] }), 'NONE', 'unassigned task');
+});
+
+test('who may mark Done: no deadlocks, no self-approval', () => {
+  const base = { actorTeamIds: ['eng'], workTeamIds: ['eng'], creatorId: 'lead', assigneeIds: ['dev'] };
+  assert.equal(canFinishTask({ ...base, authority: 'NONE', actorId: 'dev' }), true);
+  assert.equal(canFinishTask({ ...base, authority: 'TICKET', actorId: 'admin', canUpdateAny: true }), false);
+  assert.equal(canFinishTask({ ...base, authority: 'CLIENT', actorId: 'dev' }), false, 'only the client (or an admin) approves client work');
+  assert.equal(canFinishTask({ ...base, authority: 'CLIENT', actorId: 'admin', canUpdateAny: true }), true);
+  assert.equal(canFinishTask({ ...base, authority: 'PEER', actorId: 'dev' }), false, 'assignee cannot approve own work');
+  assert.equal(canFinishTask({ ...base, authority: 'PEER', actorId: 'mate' }), true, 'teammate can');
+  assert.equal(canFinishTask({ ...base, authority: 'PEER', actorId: 'lead', actorTeamIds: [] }), true, 'creator can');
+  assert.equal(canFinishTask({ ...base, authority: 'PEER', actorId: 'stranger', actorTeamIds: ['seo'] }), false);
+  assert.equal(canFinishTask({ ...base, authority: 'TEAM', actorId: 'x', actorTeamIds: ['design'], reviewerTeamIds: ['design'] }), true);
+  assert.equal(canFinishTask({ ...base, authority: 'TEAM', actorId: 'dev', reviewerTeamIds: ['design'] }), false);
+});

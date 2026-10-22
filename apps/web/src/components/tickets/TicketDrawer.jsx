@@ -19,7 +19,7 @@ import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
-export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete }) {
+export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete, onRefresh, notify }) {
   const [text, setText] = useState("");
   const [pastePreview, setPastePreview] = useState("");
   const [pasteHint, setPasteHint] = useState("");
@@ -38,7 +38,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       setPasteHint("");
     } catch { setPasteHint("Could not paste the image."); }
   };
-  const [tab, setTab] = useState(me?.isInternal ? "route" : "comments");
+  const [tab, setTab] = useState(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments");
   const [visibility, setVisibility] = useState("CLIENT");
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(ticket?.title || "");
@@ -47,7 +47,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [ownerTeamId, setOwnerTeamId] = useState("");
   const navigate = useNavigate();
   useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
-  useEffect(() => { setTab(me?.isInternal ? "route" : "comments"); }, [ticket?.id, me?.isInternal]);
+  useEffect(() => { setTab(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments"); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
@@ -60,7 +60,9 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
   const linked = tasks.filter((t) => t.ticketId === ticket.id);
   const linkedTree = buildTree(collectThread(tasks, { ticketId: ticket.id }));
-  const linkedRoots = linkedTree.map((n) => n.task);
+  const linkedRoots = linkedTree.map((n) => n.task).filter((t) => !t.autoCreated); // the ticket's auto record is plumbing
+  const rootsDone = linkedRoots.filter((t) => t.status === "DONE").length;
+  const inReview = linkedRoots.filter((t) => t.status === "REVIEW").length;
   const countIncompleteWork = (nodes) => nodes.reduce((total, node) => total + ((!node.task.autoCreated && node.task.status !== "DONE") ? 1 : 0) + countIncompleteWork(node.children || []), 0);
   const incompleteWorkCount = countIncompleteWork(linkedTree);
   const reviewBlocked = incompleteWorkCount > 0;
@@ -92,6 +94,13 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       <span><b>Ready for your review</b><small>Approve it, or send it back with a comment explaining what to change.</small></span>
       <button className="primary" onClick={() => onUpdate(ticket.id, { status: "CLOSED" })}>Approve</button>
       <button className="secondary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}><Undo2 size={14} /> Send back</button>
+    </div>
+  );
+  const clientTasks = !staff && ticket.status === "OPEN" && ticket.tasksInReview > 0 && (
+    <div className="linked-task">
+      <ThumbsUp size={22} color="#5746e8" />
+      <span><b>{ticket.tasksInReview} task{ticket.tasksInReview === 1 ? " is" : "s are"} ready for your review</b><small>Approve each one, or ask for changes. When the last task is approved, the ticket closes.</small></span>
+      <button className="primary" onClick={() => setTab("tasks")}>Review now</button>
     </div>
   );
   const clientHelp = !staff && ticket.status === "REVIEW_HELP" && (
@@ -177,17 +186,23 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       {staff && (
         <div className="linked-task" style={{ flexWrap: "wrap" }}>
           <ListChecks size={22} color="#5746e8" />
-          <span><b>Linked tasks ({linked.length})</b><small>{ticket.teamId ? "Branch work off this ticket, for your team or another one." : "Route the ticket to a team before adding tasks."}</small></span>
+          <span><b>Tasks ({linkedRoots.length})</b><small>{ticket.teamId ? "Branch work off this ticket, for your team or another one." : "Route the ticket to a team before adding tasks."}</small></span>
           {can(me, "task.create") && <button className="primary" disabled={!ticket.teamId} onClick={() => onAddTask?.(ticket)}><Plus size={14} /> Add linked task</button>}
           {linkedRoots.length > 0 && (
-            <div className="linked-rows">
-              {linkedRoots.map((t) => (
-                <button key={t.id} type="button" onClick={() => onOpenTask?.(t)} aria-label={`Open task ${t.title}`}>
-                  <span><b>{t.title}</b><small style={{ display: "block" }}>{t.autoCreated ? "Auto task" : "Linked task"} · {taskPeople(t).join(", ") || "Unassigned"}</small></span>
-                  <StatusBadge value={t.status} />
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="ticket-progress"><small className="muted">{rootsDone} of {linkedRoots.length} done{inReview > 0 ? ` · ${inReview} waiting for review` : ""}</small><div className="progress" aria-hidden="true"><i style={{ width: `${Math.round((rootsDone / linkedRoots.length) * 100)}%` }} /></div></div>
+              <div className="linked-rows">
+                {linkedRoots.map((t) => {
+                  const subs = linkedTree.flatMap(function walk(n) { return [n, ...n.children.flatMap(walk)]; }).filter((n) => n.task.parentId === t.id);
+                  return (
+                    <button key={t.id} type="button" onClick={() => onOpenTask?.(t)} aria-label={`Open task ${t.title}`}>
+                      <span><b>{t.title}</b><small style={{ display: "block" }}>{taskPeople(t).join(", ") || "Unassigned"}{subs.length ? ` · ${subs.filter((n) => n.task.status === "DONE").length}/${subs.length} subtasks` : ""}</small></span>
+                      <StatusBadge value={t.status} />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -200,6 +215,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       head={<><b className="win-key">{ticket.key}</b>{staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}<PriorityBadge value={ticket.priority} /></>}
     >
       {clientReview}
+      {clientTasks}
       {clientHelp}
       {editing ? (
         <div className="field">
@@ -223,12 +239,12 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       <div className="drawer-tabs" role="tablist">
         {staff && <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>}
         <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>
-        {!staff && <button role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "tab on" : "tab"} onClick={() => setTab("tasks")}>Tasks</button>}
+        {!staff && <button role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "tab on" : "tab"} onClick={() => setTab("tasks")}>Tasks{ticket.tasksInReview > 0 ? ` (${ticket.tasksInReview} to review)` : ""}</button>}
         <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>History</button>
         {can(me, "file.upload") && <button role="tab" aria-selected={tab === "files"} className={tab === "files" ? "tab on" : "tab"} onClick={() => setTab("files")}>Files ({ticket._count?.attachments || 0})</button>}
       </div>
       {staff && tab === "route" && <WorkThread ticket={ticket} ticketId={ticket.id} currentTicket tasks={collectThread(tasks, { ticketId: ticket.id })} onOpenTask={onOpenTask} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}`} />}
-      {!staff && tab === "tasks" && <TicketTasks ticketId={ticket.id} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}`} />}
+      {!staff && tab === "tasks" && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
       {tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
       {tab === "comments" && comments.map((c) => (
         <div className="comment" key={c.id}>

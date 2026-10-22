@@ -12,6 +12,10 @@ export const canEditTask = (me, task) => {
   if (!me || !task) return false;
   if (canReviewTask(me, task)) return true;
   if (!can(me, 'task.update_own')) return false;
+  // Inside a team everybody is a teammate: members of the task's work team can move it along (mirrors the API).
+  const mine = new Set(me.teamIds || []);
+  const workTeams = [...(task.teamAccesses || []).filter((a) => a.accessRole !== 'REVIEWER').map((a) => a.teamId), task.teamId].filter(Boolean);
+  if (workTeams.some((tid) => mine.has(tid))) return true;
   const id = me.user.id;
   return task.creatorId === id || task.assigneeId === id || (task.assignees || []).some((a) => a.user?.id === id);
 };

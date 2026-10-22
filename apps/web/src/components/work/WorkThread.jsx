@@ -5,7 +5,7 @@ import { describeEvent, actorLabel } from "../../lib/ticketHistory";
 import { buildTree, mergeTimeline, taskPeople, taskTeams } from "../../lib/workThread";
 import "../../styles/thread.css";
 
-const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", STATUS: "status" };
+const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", STATUS: "status", TASK_REVIEW: "status" };
 
 function TaskNode({ node, focusTaskId, onOpenTask }) {
   const t = node.task;
@@ -16,7 +16,7 @@ function TaskNode({ node, focusTaskId, onOpenTask }) {
     <>
       <span className="thread-title">{t.title} <StatusBadge value={t.status} />{focus && <span className="here">You are here</span>}</span>
       <small>
-        {t.parentId ? "Subtask" : t.autoCreated ? "Auto task" : "Linked task"}
+        {t.parentId ? "Subtask" : "Task"}
         {owner ? ` · ${owner}${shared.length ? ` +${shared.join(", ")}` : ""}` : ""}
         {` · ${people.length ? people.join(", ") : "Unassigned"}`}
       </small>
@@ -47,7 +47,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
     return () => { live = false; };
   }, [ticketId, refreshKey]);
 
-  const tree = buildTree(tasks);
+  const tree = buildTree(tasks.filter((t) => !t.autoCreated)); // the ticket's auto record is plumbing, not work
   const timeline = mergeTimeline(events, tree);
   const rootBody = ticket && (
     <>
@@ -83,7 +83,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
         </div>
       ))}
       {!timeline.length && !ticket && <p className="hint">Nothing to show yet.</p>}
-      {ticket && !tasks.length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
+      {ticket && !tasks.filter((t) => !t.autoCreated).length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
     </div>
   );
 }

@@ -34,5 +34,15 @@ export function useWorkspace() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Stay in sync: when a teammate or the client changes a ticket/task, this screen catches up by itself
+  // (every 20 s while the tab is visible, and the moment you come back to it).
+  useEffect(() => {
+    const quiet = () => { if (document.visibilityState === "visible" && !first.current) refresh(); };
+    const timer = setInterval(quiet, 20000);
+    document.addEventListener("visibilitychange", quiet);
+    window.addEventListener("focus", quiet);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", quiet); window.removeEventListener("focus", quiet); };
+  }, [refresh]);
   return { data, loading, error, refresh, setData };
 }

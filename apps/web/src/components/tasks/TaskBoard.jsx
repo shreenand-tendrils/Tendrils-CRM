@@ -1,13 +1,25 @@
-import { Plus, Ticket, MessageSquare, Paperclip } from "lucide-react";
+import { Plus, Ticket, MessageSquare, Paperclip, ListChecks, ShieldCheck } from "lucide-react";
 import { formatDate, isOverdue } from "../../lib/formatters";
 import AvatarStack from "../ui/AvatarStack";
 import { PriorityBadge } from "../ui/StatusBadge";
-import { can, canEditTask, canReviewTask } from "../../lib/rbac";
-import { incompleteSubtaskCount } from "../../lib/workThread";
+import { can, canEditTask } from "../../lib/rbac";
+import { incompleteSubtaskCount, subtaskStats } from "../../lib/workThread";
+import { statusChoices, taskFacts, REVIEW_LABEL } from "../../lib/taskReview";
+import "../../styles/workflow.css";
 
-export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "Ready for review"], ["DONE", "Done"]];
+export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "In review"], ["DONE", "Done"]];
 
-export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate, onOpen, doneLocked }) {
+const reviewChip = (task, authority) => {
+  if (task.status !== "REVIEW") return null;
+  if (authority === "CLIENT") return "Waiting for client";
+  if (authority === "TEAM") return `Review by ${(task.teamAccesses || []).filter((a) => a.accessRole === "REVIEWER").map((a) => a.team?.name).filter(Boolean).join(", ") || "requesting team"}`;
+  if (authority === "PEER") return "Waiting for a teammate";
+  return null;
+};
+
+// Board of TOP-LEVEL work. Subtasks live inside their task (checklist), and the ticket's auto record is never shown.
+export default function TaskBoard({ tasks = [], allTasks, me, onStatusChange, onCreate, onOpen }) {
+  const universe = allTasks || tasks;
   return (
     <div className="task-board">
       {COLUMNS.map(([key, label]) => {
@@ -16,30 +28,39 @@ export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate, on
           <section className="task-column" key={key} aria-label={label}>
             <header><span>{label}</span><b>{list.length}</b></header>
             <div className="task-cards">
-              {list.map((t) => (
-                <article className="task-card" key={t.id} style={onOpen ? { cursor: "pointer" } : undefined} tabIndex={onOpen ? 0 : undefined} role={onOpen ? "button" : undefined} aria-label={onOpen ? `Open task ${t.title}` : undefined} onClick={() => onOpen?.(t)} onKeyDown={(e) => { if (onOpen && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t); } }}>
-                  <div className="task-card-top">
-                    <PriorityBadge value={t.priority} />
-                    <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t) || (t.status === "DONE" && !canReviewTask(me, t)) || (t.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(t.ticket?.status))} title={!canEditTask(me, t) ? "You can only move tasks assigned to you" : t.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(t.ticket?.status) ? "Ticket is waiting for the client; use the ticket review actions" : t.status === "DONE" && !canReviewTask(me, t) ? "Only the review team can reopen a completed task" : undefined} onChange={(e) => onStatusChange(t, e.target.value)}>
-                      {COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (t.autoCreated || !canReviewTask(me, t)) && t.status !== "DONE"; const pending = incompleteSubtaskCount(t.id, tasks); const subtasksBlocked = ["REVIEW", "DONE"].includes(v) && pending > 0 && t.status !== v; return <option key={v} value={v} disabled={doneBlocked || subtasksBlocked || (v === "DONE" && doneLocked?.(t) && t.status !== "DONE")}>{l}{doneBlocked ? (t.autoCreated ? " (ticket approval required)" : " (review team approval required)") : subtasksBlocked ? ` (${pending} unfinished subtask${pending === 1 ? "" : "s"})` : v === "DONE" && doneLocked?.(t) && t.status !== "DONE" ? " (finish subtasks first)" : ""}</option>; })}
-                    </select>
-                  </div>
-                  <b>{t.title}</b>
-                  {t.ticket && <span className="chip-link" style={{ alignSelf: "flex-start" }}><Ticket size={13} /> From {t.ticket.key}</span>}
-                  {t.parent && <span className="chip-link" style={{ alignSelf: "flex-start" }}>Subtask of {t.parent.title}</span>}
-                  {t.teamAccesses?.length > 0 && <span className="chip-link" style={{ alignSelf: "flex-start" }}>Work team: {t.teamAccesses.filter((a) => a.accessRole !== "REVIEWER").map((a) => a.team?.name).filter(Boolean).join(", ") || "—"}</span>}
-                  {t.teamAccesses?.some((a) => a.accessRole === "REVIEWER") && <span className="chip-link" style={{ alignSelf: "flex-start" }}>Review by: {t.teamAccesses.filter((a) => a.accessRole === "REVIEWER").map((a) => a.team?.name).filter(Boolean).join(", ")}</span>}
-                  {incompleteSubtaskCount(t.id, tasks) > 0 && <small className="muted">{incompleteSubtaskCount(t.id, tasks)} unfinished subtask{incompleteSubtaskCount(t.id, tasks) === 1 ? "" : "s"}</small>}
-                  <p>{t.description || "No description provided."}</p>
-                  <div className="task-card-foot">
-                    <span>{t.project?.name || t.organization?.name || "Workspace"}</span>
-                    <AvatarStack users={(t.assignees || []).map((a) => a.user)} />
-                    {t._count?.comments > 0 && <small title="Comments" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><MessageSquare size={12} />{t._count.comments}</small>}
-                    {t._count?.attachments > 0 && <small title="Files" style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Paperclip size={12} />{t._count.attachments}</small>}
-                    <small className={isOverdue(t) ? "overdue" : ""}>{formatDate(t.dueDate)}</small>
-                  </div>
-                </article>
-              ))}
+              {list.map((t) => {
+                const { authority } = taskFacts(me, t);
+                const subs = subtaskStats(t.id, universe);
+                const pending = incompleteSubtaskCount(t.id, universe);
+                const choices = statusChoices({ me, task: t, pendingSubtasks: pending, columns: COLUMNS });
+                const waiting = reviewChip(t, authority);
+                const reviewers = (t.teamAccesses || []).filter((a) => a.accessRole === "REVIEWER");
+                return (
+                  <article className="task-card" key={t.id} style={onOpen ? { cursor: "pointer" } : undefined} tabIndex={onOpen ? 0 : undefined} role={onOpen ? "button" : undefined} aria-label={onOpen ? `Open task ${t.title}` : undefined} onClick={() => onOpen?.(t)} onKeyDown={(e) => { if (onOpen && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t); } }}>
+                    <div className="task-card-top">
+                      <PriorityBadge value={t.priority} />
+                      <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t)} title={!canEditTask(me, t) ? "You can only move tasks of your own teams" : undefined} onChange={(e) => onStatusChange?.(t, e.target.value)}>
+                        {choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}
+                      </select>
+                    </div>
+                    <b>{t.title}</b>
+                    <div className="task-meta">
+                      {t.ticket && <span className="chip-link"><Ticket size={13} /> {t.ticket.key}</span>}
+                      {authority !== "NONE" && authority !== "TICKET" && <span className="chip-link soft" title={REVIEW_LABEL[authority]}><ShieldCheck size={13} /> {REVIEW_LABEL[authority]}</span>}
+                      {reviewers.length > 0 && authority === "TEAM" && <span className="chip-link soft">From {reviewers.map((a) => a.team?.name).filter(Boolean).join(", ")}</span>}
+                      {subs.total > 0 && <span className={"chip-link" + (subs.done === subs.total ? " ok" : "")}><ListChecks size={13} /> {subs.done}/{subs.total} subtasks</span>}
+                    </div>
+                    {waiting && <div className="task-wait" role="status">{waiting}</div>}
+                    <div className="task-card-foot">
+                      <span>{t.project?.name || t.organization?.name || "Workspace"}</span>
+                      <AvatarStack users={(t.assignees || []).map((a) => a.user)} />
+                      {t._count?.comments > 0 && <small title="Comments" className="icon-count"><MessageSquare size={12} />{t._count.comments}</small>}
+                      {t._count?.attachments > 0 && <small title="Files" className="icon-count"><Paperclip size={12} />{t._count.attachments}</small>}
+                      <small className={isOverdue(t) ? "overdue" : ""}>{formatDate(t.dueDate)}</small>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
             {can(me, "task.create") && <button className="board-add" onClick={onCreate}><Plus size={15} /> Add task</button>}
           </section>

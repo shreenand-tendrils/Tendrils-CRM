@@ -24,6 +24,7 @@ export function describeEvent(e) {
     case "DUE_DATE": return `changed the due date from ${day(e.fromValue)} to ${day(e.toValue)}`;
     case "VISIBILITY": return `made the ticket ${e.toValue === "INTERNAL" ? "internal only" : "visible to the client"}`;
     case "PROJECT": return e.toLabel ? `linked the ticket to project ${e.toLabel}` : "unlinked the ticket from its project";
+    case "TASK_REVIEW": return e.toValue === "REQUESTED" ? `submitted “${e.toLabel || "a task"}” for review` : e.toValue === "APPROVED" ? `approved “${e.toLabel || "a task"}”` : `asked for changes on “${e.toLabel || "a task"}”${e.note ? `: ${e.note}` : ""}`;
     case "TASK": return `added linked task “${e.toLabel || "task"}”`;
     case "COMMENT": return e.clientVisible ? "commented" : "added an internal note";
     case "ATTACHMENT": return `attached ${e.toLabel || "a file"}`;

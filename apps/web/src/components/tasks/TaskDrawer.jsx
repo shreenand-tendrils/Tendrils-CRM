@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Ticket as TicketIcon, UploadCloud } from "lucide-react";
+import { Ticket as TicketIcon, UploadCloud } from "lucide-react";
 import { api } from "../../api";
 import { formatDate } from "../../lib/formatters";
 import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
@@ -9,7 +9,9 @@ import TeamMultiSelect from "../ui/TeamMultiSelect";
 import { peopleOfTeams } from "../../lib/teams";
 import { daysPassed, dayLabel } from "../../lib/ticketStatus";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
-import { can, canEditTask, canReviewTask } from "../../lib/rbac";
+import { can, canEditTask } from "../../lib/rbac";
+import { statusChoices, taskFacts } from "../../lib/taskReview";
+import { TaskWorkflowBar, SubtaskChecklist } from "./TaskWorkflow";
 import { COLUMNS } from "./TaskBoard";
 import Window from "../ui/Window";
 import WorkThread from "../work/WorkThread";
@@ -50,15 +52,18 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const people = taskPeople(task);
   const editable = canEditTask(me, task);
   const thread = collectThread(tasks, { ticketId: task.ticketId, focusId: task.id });
-  const kind = task.autoCreated ? "Auto task" : task.parentId ? "Subtask" : "Task";
+  const kind = task.autoCreated ? "Ticket record" : task.parentId ? "Subtask" : "Task";
   const pendingSubtasks = incompleteSubtaskCount(task.id, tasks);
+  const { authority } = taskFacts(me, task);
+  const choices = statusChoices({ me, task, pendingSubtasks, columns: COLUMNS });
+  const parentTask = task.parentId ? tasks.find((t) => t.id === task.parentId) || task.parent : null;
 
   const side = (
     <>
       <div className="win-card">
         <div className="detail"><span>Status</span>
-          {editable
-            ? <select disabled={(task.status === "DONE" && !canReviewTask(me, task)) || (task.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(ticket?.status))} className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (task.autoCreated || !canReviewTask(me, task)) && task.status !== "DONE"; const subtasksBlocked = ["REVIEW", "DONE"].includes(v) && pendingSubtasks > 0 && task.status !== v; return <option key={v} value={v} disabled={doneBlocked || subtasksBlocked}>{l}{doneBlocked ? (task.autoCreated ? " (ticket approval required)" : " (review team approval required)") : subtasksBlocked ? ` (${pendingSubtasks} unfinished subtask${pendingSubtasks === 1 ? "" : "s"})` : ""}</option>; })}</select>
+          {editable && authority !== "TICKET"
+            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
@@ -87,12 +92,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           <button className="primary" disabled={!ownerTeam} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { teamId: ownerTeam, teamIds: sharedTeams.filter((x) => x !== ownerTeam), assigneeIds }); notify?.("Task reassigned"); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not reassign", "error"); } }}>Save reassignment</button>
         </div>
       )}
-      {pendingSubtasks > 0 && <p className="hint" role="status">Finish the {pendingSubtasks} unfinished subtask{pendingSubtasks === 1 ? "" : "s"} before submitting this task for review or marking it Done.</p>}
-      {task.autoCreated && <p className="hint">This task mirrors its ticket: Open → In progress, Review/Test → Review, Review/Help → Blocked, and only client approval closes the ticket and marks this task Done. Don’t change a mirror task while the ticket is waiting for the client; reassign it from the ticket window.</p>}
-      {!task.autoCreated && (task.teamAccesses || []).some((a) => a.accessRole === "REVIEWER") && <p className="hint">Cross-team task: submit finished work to <b>{(task.teamAccesses || []).filter((a) => a.accessRole === "REVIEWER").map((a) => a.team?.name).filter(Boolean).join(", ") || "the requesting team"}</b> by moving it to Review. The requesting team reviews the result and marks it Done.</p>}
-      {!task.autoCreated && !(task.teamAccesses || []).some((a) => a.accessRole === "REVIEWER") && !can(me, "task.update_any") && <p className="hint">Submit finished work by moving the task to Review. An authorized reviewer must approve it before it can be marked Done.</p>}
+      {task.autoCreated && <p className="hint">This record only mirrors its ticket and is hidden from the board. Open the ticket to see and add its tasks.</p>}
       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
-        {can(me, "task.create") && !task.autoCreated && <button className="primary" onClick={() => onAddSubtask(task)}><Plus size={14} /> Add subtask</button>}
         {ticketFull && <button className="secondary" onClick={() => onOpenTicket(ticketFull)}><TicketIcon size={14} /> Open {ticketFull.key}</button>}
       </div>
     </>
@@ -113,6 +114,9 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           <div style={{ marginTop: 6 }}><RichText text={task.description || "No description added."} canDelete={editable} />{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}</div>
         )}
       </div>
+      {parentTask && <p className="hint">Subtask of <button type="button" className="linklike" onClick={() => onOpenTask?.(parentTask)}>{parentTask.title}</button></p>}
+      {!task.autoCreated && <TaskWorkflowBar task={task} tasks={tasks} me={me} onStatusChange={onStatusChange} />}
+      <SubtaskChecklist task={task} tasks={tasks} me={me} onOpenTask={onOpenTask} onRefresh={onRefresh} notify={notify} />
       <div className="drawer-tabs" role="tablist">
         <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({nComments})</button>
         <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>
