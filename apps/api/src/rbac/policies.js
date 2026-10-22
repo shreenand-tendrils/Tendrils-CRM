@@ -48,6 +48,9 @@ export const TICKET_FIELDS = {
 export function ticketEditScope(ctx, t) {
   if (ctx.isInternal) {
     if (ctx.can('ticket.triage')) return 'full';
+    const myTeamIds = new Set((ctx.memberships || []).flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)));
+    const belongsToTicketTeam = (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
+    if (ctx.can('ticket.route') && belongsToTicketTeam) return 'full';
     if (ctx.can('ticket.update_own') && t.requesterId === me(ctx)) return 'own';
     if (ctx.can('ticket.update_own') && t.assigneeId === me(ctx)) return 'status';
     return 'none';

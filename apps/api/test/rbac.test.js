@@ -93,9 +93,20 @@ test('progress follows status', () => {
   assert.ok(progressValid('OPEN', 'QA') && progressValid('REVIEW_HELP', 'NEED_MORE_INFO') && !progressValid('CLOSED', 'QA') && !progressValid('OPEN', 'RESOLVED'));
 });
 
-test('only platform admins can route work across teams; employees stay team-scoped', () => {
-  assert.ok(!ctx('EMPLOYEE').can('work.cross_team') && ctx('PLATFORM_ADMIN').can('work.cross_team'));
-  assert.ok(!ctx('CLIENT_ADMIN').can('work.cross_team'));
+test('employees can route tickets across teams while remaining team-scoped; only admins have global triage', () => {
+  assert.ok(ctx('EMPLOYEE').can('ticket.route'));
+  assert.ok(!ctx('EMPLOYEE').can('ticket.triage'));
+  assert.ok(ctx('PLATFORM_ADMIN').can('ticket.triage') && ctx('PLATFORM_ADMIN').can('work.cross_team'));
+  assert.ok(!ctx('CLIENT_ADMIN').can('ticket.route') && !ctx('CLIENT_ADMIN').can('work.cross_team'));
+});
+
+
+test('employees can route tickets in their own team, but not edit unrelated teams', () => {
+  const memberships = [{ role: 'EMPLOYEE', organizationId: 'internal', organization: { type: 'INTERNAL' }, teamMemberships: [{ teamId: 'team-a' }] }];
+  const permissions = permissionsFor(memberships);
+  const ctxFor = { currentUser: { id: 'employee' }, memberships, isInternal: true, permissions, can: (p) => permissions.has(p) };
+  assert.equal(ticketEditScope(ctxFor, { teamAccesses: [{ teamId: 'team-a' }] }), 'full');
+  assert.equal(ticketEditScope(ctxFor, { teamAccesses: [{ teamId: 'team-b' }] }), 'none');
 });
 
 test('staff keep seeing a ticket they raised for another team', () => {

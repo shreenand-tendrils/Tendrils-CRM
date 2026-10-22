@@ -60,7 +60,7 @@ export default function TeamsPage({ data, me, onRefresh, notify }) {
             <h3>{t.name}{t.isActive === false && " (archived)"}</h3>
             <p>{t.description || "A focused team collaborating on client delivery."}</p>
             <AvatarStack users={(t.members || []).map((m) => m.membership?.user).filter(Boolean)} max={5} />
-            <small>{t._count?.members ?? (t.members || []).length} members{manage ? ` · ${t.clientVisible === false ? "hidden from clients" : "clients can choose it"}` : ""}</small>
+            <small>{(t.members || []).length} members{manage ? ` · ${t.clientVisible === false ? "hidden from clients" : "clients can choose it"}` : ""}</small>
             {manage && (
               <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                 {t.isActive === false

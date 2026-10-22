@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   'ticket.create': 'Raise tickets',
   'ticket.view_internal': 'See internal-only tickets and comments',
   'ticket.triage': 'Assign, re-prioritise and change status of any ticket',
+  'ticket.route': 'Route tickets from your team to another team and assign team members',
   'ticket.update_own': 'Update status of tickets assigned to them',
   'ticket.comment_internal': 'Write internal comments',
   'file.upload': 'Upload attachments',
@@ -31,7 +32,7 @@ export const PERMISSIONS = {
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
+const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.route', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),

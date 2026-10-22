@@ -51,10 +51,11 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
+  const canRoute = triage || (can(me, "ticket.route") && (ticket.teamAccesses || []).some((a) => { const team = teams.find((t) => t.id === a.teamId); return (team?.members || []).some((m) => m.membership?.user?.id === me.user?.id); }));
   const ownStatus = can(me, "ticket.update_own") && ticket.assigneeId === me.user.id;
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
   const canEditDetails = triage || requesterCanEdit;
-  const canStatus = triage || ownStatus || (me.isInternal && requesterCanEdit);
+  const canStatus = triage || canRoute || ownStatus || (me.isInternal && requesterCanEdit);
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
   const linked = tasks.filter((t) => t.ticketId === ticket.id);
@@ -97,7 +98,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     </div>
   );
 
-  const teamBlock = staff && (triage ? (
+  const teamBlock = staff && (canRoute ? (
     <div className="team-block">
       <div className="field">
         <label htmlFor="ticket-owner-team">Team</label>

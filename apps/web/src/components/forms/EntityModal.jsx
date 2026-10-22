@@ -10,11 +10,11 @@ import TeamMultiSelect from "../ui/TeamMultiSelect";
 const configs = {
   ticket: { title: "Create a ticket", fields: [
     ["title", "Ticket title", "text", true], ["description", "Description", "textarea"],
-    ["organizationId", "Client workspace", "clients", true], ["projectId", "Project", "projects"],
+    ["organizationId", "Client workspace", "clients", true, (me) => me.isInternal], ["projectId", "Project", "projects"],
     ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
-    ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
-    ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
-    ["teamIds", "Which team(s) should handle this? (leave empty to let the managers decide)", "requestTeams", false, (me) => !me.isInternal],
+    ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
+    ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
+    ["teamIds", "Owning team (required)", "requestTeams", false, (me) => !me.isInternal],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
@@ -31,7 +31,7 @@ const configs = {
     ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it (choose first)", "projectTeams"], ["memberIds", "Members from those teams (you are added as lead)", "projectPeople"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
   ] },
   projectRequest: { title: "Request a project", fields: [
-    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true],
+    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true, (me) => me.isInternal],
     ["teamIds", "Which team(s) should work on it? (leave empty to let Tendrils decide)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
@@ -46,7 +46,7 @@ function optionsFor(type, data, orgId, teamIds = []) {
     tickets: (data.tickets || []).filter(inOrg).map((o) => [o.id, `${o.key} · ${o.title}`]),
     users: (data.users || []).map((o) => [o.id, o.name || o.email]),
     teamAssignees: peopleOfTeams(data.teams, teamIds).map((p) => [p.id, p.label]),
-    teams: (data.teams || []).filter((team) => can(data.me, "ticket.triage") || can(data.me, "task.assign") || can(data.me, "work.cross_team") || team.members?.some((m) => m.membership?.user?.id === data.me.user?.id)).map((o) => [o.id, o.name]),
+    teams: (data.teams || []).filter((team) => can(data.me, "ticket.triage") || can(data.me, "ticket.route") || can(data.me, "task.assign") || can(data.me, "work.cross_team") || team.members?.some((m) => m.membership?.user?.id === data.me.user?.id)).map((o) => [o.id, o.name]),
     parentTasks: (data.tasks || []).filter((task) => !task.autoCreated && (!orgId || task.organizationId === orgId)).map((o) => [o.id, o.title]),
     priority: [["LOW", "Low"], ["MEDIUM", "Medium"], ["HIGH", "High"], ["URGENT", "Urgent"]],
     visibility: [["CLIENT", "Client visible"], ["INTERNAL", "Internal only"]],
@@ -71,10 +71,18 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
   const submit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    if (kind === "ticket" && !me.isInternal && !fd.getAll("teamIds").filter(Boolean).length) {
+      window.alert("Choose the owning team so the ticket reaches the right team queue.");
+      return;
+    }
     const payload = {};
     for (const [name, , type] of fields) {
       const v = ["people", "teamsMulti", "teamPeople", "requestTeams", "projectTeams", "projectPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
+    }
+    if (!me.isInternal && ["ticket", "projectRequest"].includes(kind)) {
+      const clientWorkspace = (me.memberships || []).find((m) => m.organization?.type === "CLIENT")?.organization?.id;
+      if (clientWorkspace) payload.organizationId = clientWorkspace;
     }
     if (canPaste && pasted.length) payload.__files = pasted;
     onSubmit(kind, payload);

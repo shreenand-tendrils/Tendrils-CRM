@@ -4,8 +4,7 @@
 //   SEED_FORCE=true npm run db:seed   re-run on purpose (only ADDS missing rows, never overwrites existing people)
 // DEV ONLY. Every email is "<name>.demo@<domain>" so the DEV LOGIN switcher lists them.
 //
-// Structure: Boss (Platform admin) and Employees in 7 teams (IT, SEO, Graphics, Products, Marketing, Facebook Ads, Google Ads);
-// there is no Manager role: every employee works with the former manager permissions inside their teams.
+// Structure: one Platform admin, employees in six teams, and client admins/members. Facebook Ads and Google Ads share Advertising.
 // 4 client companies, each with a client boss (Client admin) and, for two of them, a client member.
 import { PrismaClient } from '@prisma/client';
 import { ticketToTaskStatus, statusKey, taskTitleFor } from '../src/services/ticketTaskMaps.js';
@@ -19,7 +18,7 @@ const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-
 
 const TEAMS = ['IT', 'SEO', 'Graphics', 'Products', 'Marketing', 'Advertising'];
 const RETIRED = ['maya', 'tara', 'dev', 'isha', 'root'].map((n) => `${n}.demo@tendrils.io`);
-const SEED_KEY = 'demo-data-v3';
+const SEED_KEY = 'demo-data-v4.8.22';
 
 async function main() {
   const already = await prisma.seedMarker.findUnique({ where: { key: SEED_KEY } });
@@ -197,7 +196,7 @@ async function main() {
   await ticket({ key: 'SOF-100002', org: 'sofabed', project: web, requester: 'rahul', visibility: 'INTERNAL', title: 'Refactor product schema', description: 'Internal clean-up before the catalogue import.',
     team: 'it', shared: ['products'], routedBy: 'rahul', assignee: 'anil', assignedBy: 'rahul', status: 'OPEN', progress: 'QA', priority: 'MEDIUM', due: 10, age: 5,
     statuses: [[4, 'anil', 'OPEN:IN_PROGRESS'], [1, 'anil', 'OPEN:QA']] });
-  await ticket({ key: 'SOF-100003', org: 'sofabed', project: web, requester: 'rohan', title: 'Need invoice export', description: 'Can we export all invoices as CSV from the admin?', status: 'OPEN', priority: 'LOW', due: 15, age: 1 });
+  await ticket({ key: 'SOF-100003', org: 'sofabed', project: web, requester: 'rohan', title: 'Need invoice export', description: 'Can we export all invoices as CSV from the admin?', team: 'products', routedBy: 'rohan', status: 'OPEN', priority: 'LOW', due: 15, age: 1 });
   await ticket({ key: 'SOF-100004', org: 'sofabed', project: web, requester: 'neha', title: 'Footer links broken on mobile', description: 'Privacy and Terms links do nothing on phones.',
     team: 'it', shared: ['advertising'], routedBy: 'neha', assignee: 'nikhil', assignedBy: 'rahul', status: 'REVIEW_TEST', progress: 'RESOLVED', priority: 'HIGH', due: 1, age: 6,
     statuses: [[5, 'nikhil', 'OPEN:IN_PROGRESS'], [1, 'nikhil', 'OPEN:QA'], [0.5, 'nikhil', 'REVIEW_TEST:RESOLVED']],

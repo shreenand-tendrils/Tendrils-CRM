@@ -94,10 +94,11 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   let { teamIds = [], ...data } = parsed;
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!req.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
-  // Clients may only ASK for teams (the ones the admin made visible to clients); managers of those teams get it.
+  // Clients choose the initial owning team; that team's employees pick up the OPEN, unassigned ticket.
   const clientPicks = !req.isInternal ? normalizeTeamPicks(data.teamId, teamIds) : null;
   if (clientPicks) {
     const ids = [clientPicks.teamId, ...clientPicks.teamIds].filter(Boolean);
+    if (!clientPicks.teamId) throw new AppError('Choose a team so the request enters the correct team queue.', 400, 'TEAM_REQUIRED');
     if (ids.length) {
       const ok = await prisma.team.count({ where: { id: { in: ids }, isActive: true, clientVisible: true, organization: { type: 'INTERNAL' } } });
       if (ok !== ids.length) throw new AppError('Pick one of the teams offered in the list.', 400, 'INVALID_TEAM');
@@ -105,7 +106,7 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
     data = { ...data, teamId: clientPicks.teamId || undefined };
     teamIds = clientPicks.teamIds;
   }
-  const crossTeam = req.can('ticket.triage') || req.can('work.cross_team');
+  const crossTeam = req.can('ticket.triage') || req.can('ticket.route') || req.can('work.cross_team');
   if (!crossTeam && data.assigneeId && data.assigneeId !== req.currentUser.id) {
     throw new AppError("You don't have permission to assign tickets to others (ticket.triage).", 403);
   }
@@ -147,16 +148,14 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
       ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
     ]);
   }
-  // Staff who route a ticket to a team that is not theirs tell that team's managers, so it gets picked up.
+  // Staff who route a ticket to another team notify the destination team's employees.
   if (req.isInternal && accessTeamIds.some((id) => !ownTeamIds.includes(id))) {
-    const managers = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
-    await notifyPeople({ userIds: managers.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${req.currentUser.name || req.currentUser.email}: ${t.title}`, href: ticketUrl(t) });
+    const destinationTeam = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
+    await notifyPeople({ userIds: destinationTeam.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${req.currentUser.name || req.currentUser.email}: ${t.title}`, href: ticketUrl(t) });
   }
-  // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
+  // A client request stays OPEN and unassigned until an employee of its chosen team picks it up.
   if (!req.isInternal) {
-    // Team chosen by the client => that team's managers; no team (or a team with no manager) => all managers.
-    let audience = accessTeamIds.length ? await findTeamManagers(accessTeamIds) : [];
-    if (!audience.length) audience = await findTriagers();
+    const audience = accessTeamIds.length ? await findTeamManagers(accessTeamIds) : [];
     await notifyPeople({ userIds: audience.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });
   }
 
@@ -192,7 +191,7 @@ router.patch('/tickets/:id', async (req, res) => {
   const nextOwnerTeamId = data.teamId !== undefined ? data.teamId : old.teamId;
   const existingParticipants = (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId).map((a) => a.teamId);
   const nextAccessIds = accessTeamIdsFor(nextOwnerTeamId, teamIds !== undefined ? teamIds : existingParticipants);
-  if (teamIds && !req.can('ticket.triage')) throw new AppError('Only authorized triagers can change participating teams.', 403);
+  if (teamIds && !req.can('ticket.triage') && !req.can('ticket.route')) throw new AppError('Only team members routing this ticket or an admin can change participating teams.', 403);
   if (nextAccessIds.length) {
     const valid = await prisma.team.findMany({ where: { id: { in: nextAccessIds }, organization: { type: 'INTERNAL' } }, select: { id: true } });
     if (valid.length !== nextAccessIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');

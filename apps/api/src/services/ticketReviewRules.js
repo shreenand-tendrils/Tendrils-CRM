@@ -1,8 +1,8 @@
 // Pure manager-review rules (no database access, unit-tested).
-// A ticket raised by a client or a manager must be reviewed by a manager before it can go to the client, be resolved or closed.
+// A ticket raised by a client must be submitted for client review by the team working on it.
 // A ticket an employee raised (team-to-team work) can be finished by the employees who may edit it.
 export const MANAGER_REVIEW_STATUSES = ['RESOLVED', 'CLOSED', 'CLIENT_REVIEW'];
-export const NEEDS_MANAGER_REVIEW_MESSAGE = 'This ticket came from a client or a manager, so a manager has to review it first. Move it to Review and your manager will send it to the client, resolve or close it.';
+export const NEEDS_MANAGER_REVIEW_MESSAGE = 'Submit the completed ticket for client review once all linked work is complete.';
 
 /** Pure rule: true when this person may NOT move the ticket to `status`. */
 export const finishBlocked = ({ internal, canTriage, status, requesterIsEmployee }) =>
