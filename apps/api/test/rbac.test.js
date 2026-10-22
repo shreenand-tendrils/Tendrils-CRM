@@ -82,7 +82,11 @@ test('ticket status/progress <-> task status never ping-pong', () => {
     assert.ok(taskStatus === 'BACKLOG' ? back === 'TODO' : back === taskStatus, `${taskStatus} -> ${next.status}/${next.progress} -> ${back}`);
   }
   assert.equal(ticketToTaskStatus('CLOSED', null), 'DONE');
+  assert.equal(ticketToTaskStatus('REVIEW_TEST', 'RESOLVED'), 'REVIEW');
+  assert.equal(ticketToTaskStatus('OPEN', 'QA'), 'IN_PROGRESS');
   assert.equal(ticketToTaskStatus('REVIEW_HELP', 'NEED_MORE_INFO'), 'BLOCKED');
+  assert.equal(TASK_TO_TICKET.REVIEW.status, 'REVIEW_TEST');
+  assert.equal(TASK_TO_TICKET.DONE.status, 'CLOSED');
 });
 
 test('progress follows status', () => {

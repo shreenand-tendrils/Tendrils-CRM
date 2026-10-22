@@ -4,7 +4,7 @@ import AvatarStack from "../ui/AvatarStack";
 import { PriorityBadge } from "../ui/StatusBadge";
 import { can, canEditTask } from "../../lib/rbac";
 
-export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "Review"], ["DONE", "Done"]];
+export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "Ready for review"], ["DONE", "Done"]];
 
 export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate, onOpen, doneLocked }) {
   return (
@@ -19,8 +19,8 @@ export default function TaskBoard({ tasks = [], me, onStatusChange, onCreate, on
                 <article className="task-card" key={t.id} style={onOpen ? { cursor: "pointer" } : undefined} tabIndex={onOpen ? 0 : undefined} role={onOpen ? "button" : undefined} aria-label={onOpen ? `Open task ${t.title}` : undefined} onClick={() => onOpen?.(t)} onKeyDown={(e) => { if (onOpen && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t); } }}>
                   <div className="task-card-top">
                     <PriorityBadge value={t.priority} />
-                    <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t)} title={canEditTask(me, t) ? undefined : "You can only move tasks assigned to you"} onChange={(e) => onStatusChange(t, e.target.value)}>
-                      {COLUMNS.map(([v, l]) => <option key={v} value={v} disabled={v === "DONE" && doneLocked?.(t) && t.status !== "DONE"}>{l}{v === "DONE" && doneLocked?.(t) && t.status !== "DONE" ? " (manager only)" : ""}</option>)}
+                    <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t) || (t.status === "DONE" && !can(me, "task.update_any")) || (t.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(t.ticket?.status))} title={!canEditTask(me, t) ? "You can only move tasks assigned to you" : t.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(t.ticket?.status) ? "Ticket is waiting for the client; use the ticket review actions" : t.status === "DONE" && !can(me, "task.update_any") ? "Only an authorized reviewer can reopen a completed task" : undefined} onChange={(e) => onStatusChange(t, e.target.value)}>
+                      {COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (t.autoCreated || !can(me, "task.update_any")) && t.status !== "DONE"; return <option key={v} value={v} disabled={doneBlocked || (v === "DONE" && doneLocked?.(t) && t.status !== "DONE")}>{l}{doneBlocked ? (t.autoCreated ? " (client approval required)" : " (reviewer approval required)") : v === "DONE" && doneLocked?.(t) && t.status !== "DONE" ? " (finish subtasks first)" : ""}</option>; })}
                     </select>
                   </div>
                   <b>{t.title}</b>

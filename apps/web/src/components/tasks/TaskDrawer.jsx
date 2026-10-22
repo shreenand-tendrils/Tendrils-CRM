@@ -45,7 +45,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   };
   const nComments = task._count?.comments || 0, nFiles = task._count?.attachments || 0;
   const ticketFull = tickets.find((t) => t.id === task.ticketId);
-  const ticket = ticketFull || (task.ticket ? { id: task.ticket.id, key: task.ticket.key, title: task.ticket.title } : null);
+  const ticket = ticketFull || (task.ticket ? { id: task.ticket.id, key: task.ticket.key, title: task.ticket.title, status: task.ticket.status } : null);
   const { owner, shared } = taskTeams(task);
   const people = taskPeople(task);
   const editable = canEditTask(me, task);
@@ -57,7 +57,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
       <div className="win-card">
         <div className="detail"><span>Status</span>
           {editable
-            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            ? <select disabled={(task.status === "DONE" && !can(me, "task.update_any")) || (task.autoCreated && ["REVIEW_TEST", "REVIEW_HELP", "CLOSED"].includes(ticket?.status))} className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => { const doneBlocked = v === "DONE" && (task.autoCreated || !can(me, "task.update_any")) && task.status !== "DONE"; return <option key={v} value={v} disabled={doneBlocked}>{l}{doneBlocked ? (task.autoCreated ? " (client approval required)" : " (reviewer approval required)") : ""}</option>; })}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
@@ -85,7 +85,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           <button className="primary" disabled={!ownerTeam} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { teamId: ownerTeam, teamIds: sharedTeams.filter((x) => x !== ownerTeam), assigneeIds }); notify?.("Task reassigned"); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not reassign", "error"); } }}>Save reassignment</button>
         </div>
       )}
-      {task.autoCreated && <p className="hint">This task mirrors its ticket: reassign it from the ticket window (the task follows). Add a linked task for extra work.</p>}
+      {task.autoCreated && <p className="hint">This task mirrors its ticket: Open → In progress, Review/Test → Review, Review/Help → Blocked, and only client approval closes the ticket and marks this task Done. Don’t change a mirror task while the ticket is waiting for the client; reassign it from the ticket window.</p>}
+      {!task.autoCreated && !can(me, "task.update_any") && <p className="hint">Submit finished work by moving the task to Review. Only an authorized reviewer can mark it Done.</p>}
       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
         {can(me, "task.create") && !task.autoCreated && <button className="primary" onClick={() => onAddSubtask(task)}><Plus size={14} /> Add subtask</button>}
         {ticketFull && <button className="secondary" onClick={() => onOpenTicket(ticketFull)}><TicketIcon size={14} /> Open {ticketFull.key}</button>}

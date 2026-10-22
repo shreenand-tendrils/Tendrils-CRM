@@ -17,7 +17,7 @@ const userSelect = { id: true, name: true, email: true, image: true };
 const include = {
   organization: { select: { id: true, name: true } },
   project: { select: { id: true, name: true } },
-  ticket: { select: { id: true, key: true, title: true } },
+  ticket: { select: { id: true, key: true, title: true, status: true } },
   parent: { select: { id: true, title: true, status: true } },
   team: { select: { id: true, name: true } },
   teamAccesses: { include: { team: { select: { id: true, name: true } } } },
@@ -126,7 +126,31 @@ router.patch('/tasks/:id', async (req, res) => {
   if ((teamIds || data.teamId !== undefined) && !req.can('task.assign')) throw new AppError('Only authorized task assigners can change participating teams.', 403);
   if (data.teamId) { const validTeam = await prisma.team.findFirst({ where: { id: data.teamId, organization: { type: 'INTERNAL' } }, select: { id: true } }); if (!validTeam) throw new AppError('Invalid task team.', 400, 'INVALID_TEAM'); }
   if (teamIds) { const validTeams = teamIds.length ? await prisma.team.findMany({ where: { id: { in: teamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } }) : []; if (validTeams.length !== new Set(teamIds).size) throw new AppError('One or more task teams are invalid.', 400, 'INVALID_TEAM'); }
-  if (data.status === 'DONE') await assertTaskSubtasksDone(prisma, old.id);
+  if (data.status === 'DONE' && old.autoCreated) {
+    throw new AppError('This task mirrors a ticket. It becomes Done only when the client approves the ticket.', 403, 'TICKET_APPROVAL_REQUIRED');
+  }
+  if (data.status === 'DONE' && !req.can('task.update_any')) {
+    throw new AppError('Employees must submit tasks for review. Only an authorized reviewer can mark a task Done.', 403, 'TASK_REVIEW_REQUIRED');
+  }
+  if (data.status === 'DONE' && old.status !== 'REVIEW' && old.status !== 'DONE') {
+    throw new AppError('A task must be submitted for review before a reviewer can mark it Done.', 409, 'TASK_NOT_IN_REVIEW');
+  }
+  if (old.status === 'DONE' && data.status !== undefined && data.status !== 'DONE' && !req.can('task.update_any')) {
+    throw new AppError('Only an authorized reviewer can reopen a completed task.', 403, 'TASK_REOPEN_FORBIDDEN');
+  }
+  if (old.autoCreated && data.status !== undefined && data.status !== old.status) {
+    const mirrorTicket = await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { status: true } });
+    if (mirrorTicket?.status === 'CLOSED') {
+      throw new AppError('This ticket is already approved. Its mirror task cannot be reopened directly.', 409, 'TICKET_ALREADY_APPROVED');
+    }
+    if (mirrorTicket?.status === 'REVIEW_TEST' && data.status !== 'REVIEW') {
+      throw new AppError('The ticket is waiting for client review. Only the client can approve it or send it back.', 409, 'CLIENT_REVIEW_LOCKED');
+    }
+    if (mirrorTicket?.status === 'REVIEW_HELP' && data.status !== 'BLOCKED') {
+      throw new AppError('The ticket is waiting for client information. The client must respond before work resumes.', 409, 'CLIENT_REPLY_REQUIRED');
+    }
+  }
+  if (['REVIEW', 'DONE'].includes(data.status)) await assertTaskSubtasksDone(prisma, old.id);
   if (data.status !== undefined && data.status !== old.status) data.completedAt = data.status === 'DONE' ? new Date() : null;
   if (data.parentId !== undefined && data.parentId !== old.parentId) {
     if (data.parentId === old.id) throw new AppError('A task cannot be its own parent.', 400, 'TASK_CYCLE');
