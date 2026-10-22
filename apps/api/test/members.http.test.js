@@ -199,7 +199,7 @@ test('chat: reply, @all rules, message info (sender only)', async () => {
 
   const before = notes.length;
   const denied = await send(emp, 'hey team, standup now');
-  assert.equal(denied.status, 201, 'employees hold the former manager permissions');
+  assert.equal(denied.status, 201, 'employees can chat, but only managers can use cross-team management permissions');
   const ok = await send(mgr, 'Team, @everyone please read');
   assert.equal(ok.status, 201);
   const pinged = notes.slice(before).filter((n) => n.type === 'MENTION').map((n) => n.userId).sort();

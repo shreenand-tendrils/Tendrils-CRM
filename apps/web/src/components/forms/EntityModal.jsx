@@ -95,9 +95,9 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <>
                     <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]}
-                      onPaste={canPaste && name === "description" ? (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); const marks = []; const added = files.map((f, i) => { if (!isImage(f)) return { file: f, marker: null }; const marker = `pending-${pasted.length + i}`; marks.push(`[[img:${marker}]]`); return { file: f, marker }; }); if (marks.length) insertAtCursor(e.target, marks.join("\n")); setPasted((cur) => [...cur, ...added]); } : undefined} />
+                      onPaste={canPaste && name === "description" ? (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); const marks = []; const added = files.map((f, i) => { if (!isImage(f)) return { file: f, marker: null, preview: null }; const marker = `pending-${pasted.length + i}`; marks.push(`[[img:${marker}]]`); return { file: f, marker, preview: URL.createObjectURL(f) }; }); if (marks.length) insertAtCursor(e.target, marks.join("\n")); setPasted((cur) => [...cur, ...added]); } : undefined} />
                     {canPaste && name === "description" && (pasted.length
-                      ? <div className="chips">{pasted.map((p) => <i className="chip-link" key={p.file.name}>{p.file.name} <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => setPasted((cur) => cur.filter((x) => x !== p))}>×</button></i>)}<small className="hint">Images show inside the text once saved. Delete the [[img:…]] line to drop one.</small></div>
+                      ? <div className="chips">{pasted.map((p) => <i className="chip-link" key={p.file.name}>{p.preview && <img src={p.preview} alt="Pasted screenshot preview" style={{ display: "block", maxWidth: 220, maxHeight: 140, objectFit: "contain", borderRadius: 8, marginTop: 6 }} />} {p.file.name} <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => { if (p.preview) URL.revokeObjectURL(p.preview); setPasted((cur) => cur.filter((x) => x !== p)); }}>×</button></i>)}<small className="hint">Images show inside the text once saved. Delete the [[img:…]] line to drop one.</small></div>
                       : <small className="hint">Tip: paste a screenshot here with Ctrl+V. It appears inside the description when you save.</small>)}
                   </>
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />
@@ -121,7 +121,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
           ))}
-          {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a manager to assign others.</p>}
+          {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a Platform admin to assign others.</p>}
         </div>
         <div className="modal-foot">
           <small><ShieldCheck size={14} /> Recorded in the activity log</small>

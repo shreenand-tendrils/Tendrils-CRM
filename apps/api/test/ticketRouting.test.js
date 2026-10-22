@@ -81,11 +81,11 @@ const staffCtx = (role, id, teamIds = []) => {
   return { currentUser: { id }, memberships, isInternal: true, permissions, can: (p) => permissions.has(p) };
 };
 
-test('manager keeps seeing a ticket they routed to another team', () => {
+test('employees cannot see tickets routed outside their team', () => {
   const t = { id: 't', organizationId: 'c', visibility: 'CLIENT', teamId: 'qa', teamAccesses: [{ teamId: 'qa', accessRole: 'OWNER', addedById: 'rahul' }] };
-  assert.equal(canViewTicket(staffCtx('MANAGER', 'rahul', ['dev']), t), true, 'router keeps visibility');
-  assert.equal(canViewTicket(staffCtx('MANAGER', 'other', ['dev']), t), false, 'other managers of an unrelated team do not');
-  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'rahul', ['dev']), t), true, 'every employee now keeps what they routed');
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'rahul', ['dev']), t), false);
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'other', ['dev']), t), false);
+  assert.equal(canViewTicket(staffCtx('PLATFORM_ADMIN', 'arjun', []), t), true);
 });
 
 test('the assignee can always open their ticket', () => {
@@ -101,16 +101,16 @@ test('a team member sees tickets of their team; unrelated team does not', () => 
   assert.equal(canViewTicket(staffCtx('PLATFORM_ADMIN', 'arjun', []), t), true);
 });
 
-test('unrouted client ticket is visible to managers/admin only', () => {
+test('unrouted client ticket is visible to platform admins only', () => {
   const t = { id: 't', organizationId: 'c', visibility: 'CLIENT', teamId: null, teamAccesses: [] };
-  assert.equal(canViewTicket(staffCtx('MANAGER', 'rahul', ['dev']), t), true);
-  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'sneha', ['dev']), t), true, 'employees triage unrouted tickets too');
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'rahul', ['dev']), t), false);
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'sneha', ['dev']), t), false, 'unrouted tickets are reserved for platform admins');
 });
 
 // ---- UI helpers (assignee dropdown = members of the chosen team, with role labels) ----
 const teams = [
   { id: 'dev', name: 'Development', members: [
-    { membership: { role: 'MANAGER', user: { id: 'rahul', name: 'Rahul Verma', email: 'r@x' } } },
+    { membership: { role: 'EMPLOYEE', user: { id: 'rahul', name: 'Rahul Verma', email: 'r@x' } } },
     { membership: { role: 'EMPLOYEE', user: { id: 'sneha', name: 'Sneha Kulkarni', email: 's@x' } } },
   ] },
   { id: 'qa', name: 'QA', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'pooja', name: 'Pooja Desai', email: 'p@x' } } }] },
@@ -149,7 +149,7 @@ test('task assignees outside the chosen teams are detected', () => {
 
 test('people of several teams: owner + shared, de-duplicated, with roles', () => {
   const ppl = peopleOfTeams([
-    { id: 'dev', name: 'Development', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'MANAGER', user: { id: 'rahul', name: 'Rahul Verma', email: 'r@x' } } }] },
+    { id: 'dev', name: 'Development', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'EMPLOYEE', user: { id: 'rahul', name: 'Rahul Verma', email: 'r@x' } } }] },
     { id: 'qa', name: 'QA', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'EMPLOYEE', user: { id: 'pooja', name: 'Pooja Desai', email: 'p@x' } } }] },
   ], ['dev', 'qa']);
   assert.deepEqual(ppl.map((p) => p.id), ['aditya', 'pooja', 'rahul'], 'Aditya (Dev + QA) appears once');

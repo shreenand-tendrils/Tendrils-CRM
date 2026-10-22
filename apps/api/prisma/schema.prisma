@@ -69,7 +69,6 @@ enum OrgType {
 }
 enum MemberRole {
   PLATFORM_ADMIN
-  MANAGER
   EMPLOYEE
   CLIENT_ADMIN
   CLIENT_MEMBER

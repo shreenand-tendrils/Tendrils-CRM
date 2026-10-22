@@ -1,5 +1,5 @@
 // Single source of truth for the demo people (used by prisma/seed.js, prisma/dedupe-demo-users.js and routes/dev.routes.js).
-// role: PLATFORM_ADMIN = Boss / root admin, EMPLOYEE = team member (every employee holds the former manager permissions). There is no Manager role.
+// Role coverage for testing: platform admin, employees, and client roles.
 export const STAFF = [
   { key: 'arjun', email: 'arjun.demo@tendrils.io', name: 'Arjun Mehta', role: 'PLATFORM_ADMIN', teams: ['it'] },
   { key: 'rahul', email: 'rahul.demo@tendrils.io', name: 'Rahul Verma', role: 'EMPLOYEE', teams: ['it'] },
@@ -12,11 +12,11 @@ export const STAFF = [
   { key: 'priya', email: 'priya.demo@tendrils.io', name: 'Priya Shah', role: 'EMPLOYEE', teams: ['products'] },
   { key: 'ritu', email: 'ritu.demo@tendrils.io', name: 'Ritu Sen', role: 'EMPLOYEE', teams: ['products'] },
   { key: 'sneha', email: 'sneha.demo@tendrils.io', name: 'Sneha Kulkarni', role: 'EMPLOYEE', teams: ['marketing'] },
-  { key: 'aditya', email: 'aditya.demo@tendrils.io', name: 'Aditya Joshi', role: 'EMPLOYEE', teams: ['marketing', 'facebook-ads'] },
-  { key: 'vikram', email: 'vikram.demo@tendrils.io', name: 'Vikram Singh', role: 'EMPLOYEE', teams: ['facebook-ads'] },
-  { key: 'pooja', email: 'pooja.demo@tendrils.io', name: 'Pooja Desai', role: 'EMPLOYEE', teams: ['facebook-ads', 'google-ads'] },
-  { key: 'omkar', email: 'omkar.demo@tendrils.io', name: 'Omkar Pawar', role: 'EMPLOYEE', teams: ['google-ads'] },
-  { key: 'zoya', email: 'zoya.demo@tendrils.io', name: 'Zoya Khan', role: 'EMPLOYEE', teams: ['google-ads'] },
+  { key: 'aditya', email: 'aditya.demo@tendrils.io', name: 'Aditya Joshi', role: 'EMPLOYEE', teams: ['marketing', 'advertising'] },
+  { key: 'vikram', email: 'vikram.demo@tendrils.io', name: 'Vikram Singh', role: 'EMPLOYEE', teams: ['advertising'] },
+  { key: 'pooja', email: 'pooja.demo@tendrils.io', name: 'Pooja Desai', role: 'EMPLOYEE', teams: ['advertising'] },
+  { key: 'omkar', email: 'omkar.demo@tendrils.io', name: 'Omkar Pawar', role: 'EMPLOYEE', teams: ['advertising'] },
+  { key: 'zoya', email: 'zoya.demo@tendrils.io', name: 'Zoya Khan', role: 'EMPLOYEE', teams: ['advertising'] },
 ];
 
 export const CLIENTS = [

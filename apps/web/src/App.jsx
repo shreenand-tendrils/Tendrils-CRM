@@ -50,7 +50,7 @@ import ChatPage from "./pages/ChatPage";
 import NotesPage from "./pages/NotesPage";
 import RemindersPage from "./pages/RemindersPage";
 import AdminPage from "./pages/AdminPage";
-import DocumentsPage from "./pages/DocumentsPage";
+import ResourcesPage from "./pages/ResourcesPage";
 
 const pageMeta = {
   "/": [
@@ -61,7 +61,8 @@ const pageMeta = {
     "Clients",
     "A separate, organized workspace for every client.",
   ],
-  "/documents": ["Documents", "Important files, spreadsheets, policies and shared resources."],
+  "/resources": ["Resources", "Documents, private reminders and personal notes in one place."],
+  "/documents": ["Resources", "Documents, private reminders and personal notes in one place."],
   "/projects": [
     "Projects",
     "Track delivery, milestones and progress across client work.",
@@ -384,7 +385,8 @@ export default function App() {
             <Route path="/" element={<OverviewPage data={data} onSelectTicket={setSelected} />} />
             <Route path="/tickets" element={<TicketsPage data={data} onSelect={setSelected} />} />
             <Route path="/tasks" element={guard(internal, "tasks", <TasksPage data={data} onCreate={() => openModal("task")} onOpen={openTask} onStatusChange={(task, status) => update("tasks", task.id, { status })} />)} />
-            <Route path="/documents" element={<DocumentsPage me={me} notify={notify} />} />
+            <Route path="/resources" element={<ResourcesPage me={me} notify={notify} onOpenTicket={(t) => { navigate("/tickets"); setSelected(t); }} />} />
+            <Route path="/documents" element={<ResourcesPage me={me} notify={notify} />} />
             <Route path="/projects" element={<ProjectsPage data={data} onRefresh={refresh} notify={notify} />} />
             <Route path="/chat" element={guard(can(me, "chat.use"), "team chat", <ChatPage me={me} users={data.users || []} notify={notify} />)} />
             <Route path="/reminders" element={guard(internal, "reminders", <RemindersPage notify={notify} onOpenTicket={(t) => { navigate("/tickets"); setSelected(t); }} />)} />

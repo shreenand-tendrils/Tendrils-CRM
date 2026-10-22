@@ -16,6 +16,7 @@ const ago = (d) => {
 export default function TaskComments({ task, me, canComment, onChanged, notify }) {
   const [items, setItems] = useState(null);
   const [text, setText] = useState("");
+  const [pastePreview, setPastePreview] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
   const load = useCallback(() => api.get(`/tasks/${task.id}/comments`).then((r) => setItems(r.data)).catch(() => setItems([])), [task.id]);
@@ -25,7 +26,7 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
-    try { await api.post(`/tasks/${task.id}/comments`, { body: text.trim() }); setText(""); await load(); onChanged?.(); }
+    try { await api.post(`/tasks/${task.id}/comments`, { body: text.trim() }); setText(""); setPastePreview(""); await load(); onChanged?.(); }
     catch (e) { notify?.(e.response?.data?.error || "Could not post the comment", "error"); }
     finally { setBusy(false); }
   };
@@ -44,7 +45,7 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
         if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id));
         else { const fd = new FormData(); fd.append("file", f); fd.append("taskId", task.id); await api.post("/files", fd); onChanged?.(); }
       }
-      if (marks.length) setText((v) => appendLine(v, marks.join("\n")));
+      if (marks.length) { const markerText = marks.join("\n"); setText((v) => appendLine(v, markerText)); setPastePreview(markerText); }
     } catch (err) { notify?.(err.response?.data?.error || "Could not paste the image", "error"); }
   };
 
@@ -66,6 +67,7 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
           <textarea value={text} rows={3} aria-label="Task comment" placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)"
             onChange={(e) => setText(e.target.value)} onPaste={paste}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }} />
+          {pastePreview && <RichText text={pastePreview} style={{ marginTop: 8, maxWidth: 360 }} />}
           <div className="row"><small className="hint">Only your team sees task comments. Assignees are notified.</small><button className="primary" disabled={!text.trim() || busy} onClick={send}><Send size={14} /> {busy ? "Sending…" : "Comment"}</button></div>
         </div>
       ) : <small className="hint">You can read comments but not post.</small>}

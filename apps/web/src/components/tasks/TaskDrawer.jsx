@@ -101,6 +101,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           <div className="field">
             <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
               onPaste={async (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); try { const marks = []; for (const f of files) { if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id)); else await attach(f); } if (marks.length) setDesc((v) => appendLine(v, marks.join("\n"))); } catch { notify?.("Could not paste the image", "error"); } }} />
+            {/\[\[img:/.test(desc) && <RichText text={desc} style={{ marginTop: 8, maxWidth: 420 }} />}
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (

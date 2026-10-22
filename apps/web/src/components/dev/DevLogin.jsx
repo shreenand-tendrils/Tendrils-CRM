@@ -4,7 +4,7 @@ import { api } from "../../api";
 // Development-only helper to test the app as different roles. The API exposes
 // /dev/* only when DEV_LOGIN=true and NODE_ENV !== production, so in production
 // this component renders nothing.
-// "Rahul Verma — Manager · Development"  /  "Boss — Client admin (Client boss) · Sofabed"
+// "Rahul Verma — Employee · Development"  /  "Boss — Client admin (Client boss) · Sofabed"
 const personLine = (u) => `${u.name} — ${u.roleLabel || u.role}${u.type === "CLIENT" ? ` · ${u.organization}` : u.teams?.length ? ` · ${u.teams.join(", ")}` : ""}`;
 
 export default function DevLogin({ variant = "signin" }) {

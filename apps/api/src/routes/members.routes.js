@@ -25,7 +25,7 @@ const presentInv = (i) => ({ ...i, memberType: i.organization.type === 'INTERNAL
 router.get('/admin/rbac', (_req, res) =>
   res.json({
     permissions: Object.entries(PERMISSIONS).map(([key, label]) => ({ key, label })),
-    roles: Object.entries(ROLE_PERMISSIONS).filter(([role]) => role !== 'MANAGER').map(([role, permissions]) => ({ role, label: ROLE_LABELS[role], permissions })),
+    roles: Object.entries(ROLE_PERMISSIONS).map(([role, permissions]) => ({ role, label: ROLE_LABELS[role], permissions })),
   })
 );
 

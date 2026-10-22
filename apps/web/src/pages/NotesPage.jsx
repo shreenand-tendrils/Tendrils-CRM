@@ -45,7 +45,7 @@ export default function NotesPage({ notify }) {
   return (
     <div className="two-col">
       <Panel title={form.id ? "Edit note" : "New note"} sub="Only you can see your notes">
-        <p className="hint"><Lock size={13} style={{ verticalAlign: -2 }} /> Private to you. Not emailed, no notifications, not in the activity log, and admins or managers cannot open them.</p>
+        <p className="hint"><Lock size={13} style={{ verticalAlign: -2 }} /> Private to you. Not emailed, no notifications, not in the activity log, and no one else, including admins, can open them.</p>
         <form className="update-form" onSubmit={save}>
           <div className="field"><label htmlFor="n-date">Date</label><input id="n-date" type="date" value={form.date} max={localToday()} onChange={set("date")} required /></div>
           <div className="field"><label htmlFor="n-title">Title (optional)</label><input id="n-title" value={form.title} onChange={set("title")} maxLength={120} /></div>

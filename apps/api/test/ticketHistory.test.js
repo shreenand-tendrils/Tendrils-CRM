@@ -69,9 +69,9 @@ test('history sentences read like a person wrote them', () => {
 });
 
 test('actor label shows the role so you know who did it', () => {
-  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'MANAGER' } }), 'Rahul Verma (Employee)');
+  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'EMPLOYEE' } }), 'Rahul Verma (Employee)');
   assert.equal(actorLabel({ actor: { name: 'Arjun', role: 'PLATFORM_ADMIN' } }), 'Arjun (Platform admin)');
-  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'MANAGER' } }, false), 'Rahul Verma');
+  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'EMPLOYEE' } }, false), 'Rahul Verma');
   assert.equal(actorLabel({ actor: null }), 'Someone');
 });
 

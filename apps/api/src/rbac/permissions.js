@@ -31,23 +31,22 @@ export const PERMISSIONS = {
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ['task.create', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post', 'work.cross_team'];
-const MANAGER = ALL.filter((p) => !['member.grant_admin', 'team.manage', 'project.request'].includes(p));
+const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),
-  MANAGER, // legacy alias: the Manager role no longer exists (the migration turns managers into employees)
-  EMPLOYEE: MANAGER, // every employee holds the former manager permissions
+  EMPLOYEE,
   CLIENT_ADMIN: ['ticket.create', 'file.upload', 'project.request'],
   CLIENT_MEMBER: ['ticket.create', 'file.upload', 'project.request'],
 };
 export const ROLE_LABELS = {
-  PLATFORM_ADMIN: 'Platform admin', MANAGER: 'Employee', EMPLOYEE: 'Employee',
+  PLATFORM_ADMIN: 'Platform admin', EMPLOYEE: 'Employee',
   CLIENT_ADMIN: 'Client admin', CLIENT_MEMBER: 'Client member',
 };
-export const STAFF_ROLES = ['PLATFORM_ADMIN', 'MANAGER', 'EMPLOYEE'];
+export const STAFF_ROLES = ['PLATFORM_ADMIN', 'EMPLOYEE'];
 export const CLIENT_ROLES = ['CLIENT_ADMIN', 'CLIENT_MEMBER'];
-export const MANAGER_ROLES = ['PLATFORM_ADMIN', 'MANAGER'];
+// Legacy helper name retained internally; only Platform Admin has global administrative access.
+export const MANAGER_ROLES = ['PLATFORM_ADMIN'];
 
 /** Permissions for a list of memberships [{ role, organization: { type } }]. */
 export function permissionsFor(memberships) {

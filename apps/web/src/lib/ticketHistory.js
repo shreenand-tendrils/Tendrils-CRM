@@ -31,7 +31,7 @@ export function describeEvent(e) {
   }
 }
 
-/** "Rahul Verma (Manager)" — staff roles are shown so you can tell who did what. */
+/** "Rahul Verma (Employee)" — staff roles are shown so you can tell who did what. */
 export function actorLabel(e, showRole = true) {
   const a = e.actor;
   if (!a) return "Someone";

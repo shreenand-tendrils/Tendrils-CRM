@@ -6,11 +6,9 @@ export const primaryNavigation = [
   { label: "Tickets", to: "/tickets", icon: Ticket },
   { label: "Clients", to: "/clients", icon: Building2 },
   { label: "Projects", to: "/projects", icon: FolderKanban },
-  { label: "Documents", to: "/documents", icon: Files },
   { label: "Tasks", to: "/tasks", icon: ListTodo, staff: true },
   { label: "Chat", to: "/chat", icon: MessagesSquare, staff: true },
-  { label: "Reminders", to: "/reminders", icon: Flag, staff: true },
-  { label: "My notes", to: "/notes", icon: Lock, staff: true },
+  { label: "Resources", to: "/resources", icon: Files },
   // { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
   { label: "Teams", to: "/teams", icon: Users, staff: true },
 ];

@@ -227,7 +227,7 @@ export default function ChatPage({ me, users = [], notify }) {
           <button className="back" onClick={() => setParams({})} aria-label="Back to conversations"><ArrowLeft size={18} /></button>
           <div><b>{active?.type === "GENERAL" ? "# " : ""}{active?.name}</b>
           <small>
-            {active?.type === "DIRECT" ? (online.has(active.dmUser?.id) ? "● Online" : "Offline") : active?.type === "PROJECT" ? "Project team + managers" : "All Tendrils staff"}
+            {active?.type === "DIRECT" ? (online.has(active.dmUser?.id) ? "● Online" : "Offline") : active?.type === "PROJECT" ? "Project team + Platform admins" : "All Tendrils staff"}
             {" · "}<span className={live ? "live" : "offline"}>{live ? "Live" : "Reconnecting…"}</span>
           </small></div>
         </header>

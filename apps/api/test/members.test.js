@@ -50,7 +50,7 @@ test('invitation: expired / revoked / mismatched role never grant access', async
   const mk = (over) => fakeDb({ orgs, invitations: [{ id: 'i', email: 'a@x.io', organizationId: 'cli', role: 'CLIENT_ADMIN', teamIds: [], status: 'PENDING', expiresAt: soon, ...over }] });
   assert.equal(await acceptInvitesForEmail(mk({ expiresAt: past }), 'a@x.io'), 0);
   assert.equal(await acceptInvitesForEmail(mk({ status: 'REVOKED' }), 'a@x.io'), 0);
-  const bad = mk({ role: 'MANAGER' }); // staff role in a client workspace
+  const bad = mk({ role: 'EMPLOYEE' }); // staff role in a client workspace
   assert.equal(await acceptInvitesForEmail(bad, 'a@x.io'), 0);
   assert.equal(bad.memberships.length, 0);
   assert.ok(isInviteUsable({ status: 'PENDING', expiresAt: soon }) && !isInviteUsable({ status: 'PENDING', expiresAt: past }));
@@ -88,8 +88,8 @@ test('project updates: members, leads and managers post; clients never do', () =
   const ctx = (role, id = 'u') => { const memberships = [{ role, organizationId: 'o', organization: { type: role.startsWith('CLIENT') ? 'CLIENT' : 'INTERNAL' } }]; const p = permissionsFor(memberships); return { currentUser: { id }, memberships, isInternal: !role.startsWith('CLIENT'), can: (x) => p.has(x) }; };
   const project = { members: [{ userId: 'dev' }] };
   assert.ok(canPostProjectUpdate(ctx('EMPLOYEE', 'dev'), project));
-  assert.ok(canPostProjectUpdate(ctx('EMPLOYEE', 'other'), project), 'every employee holds the former manager permissions');
-  assert.ok(canPostProjectUpdate(ctx('MANAGER', 'other'), project) && canPostProjectUpdate(ctx('MANAGER'), project));
+  assert.ok(!canPostProjectUpdate(ctx('EMPLOYEE', 'other'), project), 'employees can post updates only on their own projects');
+  assert.ok(canPostProjectUpdate(ctx('PLATFORM_ADMIN', 'other'), project) && canPostProjectUpdate(ctx('PLATFORM_ADMIN'), project));
   assert.ok(!canPostProjectUpdate(ctx('CLIENT_ADMIN', 'dev'), project));
 });
 

@@ -17,9 +17,9 @@ const ago = (days) => new Date(Date.now() - days * DAY);
 const ahead = (days) => new Date(Date.now() + days * DAY);
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const TEAMS = ['IT', 'SEO', 'Graphics', 'Products', 'Marketing', 'Facebook Ads', 'Google Ads'];
+const TEAMS = ['IT', 'SEO', 'Graphics', 'Products', 'Marketing', 'Advertising'];
 const RETIRED = ['maya', 'tara', 'dev', 'isha', 'root'].map((n) => `${n}.demo@tendrils.io`);
-const SEED_KEY = 'demo-data-v2';
+const SEED_KEY = 'demo-data-v3';
 
 async function main() {
   const already = await prisma.seedMarker.findUnique({ where: { key: SEED_KEY } });
@@ -42,7 +42,7 @@ async function main() {
   const u = {};
   const person = async (p, organizationId) => {
     const user = await prisma.user.upsert({ where: { email: p.email }, update: {}, create: { email: p.email, name: p.name, emailVerified: new Date() } });
-    const membership = await prisma.membership.upsert({ where: { userId_organizationId: { userId: user.id, organizationId } }, update: {}, create: { userId: user.id, organizationId, role: p.role } });
+    const membership = await prisma.membership.upsert({ where: { userId_organizationId: { userId: user.id, organizationId } }, update: { role: p.role, isActive: true }, create: { userId: user.id, organizationId, role: p.role } });
     u[p.key] = user;
     return membership;
   };
@@ -53,6 +53,43 @@ async function main() {
     }
   }
   for (const c of CLIENTS) for (const p of c.users) await person(p, org[c.slug].id);
+
+  // Merge legacy Facebook Ads and Google Ads teams into the common Advertising team.
+  // Preserve existing membership, project, ticket and task access while migrating old records.
+  const advertising = team.advertising;
+  const legacyAdTeams = await prisma.team.findMany({
+    where: { organizationId: internal.id, slug: { in: ['facebook-ads', 'google-ads'] } },
+    select: { id: true },
+  });
+  for (const old of legacyAdTeams) {
+    const memberships = await prisma.teamMember.findMany({ where: { teamId: old.id } });
+    for (const m of memberships) await prisma.teamMember.upsert({
+      where: { teamId_membershipId: { teamId: advertising.id, membershipId: m.membershipId } },
+      update: {}, create: { teamId: advertising.id, membershipId: m.membershipId },
+    });
+    const projects = await prisma.projectTeam.findMany({ where: { teamId: old.id }, select: { projectId: true } });
+    for (const row of projects) await prisma.projectTeam.upsert({
+      where: { projectId_teamId: { projectId: row.projectId, teamId: advertising.id } },
+      update: {}, create: { projectId: row.projectId, teamId: advertising.id },
+    });
+    const ticketAccess = await prisma.ticketTeamAccess.findMany({ where: { teamId: old.id } });
+    for (const row of ticketAccess) await prisma.ticketTeamAccess.upsert({
+      where: { ticketId_teamId: { ticketId: row.ticketId, teamId: advertising.id } },
+      update: {}, create: { ticketId: row.ticketId, teamId: advertising.id, accessRole: row.accessRole, addedById: row.addedById },
+    });
+    const taskAccess = await prisma.taskTeamAccess.findMany({ where: { teamId: old.id } });
+    for (const row of taskAccess) await prisma.taskTeamAccess.upsert({
+      where: { taskId_teamId: { taskId: row.taskId, teamId: advertising.id } },
+      update: {}, create: { taskId: row.taskId, teamId: advertising.id, accessRole: row.accessRole, addedById: row.addedById },
+    });
+    await prisma.ticket.updateMany({ where: { teamId: old.id }, data: { teamId: advertising.id } });
+    await prisma.task.updateMany({ where: { teamId: old.id }, data: { teamId: advertising.id } });
+    await prisma.teamMember.deleteMany({ where: { teamId: old.id } });
+    await prisma.projectTeam.deleteMany({ where: { teamId: old.id } });
+    await prisma.ticketTeamAccess.deleteMany({ where: { teamId: old.id } });
+    await prisma.taskTeamAccess.deleteMany({ where: { teamId: old.id } });
+    await prisma.team.update({ where: { id: old.id }, data: { isActive: false } });
+  }
 
   // Switch off old demo accounts from earlier versions so nobody shows up twice.
   const retired = await prisma.user.findMany({ where: { email: { in: RETIRED } }, select: { id: true } });
@@ -74,7 +111,7 @@ async function main() {
       },
     });
   };
-  const web = await project('Website Revamp', 'sofabed', 'rahul', ['anil', 'nikhil', 'karan', 'sneha', 'vikram', 'omkar'], 'New storefront, homepage and checkout for Sofabed, plus launch campaigns.', 30, ['it', 'graphics', 'marketing', 'facebook-ads', 'google-ads']);
+  const web = await project('Website Revamp', 'sofabed', 'rahul', ['anil', 'nikhil', 'karan', 'sneha', 'vikram', 'omkar'], 'New storefront, homepage and checkout for Sofabed, plus launch campaigns.', 30, ['it', 'graphics', 'marketing', 'advertising']);
   const seo = await project('JenniHome SEO', 'jennihome', 'kavya', ['meera'], 'Keyword strategy, on-page fixes and monthly reporting for JenniHome.', 45, ['seo', 'marketing']);
   const catalog = await project('Catalog Migration', 'jennifer-furniture', 'anil', ['nikhil', 'ritu', 'priya'], 'Move the product catalogue to the new platform.', 40, ['it', 'products']);
   const brand = await project('Brand Refresh', 'comfort-furniture', 'nisha', ['karan'], 'Logo, colours and social templates for Comfort Furniture.', 25, ['graphics']);
@@ -95,8 +132,8 @@ async function main() {
   await task({ title: 'Build new homepage hero', slug: 'sofabed', projectId: web.id, teamSlug: 'it', creator: 'rahul', assignees: ['anil', 'nikhil'], status: 'IN_PROGRESS', priority: 'HIGH', due: 5, age: 8 });
   await task({ title: 'Fix checkout bug (overdue)', slug: 'sofabed', projectId: web.id, teamSlug: 'it', creator: 'rahul', assignees: ['nikhil'], status: 'TODO', priority: 'URGENT', due: -2, age: 9 });
   await task({ title: 'Design hero banner artwork', slug: 'sofabed', projectId: web.id, teamSlug: 'graphics', creator: 'nisha', assignees: ['karan'], status: 'IN_PROGRESS', due: 4, age: 6 });
-  await task({ title: 'Facebook ad creatives', slug: 'sofabed', projectId: web.id, teamSlug: 'facebook-ads', shared: ['graphics'], creator: 'vikram', assignees: ['vikram', 'pooja'], status: 'IN_PROGRESS', due: 6, age: 5 });
-  await task({ title: 'Google Ads search campaign', slug: 'sofabed', projectId: web.id, teamSlug: 'google-ads', creator: 'omkar', assignees: ['zoya'], status: 'TODO', due: 8, age: 4 });
+  await task({ title: 'Facebook ad creatives', slug: 'sofabed', projectId: web.id, teamSlug: 'advertising', shared: ['graphics'], creator: 'vikram', assignees: ['vikram', 'pooja'], status: 'IN_PROGRESS', due: 6, age: 5 });
+  await task({ title: 'Google Ads search campaign', slug: 'sofabed', projectId: web.id, teamSlug: 'advertising', creator: 'omkar', assignees: ['zoya'], status: 'TODO', due: 8, age: 4 });
   await task({ title: 'Launch email campaign', slug: 'sofabed', projectId: web.id, teamSlug: 'marketing', creator: 'sneha', assignees: ['sneha', 'aditya'], status: 'BACKLOG', due: 14, age: 2 });
   await task({ title: 'Keyword research', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo', creator: 'kavya', assignees: ['meera'], status: 'BACKLOG', due: 12, age: 7 });
   await task({ title: 'Rewrite product meta titles', slug: 'jennihome', projectId: seo.id, teamSlug: 'seo', creator: 'kavya', assignees: ['meera', 'kavya'], status: 'IN_PROGRESS', due: 9, age: 6 });
@@ -162,7 +199,7 @@ async function main() {
     statuses: [[4, 'anil', 'OPEN:IN_PROGRESS'], [1, 'anil', 'OPEN:QA']] });
   await ticket({ key: 'SOF-100003', org: 'sofabed', project: web, requester: 'rohan', title: 'Need invoice export', description: 'Can we export all invoices as CSV from the admin?', status: 'OPEN', priority: 'LOW', due: 15, age: 1 });
   await ticket({ key: 'SOF-100004', org: 'sofabed', project: web, requester: 'neha', title: 'Footer links broken on mobile', description: 'Privacy and Terms links do nothing on phones.',
-    team: 'it', shared: ['facebook-ads'], routedBy: 'neha', assignee: 'nikhil', assignedBy: 'rahul', status: 'REVIEW_TEST', progress: 'RESOLVED', priority: 'HIGH', due: 1, age: 6,
+    team: 'it', shared: ['advertising'], routedBy: 'neha', assignee: 'nikhil', assignedBy: 'rahul', status: 'REVIEW_TEST', progress: 'RESOLVED', priority: 'HIGH', due: 1, age: 6,
     statuses: [[5, 'nikhil', 'OPEN:IN_PROGRESS'], [1, 'nikhil', 'OPEN:QA'], [0.5, 'nikhil', 'REVIEW_TEST:RESOLVED']],
     comments: [[0.5, 'nikhil', 'Fixed and deployed to staging. Please check on your phone.', 'CLIENT']] });
   await ticket({ key: 'JEN-100001', org: 'jennihome', project: seo, requester: 'tanvi', title: 'Add size chart to product pages', description: 'Customers keep asking for sizes.',
@@ -178,7 +215,7 @@ async function main() {
   // Older closed tickets so the monthly analytics have something to show.
   const old = [['SOF-100005', 'sofabed', 'neha', 'Update shipping policy page', 'it', 'rahul', 38, 33], ['SOF-100006', 'sofabed', 'rohan', 'New festive banner set', 'graphics', 'karan', 67, 60],
     ['JEN-100002', 'jennihome', 'sanjay', 'Fix duplicate meta descriptions', 'seo', 'meera', 96, 88], ['JFN-100002', 'jennifer-furniture', 'divya', 'Redirect old catalogue URLs', 'it', 'anil', 127, 119],
-    ['SOF-100007', 'sofabed', 'neha', 'Sale campaign tracking', 'google-ads', 'zoya', 22, 15]];
+    ['SOF-100007', 'sofabed', 'neha', 'Sale campaign tracking', 'advertising', 'zoya', 22, 15]];
   for (const [key, slug, requester, title, teamSlug, assignee, age, closedAgo] of old) {
     await ticket({ key, org: slug, requester, title, description: 'Completed earlier.', team: teamSlug, routedBy: requester, assignee, assignedBy: assignee, status: 'CLOSED', priority: 'MEDIUM', age, closedAgo,
       statuses: [[age - 1, assignee, 'OPEN:IN_PROGRESS'], [closedAgo + 1, assignee, 'REVIEW_TEST:RESOLVED'], [closedAgo, requester, 'CLOSED']] });
@@ -187,8 +224,8 @@ async function main() {
   // Team-to-team work: Nikhil (IT) raised a linked task for the Facebook Ads team on SOF-100004, with a subtask under it.
   const sof4 = await prisma.ticket.findUnique({ where: { key: 'SOF-100004' } });
   if (sof4) {
-    const fbTask = await task({ title: 'Verify purchase tracking after the footer fix', slug: 'sofabed', projectId: web.id, ticketId: sof4.id, teamSlug: 'facebook-ads', shared: ['it'], creator: 'nikhil', assignees: ['pooja'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1, age: 0.4 });
-    await task({ title: 'Test purchase event on Android and iOS', slug: 'sofabed', projectId: web.id, parentId: fbTask.id, teamSlug: 'facebook-ads', creator: 'pooja', assignees: ['pooja'], status: 'TODO', due: 1, age: 0.3 });
+    const fbTask = await task({ title: 'Verify purchase tracking after the footer fix', slug: 'sofabed', projectId: web.id, ticketId: sof4.id, teamSlug: 'advertising', shared: ['it'], creator: 'nikhil', assignees: ['pooja'], status: 'IN_PROGRESS', priority: 'HIGH', due: 1, age: 0.4 });
+    await task({ title: 'Test purchase event on Android and iOS', slug: 'sofabed', projectId: web.id, parentId: fbTask.id, teamSlug: 'advertising', creator: 'pooja', assignees: ['pooja'], status: 'TODO', due: 1, age: 0.3 });
     if (!(await prisma.comment.count({ where: { taskId: fbTask.id } }))) {
       await prisma.comment.createMany({ data: [
         { body: 'Footer fix is on staging. Please confirm the purchase pixel still fires.', visibility: 'INTERNAL', authorId: u.nikhil.id, taskId: fbTask.id, createdAt: ago(0.3) },
@@ -199,7 +236,7 @@ async function main() {
   }
 
   // A client-requested project that goes to two teams.
-  await project('Sofabed mobile app (requested)', 'sofabed', 'sneha', ['aditya', 'zoya'], 'Requested by the client: a simple mobile app for browsing the catalogue.', 60, ['marketing', 'google-ads'], { requestedByClient: true, status: 'PLANNING', ownerId: null });
+  await project('Sofabed mobile app (requested)', 'sofabed', 'sneha', ['aditya', 'zoya'], 'Requested by the client: a simple mobile app for browsing the catalogue.', 60, ['marketing', 'advertising'], { requestedByClient: true, status: 'PLANNING', ownerId: null });
 
   await prisma.seedMarker.upsert({ where: { key: SEED_KEY }, update: {}, create: { key: SEED_KEY } });
   console.log('Seed ready. DEV LOGIN accounts (role: team):');
