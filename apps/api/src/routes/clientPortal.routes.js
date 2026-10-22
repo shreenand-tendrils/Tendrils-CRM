@@ -34,7 +34,7 @@ router.post('/projects/:id/updates', async (req, res) => {
 });
 
 // Everything a client needs on one screen. Staff get the same shape for their own scope.
-const STAGES = { received: ['OPEN', 'TRIAGED'], inProgress: ['IN_PROGRESS', 'BLOCKED', 'REVIEW'], awaitingYou: ['CLIENT_REVIEW'], done: ['RESOLVED', 'CLOSED'] };
+const stageOf = (status, progress) => (status === 'CLOSED' ? 'done' : status === 'REVIEW_TEST' || status === 'REVIEW_HELP' ? 'awaitingYou' : progress ? 'inProgress' : 'received');
 router.get('/client/overview', async (req, res) => {
   const org = orgScope(req);
   const tScope = ticketScope(req);
@@ -43,12 +43,12 @@ router.get('/client/overview', async (req, res) => {
       where: { ...org, status: { not: 'ARCHIVED' } }, orderBy: { updatedAt: 'desc' }, take: 20,
       select: { id: true, name: true, status: true, dueDate: true, organization: { select: { id: true, name: true } }, updates: { take: 1, orderBy: { createdAt: 'desc' }, select: { title: true, createdAt: true } } },
     }),
-    prisma.ticket.groupBy({ by: ['status'], where: tScope, _count: { _all: true } }),
-    prisma.ticket.findMany({ where: { AND: [tScope, { status: 'CLIENT_REVIEW' }] }, orderBy: { updatedAt: 'desc' }, take: 5, select: { id: true, key: true, title: true, updatedAt: true } }),
+    prisma.ticket.groupBy({ by: ['status', 'progress'], where: tScope, _count: { _all: true } }),
+    prisma.ticket.findMany({ where: { AND: [tScope, { status: { in: ['REVIEW_TEST', 'REVIEW_HELP'] } }] }, orderBy: { updatedAt: 'desc' }, take: 5, select: { id: true, key: true, title: true, updatedAt: true } }),
     prisma.projectUpdate.findMany({ where: { project: org }, orderBy: { createdAt: 'desc' }, take: 10, include: { ...authorSelect, project: { select: { id: true, name: true } } } }),
   ]);
-  const byStatus = Object.fromEntries(grouped.map((g) => [g.status, g._count._all]));
-  const stages = Object.fromEntries(Object.entries(STAGES).map(([k, list]) => [k, list.reduce((n, st) => n + (byStatus[st] || 0), 0)]));
+  const stages = { received: 0, inProgress: 0, awaitingYou: 0, done: 0 };
+  for (const g of grouped) stages[stageOf(g.status, g.progress)] += g._count._all;
   res.json({ stages, awaiting, projects: projects.map(({ updates: u, ...p }) => ({ ...p, latestUpdate: u[0] || null })), updates });
 });
 export default router;

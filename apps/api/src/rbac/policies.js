@@ -32,14 +32,14 @@ export function canViewTicket(ctx, t) {
   return isClientAdminOf(ctx, t.organizationId) || t.requesterId === me(ctx);
 }
 
-/** Clients may only approve (CLOSED) or send back (IN_PROGRESS) a ticket that is waiting in CLIENT_REVIEW. */
-export const CLIENT_REVIEW_OUTCOMES = ['CLOSED', 'IN_PROGRESS'];
-export const clientStatusChangeAllowed = (currentStatus, nextStatus) => currentStatus === 'CLIENT_REVIEW' && CLIENT_REVIEW_OUTCOMES.includes(nextStatus);
+/** Clients may approve (CLOSED) or send back (OPEN) a ticket waiting in Review/Test, and answer a Review/Help request (back to OPEN). */
+export const clientStatusChangeAllowed = (currentStatus, nextStatus) =>
+  (currentStatus === 'REVIEW_TEST' && ['CLOSED', 'OPEN'].includes(nextStatus)) || (currentStatus === 'REVIEW_HELP' && nextStatus === 'OPEN');
 
 export const TICKET_FIELDS = {
-  full: ['title', 'description', 'status', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'projectId', 'dueDate'],
-  status: ['status'],
-  own: ['title', 'description', 'status', 'priority', 'dueDate'],
+  full: ['title', 'description', 'status', 'progress', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'projectId', 'dueDate'],
+  status: ['status', 'progress'],
+  own: ['title', 'description', 'status', 'progress', 'priority', 'dueDate'],
   client: ['title', 'description', 'priority', 'status'], // 'status' is further limited by clientStatusChangeAllowed
   none: [],
 };
@@ -79,4 +79,4 @@ export function checkGrant({ actorCan, role, orgType }) {
   return null;
 }
 
-export const roleFitsOrgType = (role, orgType) => (orgType === 'INTERNAL' ? STAFF_ROLES.includes(role) : !STAFF_ROLES.includes(role));
+export const roleFitsOrgType = (role, orgType) => (orgType === 'INTERNAL' ? ['PLATFORM_ADMIN', 'EMPLOYEE'].includes(role) : !STAFF_ROLES.includes(role));

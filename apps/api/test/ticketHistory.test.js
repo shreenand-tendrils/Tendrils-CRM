@@ -45,13 +45,13 @@ test('clients only see client-visible events, with status in client wording', ()
     { type: 'ASSIGNEE', clientVisible: false, toLabel: 'Sneha' },
     { type: 'TEAM', clientVisible: false, toLabel: 'QA' },
     { type: 'COMMENT', clientVisible: false, note: 'internal chatter' },
-    { type: 'STATUS', clientVisible: true, fromValue: 'IN_PROGRESS', toValue: 'REVIEW' },
-    { type: 'STATUS', clientVisible: true, fromValue: 'REVIEW', toValue: 'CLIENT_REVIEW' },
+    { type: 'STATUS', clientVisible: true, fromValue: 'REVIEW_HELP', toValue: 'REVIEW_HELP:NEED_MORE_INFO' },
+    { type: 'STATUS', clientVisible: true, fromValue: 'OPEN:IN_PROGRESS', toValue: 'REVIEW_TEST:RESOLVED' },
     { type: 'COMMENT', clientVisible: true, note: 'hello' },
   ];
   const seen = clientView(events);
-  assert.deepEqual(seen.map((e) => e.type), ['STATUS', 'COMMENT'], 'internal events and the no-op In progress -> In progress are hidden');
-  assert.equal(seen[0].toLabel, CLIENT_STATUS_LABEL.CLIENT_REVIEW);
+  assert.deepEqual(seen.map((e) => e.type), ['STATUS', 'COMMENT'], 'internal events and the no-op Need more info -> Need more info are hidden');
+  assert.equal(seen[0].toLabel, CLIENT_STATUS_LABEL.REVIEW_TEST);
   assert.ok(!JSON.stringify(seen).includes('Sneha') && !JSON.stringify(seen).includes('QA') && !JSON.stringify(seen).includes('internal chatter'));
 });
 
@@ -69,7 +69,7 @@ test('history sentences read like a person wrote them', () => {
 });
 
 test('actor label shows the role so you know who did it', () => {
-  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'MANAGER' } }), 'Rahul Verma (Manager)');
+  assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'MANAGER' } }), 'Rahul Verma (Employee)');
   assert.equal(actorLabel({ actor: { name: 'Arjun', role: 'PLATFORM_ADMIN' } }), 'Arjun (Platform admin)');
   assert.equal(actorLabel({ actor: { name: 'Rahul Verma', role: 'MANAGER' } }, false), 'Rahul Verma');
   assert.equal(actorLabel({ actor: null }), 'Someone');
@@ -79,4 +79,11 @@ test('events are grouped by day, newest first', () => {
   const g = groupByDay([{ id: 1, createdAt: '2026-10-20T10:00:00' }, { id: 2, createdAt: '2026-10-20T09:00:00' }, { id: 3, createdAt: '2026-10-19T09:00:00' }]);
   assert.equal(g.length, 2);
   assert.deepEqual(g.map((x) => x.events.length), [2, 1]);
+});
+
+test('pasted-image markers do not count as a description change', () => {
+  const base = { title: 't', status: 'OPEN', progress: null, priority: 'LOW', visibility: 'CLIENT' };
+  const ev = diffTicketEvents({ old: { ...base, description: 'see below [[img:pending-0]]' }, updated: { ...base, description: 'see below [[img:ck123abc]]' } });
+  assert.equal(ev.filter((e) => e.type === 'DESCRIPTION').length, 0);
+  assert.equal(diffTicketEvents({ old: { ...base, description: 'a' }, updated: { ...base, description: 'b' } }).filter((e) => e.type === 'DESCRIPTION').length, 1);
 });

@@ -85,7 +85,7 @@ test('manager keeps seeing a ticket they routed to another team', () => {
   const t = { id: 't', organizationId: 'c', visibility: 'CLIENT', teamId: 'qa', teamAccesses: [{ teamId: 'qa', accessRole: 'OWNER', addedById: 'rahul' }] };
   assert.equal(canViewTicket(staffCtx('MANAGER', 'rahul', ['dev']), t), true, 'router keeps visibility');
   assert.equal(canViewTicket(staffCtx('MANAGER', 'other', ['dev']), t), false, 'other managers of an unrelated team do not');
-  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'rahul', ['dev']), t), false, 'employees cannot rely on addedById');
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'rahul', ['dev']), t), true, 'every employee now keeps what they routed');
 });
 
 test('the assignee can always open their ticket', () => {
@@ -104,7 +104,7 @@ test('a team member sees tickets of their team; unrelated team does not', () => 
 test('unrouted client ticket is visible to managers/admin only', () => {
   const t = { id: 't', organizationId: 'c', visibility: 'CLIENT', teamId: null, teamAccesses: [] };
   assert.equal(canViewTicket(staffCtx('MANAGER', 'rahul', ['dev']), t), true);
-  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'sneha', ['dev']), t), false);
+  assert.equal(canViewTicket(staffCtx('EMPLOYEE', 'sneha', ['dev']), t), true, 'employees triage unrouted tickets too');
 });
 
 // ---- UI helpers (assignee dropdown = members of the chosen team, with role labels) ----
@@ -119,7 +119,7 @@ const teams = [
 test('assignee dropdown lists only the chosen team, with role labels', () => {
   const people = teamPeople(teams, 'dev');
   assert.deepEqual(people.map((p) => p.id), ['rahul', 'sneha']);
-  assert.equal(people[0].label, 'Rahul Verma — Manager');
+  assert.equal(people[0].label, 'Rahul Verma — Employee');
   assert.equal(people[1].label, 'Sneha Kulkarni — Employee');
   assert.deepEqual(teamPeople(teams, ''), [], 'no team => no options');
   assert.ok(!teamPeople(teams, 'dev').some((p) => p.id === 'pooja'));
@@ -153,7 +153,7 @@ test('people of several teams: owner + shared, de-duplicated, with roles', () =>
     { id: 'qa', name: 'QA', members: [{ membership: { role: 'EMPLOYEE', user: { id: 'aditya', name: 'Aditya Joshi', email: 'a@x' } } }, { membership: { role: 'EMPLOYEE', user: { id: 'pooja', name: 'Pooja Desai', email: 'p@x' } } }] },
   ], ['dev', 'qa']);
   assert.deepEqual(ppl.map((p) => p.id), ['aditya', 'pooja', 'rahul'], 'Aditya (Dev + QA) appears once');
-  assert.equal(ppl.find((p) => p.id === 'rahul').label, 'Rahul Verma — Manager');
+  assert.equal(ppl.find((p) => p.id === 'rahul').label, 'Rahul Verma — Employee');
   assert.deepEqual(peopleOfTeams([], ['dev']), []);
   assert.deepEqual(peopleOfTeams([{ id: 'dev', members: [] }], []), [], 'no team picked => nobody to pick');
 });

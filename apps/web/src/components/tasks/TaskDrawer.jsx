@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { Plus, Ticket as TicketIcon, UploadCloud } from "lucide-react";
 import { api } from "../../api";
 import { formatDate } from "../../lib/formatters";
-import { clipboardFiles, appendLine, PASTE_MARK } from "../../lib/paste";
+import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
+import RichText from "../ui/RichText";
+import PeoplePicker from "../ui/PeoplePicker";
+import TeamMultiSelect from "../ui/TeamMultiSelect";
+import { peopleOfTeams } from "../../lib/teams";
+import { daysPassed, dayLabel } from "../../lib/ticketStatus";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
 import { can, canEditTask } from "../../lib/rbac";
 import { COLUMNS } from "./TaskBoard";
@@ -13,12 +18,14 @@ import TicketAttachments from "../tickets/TicketAttachments";
 import { collectThread, taskPeople, taskTeams } from "../../lib/workThread";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
-export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, doneLocked, teams = [], onReassign }) {
+export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
   const [editing, setEditing] = useState(false);
   const [desc, setDesc] = useState("");
+  const [ownerTeam, setOwnerTeam] = useState(task?.teamId || "");
+  const [sharedTeams, setSharedTeams] = useState((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId).map((a) => a.teamId));
+  const [assigneeIds, setAssigneeIds] = useState((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean));
   const [tab, setTab] = useState("comments");
-  const [reassignTeamId, setReassignTeamId] = useState("");
-  useEffect(() => { setTab("comments"); setEditing(false); setReassignTeamId(task?.teamId || ""); }, [task?.id, task?.teamId]);
+  useEffect(() => { setTab("comments"); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId).map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
   if (!task) return null;
   const upload = async (e) => {
     const file = e.target.files?.[0];
@@ -50,21 +57,35 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
       <div className="win-card">
         <div className="detail"><span>Status</span>
           {editable
-            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => <option key={v} value={v} disabled={v === "DONE" && doneLocked?.(task) && task.status !== "DONE"}>{l}{v === "DONE" && doneLocked?.(task) && task.status !== "DONE" ? "" : ""}</option>)}</select>
+            ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{COLUMNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
-        <div className="detail"><span>Created</span><b>{formatDate(task.createdAt)}</b></div>
-        <div className="detail"><span>Days open</span><b>{Math.max(0, Math.floor((Date.now() - new Date(task.createdAt || Date.now()).getTime()) / 86400000))} days</b></div>
+        <div className="detail"><span>Opened</span><b>{formatDate(task.createdAt)}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(task.dueDate)}</b></div>
+        <div className="detail"><span>{task.completedAt ? "Done in" : "Open for"}</span><b>{dayLabel(daysPassed(task, "completedAt"))}</b></div>
         <div className="detail"><span>Client</span><b>{task.organization?.name || "—"}</b></div>
         {task.project && <div className="detail"><span>Project</span><b>{task.project.name}</b></div>}
         <div className="detail"><span>Team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
-        {can(me, "task.assign") && !task.autoCreated && <div className="detail" style={{ display: "grid", gap: 8, minWidth: 0 }}><span>Reassign task</span><label className="muted" htmlFor="task-reassign-team">Team</label><select id="task-reassign-team" className="table-select" value={reassignTeamId} onChange={(e) => { setReassignTeamId(e.target.value); onReassign?.(task, { teamId: e.target.value || null, assigneeId: null }); }}><option value="">Choose a team</option>{teams.filter((tm) => [task.teamId, ...(task.teamAccesses || []).map((a) => a.teamId)].includes(tm.id) || tm.members?.some((m) => m.membership?.user?.id === me?.user?.id)).map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}</select><label className="muted" htmlFor="task-reassign-person">Employee</label><select id="task-reassign-person" className="table-select" value={task.assigneeId || ""} disabled={!reassignTeamId} onChange={(e) => onReassign?.(task, { teamId: reassignTeamId, assigneeId: e.target.value || null })}><option value="">Unassigned</option>{(teams.find((tm) => tm.id === reassignTeamId)?.members || []).map((m) => m.membership?.user).filter(Boolean).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>}
         {task.creator && <div className="detail"><span>Created by</span><b>{task.creator.name || task.creator.email}</b></div>}
       </div>
-      {task.autoCreated && <p className="hint">This task mirrors its ticket: changing its status moves the ticket too. Add a linked task from the ticket for extra work.</p>}
+      {can(me, "task.assign") && !task.autoCreated && (
+        <div className="win-card" style={{ padding: 12, gap: 8 }}>
+          <h4>Reassign</h4>
+          <div className="field"><label>Team</label>
+            <select value={ownerTeam} onChange={(e) => { setOwnerTeam(e.target.value); setAssigneeIds([]); }} aria-label="Owning team"><option value="">No team</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+          </div>
+          <div className="field"><label>Also share with</label><TeamMultiSelect teams={teams} value={sharedTeams} onChange={setSharedTeams} lockedId={ownerTeam} disabled={!ownerTeam} /></div>
+          <div className="field"><label>Assignees (people of those teams)</label>
+            {ownerTeam
+              ? <PeoplePicker key={[ownerTeam, ...sharedTeams].join("|")} users={peopleOfTeams(teams, [ownerTeam, ...sharedTeams]).map((p) => ({ id: p.id, name: p.label }))} defaultValue={assigneeIds} onChange={setAssigneeIds} />
+              : <small className="hint">Choose a team first.</small>}
+          </div>
+          <button className="primary" disabled={!ownerTeam} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { teamId: ownerTeam, teamIds: sharedTeams.filter((x) => x !== ownerTeam), assigneeIds }); notify?.("Task reassigned"); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not reassign", "error"); } }}>Save reassignment</button>
+        </div>
+      )}
+      {task.autoCreated && <p className="hint">This task mirrors its ticket: reassign it from the ticket window (the task follows). Add a linked task for extra work.</p>}
       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
         {can(me, "task.create") && !task.autoCreated && <button className="primary" onClick={() => onAddSubtask(task)}><Plus size={14} /> Add subtask</button>}
         {ticketFull && <button className="secondary" onClick={() => onOpenTicket(ticketFull)}><TicketIcon size={14} /> Open {ticketFull.key}</button>}
@@ -78,11 +99,12 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <h2>{task.title}</h2>
         {editing ? (
           <div className="field">
-            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Describe the task here" />
+            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
+              onPaste={async (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); try { const marks = []; for (const f of files) { if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id)); else await attach(f); } if (marks.length) setDesc((v) => appendLine(v, marks.join("\n"))); } catch { notify?.("Could not paste the image", "error"); } }} />
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (
-          <p style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{task.description || "No description added."} {editable && <button className="secondary" style={{ marginLeft: 6 }} onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit</button>}</p>
+          <div style={{ marginTop: 6 }}><RichText text={task.description || "No description added."} canDelete={editable} />{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}</div>
         )}
       </div>
       <div className="drawer-tabs" role="tablist">

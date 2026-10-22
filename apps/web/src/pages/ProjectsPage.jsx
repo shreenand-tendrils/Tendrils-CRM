@@ -1,3 +1,4 @@
+import RichText from "../components/ui/RichText";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FolderKanban, CalendarDays, MessagesSquare, Users, X, Megaphone, Paperclip } from "lucide-react";
@@ -94,7 +95,7 @@ export default function ProjectsPage({ data, onRefresh, notify }) {
             <div className="project-icon"><FolderKanban /></div>
             <span className="status">{pretty(project.status)}{project.requestedByClient ? " · Requested by client" : ""}</span>
             <h3>{project.name}</h3>
-            <p>{project.description || "A shared space for project work, tasks and client updates."}</p>
+            <RichText text={project.description || "A shared space for project work, tasks and client updates."} canDelete={can(data.me, "project.create") || project.requestedByClient} />
             <div className="project-meta">
               <span>{project.organization?.name || "Internal"}</span>
               <span><CalendarDays size={13} />{formatDate(project.dueDate)}</span>

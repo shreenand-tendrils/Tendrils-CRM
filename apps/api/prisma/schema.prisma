@@ -69,6 +69,7 @@ enum OrgType {
 }
 enum MemberRole {
   PLATFORM_ADMIN
+  MANAGER
   EMPLOYEE
   CLIENT_ADMIN
   CLIENT_MEMBER
@@ -82,13 +83,16 @@ enum ProjectStatus {
 }
 enum TicketStatus {
   OPEN
-  TRIAGED
-  IN_PROGRESS
-  BLOCKED
-  REVIEW
-  CLIENT_REVIEW
-  RESOLVED
+  REVIEW_TEST
+  REVIEW_HELP
   CLOSED
+}
+
+enum TicketProgress {
+  IN_PROGRESS
+  QA
+  NEED_MORE_INFO
+  RESOLVED
 }
 enum TaskStatus {
   BACKLOG
@@ -200,6 +204,8 @@ model Ticket {
   title String
   description String? @db.Text
   status TicketStatus @default(OPEN)
+  progress TicketProgress?
+  closedAt DateTime?
   priority Priority @default(MEDIUM)
   visibility Visibility @default(CLIENT)
   requesterId String?
@@ -221,6 +227,7 @@ model Ticket {
   @@index([organizationId,status,priority])
 }
 model Task {
+  completedAt DateTime?
   id String @id @default(cuid())
   organizationId String
   projectId String?
@@ -303,6 +310,7 @@ model Attachment {
   ticketId String?
   taskId String?
   projectId String?
+  inline Boolean @default(false) // pasted into a description/comment: shown inline, not in the Files list
   ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
   task Task? @relation(fields:[taskId],references:[id],onDelete:Cascade)
   project Project? @relation(fields:[projectId],references:[id],onDelete:Cascade)

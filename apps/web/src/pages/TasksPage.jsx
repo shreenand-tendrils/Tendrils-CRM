@@ -49,7 +49,7 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
       ) : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Assignees</th><th>Created</th><th>Days open</th><th>Due</th></tr></thead>
+            <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Priority</th><th>Assignees</th><th>Due</th></tr></thead>
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id} onClick={() => onOpen?.(t)} style={onOpen ? { cursor: "pointer" } : undefined}>
@@ -58,7 +58,7 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
                   <td data-label="Status"><StatusBadge value={t.status} /></td>
                   <td data-label="Priority"><PriorityBadge value={t.priority} /></td>
                   <td data-label="Assignees"><AvatarStack users={(t.assignees || []).map((a) => a.user)} /></td>
-                  <td data-label="Created">{formatDate(t.createdAt)}</td><td data-label="Days open">{Math.max(0, Math.floor((Date.now() - new Date(t.createdAt || Date.now()).getTime()) / 86400000))}d</td><td data-label="Due" className={isOverdue(t) ? "overdue" : ""}>{formatDate(t.dueDate)}</td>
+                  <td data-label="Due" className={isOverdue(t) ? "overdue" : ""}>{formatDate(t.dueDate)}</td>
                 </tr>
               ))}
             </tbody>

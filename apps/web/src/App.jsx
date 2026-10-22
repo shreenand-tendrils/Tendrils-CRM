@@ -24,6 +24,7 @@ import { can } from "./lib/rbac";
 import NoAccess from "./components/ui/NoAccess";
 import * as realtime from "./lib/realtime";
 import DevLogin from "./components/dev/DevLogin";
+import { uploadInline } from "./lib/paste";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { normalizePayload } from "./lib/dates";
 
@@ -161,8 +162,6 @@ export default function App() {
     if (t || k) navigate(loc.pathname, { replace: true });
   }, [loc.search, loc.pathname, data.tickets, data.tasks, navigate]);
 
-  // An auto task that mirrors a client/manager ticket cannot be set to Done by an employee: the manager reviews first.
-  const doneLocked = (t) => Boolean(t.autoCreated && t.ticketId && !can(me, "ticket.triage") && (data.tickets || []).find((x) => x.id === t.ticketId)?.managerReview);
   const openTask = useCallback((t) => { setSelected(null); setSelectedTaskId(t.id); }, []);
   const showTicket = useCallback((t) => { setSelectedTaskId(null); setSelected(t); }, []);
   const openModal = (kind, init = null) => { setModalInit(init); setModal(kind); };
@@ -221,11 +220,18 @@ export default function App() {
               : "/tickets";
 
         const created = await api.post(endpoint, normalizedPayload);
-        for (const file of pastedFiles) {
-          const fd = new FormData();
-          fd.append("file", file);
-          fd.append(kind === "task" ? "taskId" : kind === "project" || kind === "projectRequest" ? "projectId" : "ticketId", created.data.id);
-          try { await api.post("/files", fd); } catch (err) { notify(err.response?.data?.error || `Could not attach ${file.name}`, "error"); }
+        if (pastedFiles.length) {
+          const targetKey = kind === "task" ? "taskId" : kind === "project" || kind === "projectRequest" ? "projectId" : "ticketId";
+          const base = kind === "task" ? "tasks" : kind === "project" || kind === "projectRequest" ? "projects" : "tickets";
+          let desc = cleanPayload.description || "";
+          let relink = false;
+          for (const { file, marker } of pastedFiles) {
+            try {
+              if (marker) { const r = await uploadInline(file, { [targetKey]: created.data.id }); desc = desc.replaceAll(`[[img:${marker}]]`, `[[img:${r.id}]]`); relink = true; }
+              else { const fd = new FormData(); fd.append("file", file); fd.append(targetKey, created.data.id); await api.post("/files", fd); }
+            } catch (err) { notify(err.response?.data?.error || `Could not attach ${file.name}`, "error"); }
+          }
+          if (relink) await api.patch(`/${base}/${created.data.id}`, { description: desc }).catch(() => {});
         }
       }
 
@@ -253,7 +259,7 @@ export default function App() {
 
       if (type === "tickets" && selected) {
         setSelected((current) =>
-          current ? { ...current, ...res.data } : current
+          current ? { ...current, ...body } : current
         );
       }
       return true;
@@ -377,7 +383,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<OverviewPage data={data} onSelectTicket={setSelected} />} />
             <Route path="/tickets" element={<TicketsPage data={data} onSelect={setSelected} />} />
-            <Route path="/tasks" element={guard(internal, "tasks", <TasksPage data={data} onCreate={() => openModal("task")} onOpen={openTask} doneLocked={doneLocked} onStatusChange={(task, status) => update("tasks", task.id, { status })} />)} />
+            <Route path="/tasks" element={guard(internal, "tasks", <TasksPage data={data} onCreate={() => openModal("task")} onOpen={openTask} onStatusChange={(task, status) => update("tasks", task.id, { status })} />)} />
             <Route path="/documents" element={<DocumentsPage me={me} notify={notify} />} />
             <Route path="/projects" element={<ProjectsPage data={data} onRefresh={refresh} notify={notify} />} />
             <Route path="/chat" element={guard(can(me, "chat.use"), "team chat", <ChatPage me={me} users={data.users || []} notify={notify} />)} />
@@ -429,13 +435,11 @@ export default function App() {
         task={(data.tasks || []).find((t) => t.id === selectedTaskId) || null}
         tasks={data.tasks || []}
         tickets={data.tickets || []}
-        teams={data.teams || []}
         me={me}
-        onReassign={(t, assignment) => update("tasks", t.id, assignment)}
         onClose={() => setSelectedTaskId(null)}
         onStatusChange={(t, status) => update("tasks", t.id, { status })}
         onOpenTask={openTask}
-        doneLocked={doneLocked}
+        teams={data.teams || []}
         onOpenTicket={showTicket}
         onRefresh={refresh}
         notify={notify}

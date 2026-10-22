@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { api } from "../../api";
+import RichText from "../ui/RichText";
+import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
 
 const ago = (d) => {
   const s = Math.max(1, Math.round((Date.now() - new Date(d)) / 1000));
@@ -31,17 +33,19 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
     try { await api.delete(`/tasks/${task.id}/comments/${c.id}`); await load(); onChanged?.(); }
     catch (e) { notify?.(e.response?.data?.error || "Could not delete", "error"); }
   };
+  // Pasted images appear inside the comment (not in Files); PDFs are attached as files.
   const paste = async (e) => {
-    const item = Array.from(e.clipboardData?.items || []).find((it) => it.kind === "file" && (it.type.startsWith("image/") || it.type === "application/pdf"));
-    const file = item?.getAsFile();
-    if (!file) return;
+    const files = clipboardFiles(e);
+    if (!files.length) return;
     e.preventDefault();
-    const ext = file.type === "application/pdf" ? "pdf" : file.type.split("/")[1] || "png";
-    const fd = new FormData();
-    fd.append("file", new File([file], `pasted-${Date.now()}.${ext}`, { type: file.type }));
-    fd.append("taskId", task.id);
-    try { await api.post("/files", fd); notify?.("Pasted file attached (see Files)"); onChanged?.(); }
-    catch (err) { notify?.(err.response?.data?.error || "Could not attach the pasted file", "error"); }
+    try {
+      const marks = [];
+      for (const f of files) {
+        if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id));
+        else { const fd = new FormData(); fd.append("file", f); fd.append("taskId", task.id); await api.post("/files", fd); onChanged?.(); }
+      }
+      if (marks.length) setText((v) => appendLine(v, marks.join("\n")));
+    } catch (err) { notify?.(err.response?.data?.error || "Could not paste the image", "error"); }
   };
 
   if (!items) return <p className="hint">Loading comments…</p>;
@@ -53,7 +57,7 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
           <b>{c.author?.name || c.author?.email}</b>
           <small title={new Date(c.createdAt).toLocaleString()}> · {ago(c.createdAt)}</small>
           {(c.authorId === me.user.id) && <button type="button" className="secondary" style={{ float: "right" }} onClick={() => remove(c)} aria-label="Delete comment"><Trash2 size={13} /></button>}
-          <p style={{ whiteSpace: "pre-wrap" }}>{c.body}</p>
+          <RichText text={c.body} canDelete={c.authorId === me.user.id} />
         </div>
       ))}
       <div ref={endRef} />

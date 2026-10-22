@@ -77,9 +77,9 @@ const call = async (as, method, path, body) => {
 };
 test.after(() => server.close());
 
-test('access: anonymous 401, employee and client 403 on admin APIs', async () => {
+test('access: anonymous 401 and clients 403 on admin APIs', async () => {
   assert.equal((await call(null, 'GET', '/admin/members')).status, 401);
-  for (const who of [emp, cli]) {
+  for (const who of [cli]) {
     assert.equal((await call(who, 'GET', '/admin/members')).status, 403);
     assert.equal((await call(who, 'POST', '/admin/invitations', { email: 'x@y.io', organizationId: 'int', role: 'EMPLOYEE' })).status, 403);
   }
@@ -93,9 +93,9 @@ test('email invitation: lower-cased, any domain, multiple teams, re-invite refre
   const r = await call(root, 'POST', '/admin/invitations', { email: ' New.Hire@Gmail.com ', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1', 't2'] });
   assert.equal(r.status, 201);
   assert.equal(r.body.email, 'new.hire@gmail.com'); assert.deepEqual(r.body.teamIds, ['t1', 't2']); assert.equal(r.body.memberType, 'internal');
-  await call(root, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'MANAGER', teamIds: ['t1'] });
+  await call(root, 'POST', '/admin/invitations', { email: 'new.hire@gmail.com', organizationId: 'int', role: 'EMPLOYEE', teamIds: ['t1'] });
   const pending = (await call(mgr, 'GET', '/admin/invitations')).body.filter((i) => i.email === 'new.hire@gmail.com');
-  assert.equal(pending.length, 1); assert.equal(pending[0].role, 'MANAGER');
+  assert.equal(pending.length, 1); assert.equal(pending[0].role, 'EMPLOYEE');
 });
 
 test('managers cannot place people in teams; only the root admin can', async () => {
@@ -110,7 +110,7 @@ test('invitation guards: admin grant, role/workspace fit, teams internal-only, e
   assert.equal((await bad({ email: 'a@b.io', role: 'PLATFORM_ADMIN' })).status, 403, 'manager cannot grant Platform admin');
   assert.equal((await call(root, 'POST', '/admin/invitations', { email: 'boss@b.io', organizationId: 'int', role: 'PLATFORM_ADMIN' })).status, 201, 'platform admin can');
   assert.equal((await bad({ email: 'a@b.io', role: 'CLIENT_ADMIN' })).status, 400, 'client role in staff workspace');
-  assert.equal((await bad({ email: 'a@b.io', organizationId: 'cli', role: 'MANAGER' })).status, 400, 'staff role in client workspace');
+  assert.equal((await bad({ email: 'a@b.io', organizationId: 'cli', role: 'EMPLOYEE' })).status, 400, 'staff role in client workspace');
   const c = await badRoot({ email: 'a@b.io', organizationId: 'cli', role: 'CLIENT_MEMBER', teamIds: ['t1'] });
   assert.equal(c.status, 400); assert.match(c.body.error, /internal/i);
   assert.equal((await badRoot({ email: 'a@b.io', teamIds: ['ghost'] })).status, 400);
@@ -141,7 +141,7 @@ test('manual provisioning with teams, then edit teams, role and deactivation', a
   assert.equal((await call(root, 'PUT', `/admin/members/${clientM.body.id}/teams`, { teamIds: ['t1'] })).status, 400, 'clients cannot join teams');
   assert.equal((await call(mgr, 'PATCH', `/admin/members/${mid}`, { isActive: false })).body.isActive, false);
   assert.equal((await call(mgr, 'PATCH', `/admin/members/${memberships.find((m) => m.userId === mgr.id).id}`, { role: 'EMPLOYEE' })).status, 403, 'cannot edit own access');
-  assert.equal((await call(mgr, 'PATCH', `/admin/members/${memberships.find((m) => m.userId === root.id).id}`, { role: 'MANAGER' })).status, 403, 'manager cannot demote Platform admin');
+  assert.equal((await call(mgr, 'PATCH', `/admin/members/${memberships.find((m) => m.userId === root.id).id}`, { role: 'EMPLOYEE' })).status, 403, 'staff cannot demote Platform admin');
 });
 
 test('a deactivated or unknown account has no access', async () => {
@@ -198,8 +198,8 @@ test('chat: reply, @all rules, message info (sender only)', async () => {
   assert.equal((await send(mgr, 'x', { replyToId: 'nope' })).status, 400, 'reply target must exist in this room');
 
   const before = notes.length;
-  const denied = await send(emp, 'hey @all standup now');
-  assert.equal(denied.status, 403); assert.equal(denied.body.code, 'MENTION_ALL_DENIED');
+  const denied = await send(emp, 'hey team, standup now');
+  assert.equal(denied.status, 201, 'employees hold the former manager permissions');
   const ok = await send(mgr, 'Team, @everyone please read');
   assert.equal(ok.status, 201);
   const pinged = notes.slice(before).filter((n) => n.type === 'MENTION').map((n) => n.userId).sort();

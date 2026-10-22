@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { permissionsFor, ROLE_PERMISSIONS, PERMISSIONS } from '../src/rbac/permissions.js';
 import { canEditTask, canViewTicket, ticketEditScope, checkMemberChange, roleFitsOrgType } from '../src/rbac/policies.js';
-import { TICKET_TO_TASK, TASK_TO_TICKET } from '../src/services/ticketTaskMaps.js';
+import { ticketToTaskStatus, TASK_TO_TICKET, deriveProgress, progressValid } from '../src/services/ticketTaskMaps.js';
 
 const internal = { type: 'INTERNAL' }, client = { type: 'CLIENT' };
 const ctx = (role, id = 'u1', org = role.startsWith('CLIENT') ? client : internal, orgId = 'o1') => {
@@ -15,11 +15,11 @@ test('every role only holds known permissions', () => {
   for (const perms of Object.values(ROLE_PERMISSIONS)) for (const p of perms) assert.ok(p in PERMISSIONS, p);
 });
 
-test('role ladder: admin > manager > lead > employee > client', () => {
+test('role ladder: admin > employee > client', () => {
   const n = (r) => ctx(r).permissions.size;
-  assert.ok(n('PLATFORM_ADMIN') > n('MANAGER') && n('MANAGER') > n('EMPLOYEE') && n('EMPLOYEE') > n('CLIENT_ADMIN'));
-  assert.ok(ctx('PLATFORM_ADMIN').can('member.grant_admin') && !ctx('MANAGER').can('member.grant_admin'));
-  assert.ok(!ctx('EMPLOYEE').can('task.assign') && ctx('MANAGER').can('task.assign'));
+  assert.ok(n('PLATFORM_ADMIN') > n('EMPLOYEE') && n('EMPLOYEE') > n('CLIENT_ADMIN'));
+  assert.ok(ctx('PLATFORM_ADMIN').can('member.grant_admin') && !ctx('EMPLOYEE').can('member.grant_admin'));
+  assert.ok(ctx('EMPLOYEE').can('task.assign') && ctx('EMPLOYEE').can('ticket.triage'), 'every employee holds the former manager permissions');
   assert.ok(!ctx('CLIENT_ADMIN').can('chat.use') && !ctx('CLIENT_ADMIN').can('task.create'));
 });
 
@@ -31,7 +31,8 @@ test('a role only counts inside the matching organization type', () => {
 test('task policy', () => {
   const emp = ctx('EMPLOYEE', 'me');
   assert.ok(canEditTask(emp, { creatorId: 'me' }) && canEditTask(emp, { assigneeId: 'me' }) && canEditTask(emp, { assignees: [{ userId: 'me' }] }));
-  assert.ok(!canEditTask(emp, { creatorId: 'x', assigneeId: 'y', assignees: [] }));
+  assert.ok(canEditTask(emp, { creatorId: 'x', assigneeId: 'y', assignees: [] }), 'every employee can edit any task (former manager permission)');
+  assert.ok(!canEditTask(ctx('CLIENT_ADMIN', 'me'), { creatorId: 'me' }));
   assert.ok(canEditTask(ctx('MANAGER', 'me'), { creatorId: 'x' }));
 });
 
@@ -42,9 +43,9 @@ test('ticket policy: view + edit scope', () => {
   assert.ok(!canViewTicket(ctx('CLIENT_ADMIN', 'boss', client, 'other-org'), t), 'other org');
   assert.ok(!canViewTicket(ctx('CLIENT_ADMIN', 'boss'), { ...t, visibility: 'INTERNAL' }));
   assert.equal(ticketEditScope(ctx('MANAGER'), t), 'full');
-  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'e'), t), 'status');
-  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'a'), t), 'own', 'internal ticket requester can edit their own ticket without gaining team assignment privileges');
-  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'z'), t), 'none');
+  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'e'), t), 'full');
+  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'a'), t), 'full');
+  assert.equal(ticketEditScope(ctx('EMPLOYEE', 'z'), t), 'full', 'employees hold the former manager permissions');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'a'), t), 'client');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'b'), t), 'none');
 });
@@ -73,18 +74,26 @@ test('member change guards', () => {
   assert.ok(roleFitsOrgType('EMPLOYEE', 'INTERNAL') && !roleFitsOrgType('EMPLOYEE', 'CLIENT') && roleFitsOrgType('CLIENT_ADMIN', 'CLIENT'));
 });
 
-test('ticket/task status maps never ping-pong', () => {
-  for (const [ticketStatus, taskStatus] of Object.entries(TICKET_TO_TASK)) {
-    const back = TASK_TO_TICKET[taskStatus];
-    // either the task status maps to nothing, or a ticket already in sync is left alone by the guard
-    assert.ok(back === undefined || TICKET_TO_TASK[back] === taskStatus, `${ticketStatus} <-> ${taskStatus}`);
+test('ticket status/progress <-> task status never ping-pong', () => {
+  for (const [taskStatus, next] of Object.entries(TASK_TO_TICKET)) {
+    const back = ticketToTaskStatus(next.status, next.progress);
+    assert.ok(taskStatus === 'BACKLOG' ? back === 'TODO' : back === taskStatus, `${taskStatus} -> ${next.status}/${next.progress} -> ${back}`);
   }
+  assert.equal(ticketToTaskStatus('CLOSED', null), 'DONE');
+  assert.equal(ticketToTaskStatus('REVIEW_HELP', 'NEED_MORE_INFO'), 'BLOCKED');
+});
+
+test('progress follows status', () => {
+  assert.equal(deriveProgress({ oldStatus: 'REVIEW_TEST', oldProgress: 'RESOLVED', status: 'OPEN' }), 'IN_PROGRESS');
+  assert.equal(deriveProgress({ oldStatus: 'OPEN', oldProgress: 'QA', status: 'OPEN' }), 'QA');
+  assert.equal(deriveProgress({ oldStatus: 'OPEN', status: 'REVIEW_TEST' }), 'RESOLVED');
+  assert.equal(deriveProgress({ oldStatus: 'OPEN', status: 'CLOSED' }), null);
+  assert.ok(progressValid('OPEN', 'QA') && progressValid('REVIEW_HELP', 'NEED_MORE_INFO') && !progressValid('CLOSED', 'QA') && !progressValid('OPEN', 'RESOLVED'));
 });
 
 test('employees can send work to other teams; clients cannot', () => {
   assert.ok(ctx('EMPLOYEE').can('work.cross_team') && ctx('MANAGER').can('work.cross_team'));
   assert.ok(!ctx('CLIENT_ADMIN').can('work.cross_team'));
-  assert.ok(!ctx('EMPLOYEE').can('ticket.triage'), 'cross-team requests do not make an employee a triager');
 });
 
 test('staff keep seeing a ticket they raised for another team', () => {
@@ -107,7 +116,7 @@ test('task comments notify the creator and assignees, never the author, no dupli
 import { normalizeTeamPicks } from '../src/services/ticketRouting.js';
 test('only the root admin manages teams; clients can request projects, staff cannot', () => {
   assert.ok(ctx('PLATFORM_ADMIN').can('team.manage'));
-  assert.ok(!ctx('MANAGER').can('team.manage') && !ctx('EMPLOYEE').can('team.manage') && !ctx('CLIENT_ADMIN').can('team.manage'));
+  assert.ok(!ctx('EMPLOYEE').can('team.manage') && !ctx('CLIENT_ADMIN').can('team.manage'));
   assert.ok(ctx('CLIENT_ADMIN').can('project.request') && ctx('CLIENT_MEMBER').can('project.request'));
   assert.ok(!ctx('MANAGER').can('project.request'));
 });
@@ -136,5 +145,5 @@ test('ticket delete: managers any, requester only while untouched', () => {
   assert.equal(canDeleteTicket({ ...t, isRequester: false }), false);
   assert.equal(canDeleteTicket({ ...t, isRequester: false, canDeleteAny: true, status: 'CLOSED' }), true);
   assert.ok(ctx('MANAGER').can('ticket.delete') && ctx('PLATFORM_ADMIN').can('ticket.delete'));
-  assert.ok(!ctx('EMPLOYEE').can('ticket.delete') && !ctx('CLIENT_ADMIN').can('ticket.delete'));
+  assert.ok(ctx('EMPLOYEE').can('ticket.delete') && !ctx('CLIENT_ADMIN').can('ticket.delete'));
 });

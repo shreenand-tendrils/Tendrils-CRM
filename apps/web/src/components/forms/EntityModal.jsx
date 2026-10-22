@@ -3,7 +3,7 @@ import { X, ShieldCheck, Info } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
 import { peopleOfTeams } from "../../lib/teams";
-import { clipboardFiles, insertAtCursor, PASTE_MARK } from "../../lib/paste";
+import { clipboardFiles, insertAtCursor, isImage } from "../../lib/paste";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 
 // field = [name, label, type, required, visible(me)]
@@ -14,7 +14,7 @@ const configs = {
     ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
     ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
     ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "work.cross_team")],
-    ["teamIds", "Which team(s) should handle this? (leave empty for the team to pick up)", "requestTeams", false, (me) => !me.isInternal],
+    ["teamIds", "Which team(s) should handle this? (leave empty to let the managers decide)", "requestTeams", false, (me) => !me.isInternal],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
@@ -31,8 +31,8 @@ const configs = {
     ["status", "Status", "projectStatus"], ["teamIds", "Teams working on it (choose first)", "projectTeams"], ["memberIds", "Members from those teams (you are added as lead)", "projectPeople"], ["startDate", "Start date", "date"], ["dueDate", "Due date", "date"],
   ] },
   projectRequest: { title: "Request a project", fields: [
-    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"],
-    ["teamIds", "Which team(s) should work on it? (optional)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
+    ["name", "Project name", "text", true], ["description", "What do you need?", "textarea"], ["organizationId", "Your company", "clients", true],
+    ["teamIds", "Which team(s) should work on it? (leave empty to let Tendrils decide)", "requestTeams"], ["startDate", "Preferred start", "date"], ["dueDate", "Needed by", "date"],
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
@@ -94,12 +94,11 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
             <div className="field" key={name}>
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <>
-                    <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]} onPaste={(e) => {
-                      if (!canPaste || name !== "description") return;
-                      const files = clipboardFiles(e);
-                      if (files.length) { e.preventDefault(); setPasted((old) => [...old, ...files]); }
-                    }} />
-                    {canPaste && name === "description" && <small className="hint">Text pastes directly. Pasted images/PDFs attach after saving{pasted.length ? ` · ${pasted.length} file(s) ready` : ""}.</small>}
+                    <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]}
+                      onPaste={canPaste && name === "description" ? (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); const marks = []; const added = files.map((f, i) => { if (!isImage(f)) return { file: f, marker: null }; const marker = `pending-${pasted.length + i}`; marks.push(`[[img:${marker}]]`); return { file: f, marker }; }); if (marks.length) insertAtCursor(e.target, marks.join("\n")); setPasted((cur) => [...cur, ...added]); } : undefined} />
+                    {canPaste && name === "description" && (pasted.length
+                      ? <div className="chips">{pasted.map((p) => <i className="chip-link" key={p.file.name}>{p.file.name} <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => setPasted((cur) => cur.filter((x) => x !== p))}>×</button></i>)}<small className="hint">Images show inside the text once saved. Delete the [[img:…]] line to drop one.</small></div>
+                      : <small className="hint">Tip: paste a screenshot here with Ctrl+V. It appears inside the description when you save.</small>)}
                   </>
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />
                 : type === "teamPeople" ? (teamId
@@ -122,7 +121,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
           ))}
-          {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Any team employee can assign tasks within the selected team(s).</p>}
+          {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a manager to assign others.</p>}
         </div>
         <div className="modal-foot">
           <small><ShieldCheck size={14} /> Recorded in the activity log</small>

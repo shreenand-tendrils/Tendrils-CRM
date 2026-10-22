@@ -1,3 +1,4 @@
+import { statusKeyLabel } from "./ticketStatus.js";
 import { ROLE_LABELS } from "./rbac.js";
 
 const pretty = (v = "") => String(v).toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -7,7 +8,7 @@ const day = (v) => (v ? new Date(`${v}T00:00:00`).toLocaleDateString(undefined, 
 export function describeEvent(e) {
   switch (e.type) {
     case "CREATED": return "created this ticket";
-    case "STATUS": return `changed status from ${e.fromLabel || pretty(e.fromValue)} to ${e.toLabel || pretty(e.toValue)}`;
+    case "STATUS": return `changed status from ${e.fromLabel || statusKeyLabel(e.fromValue)} to ${e.toLabel || statusKeyLabel(e.toValue)}`;
     case "PRIORITY": return `changed priority from ${pretty(e.fromValue)} to ${pretty(e.toValue)}`;
     case "ASSIGNEE":
       if (e.toLabel && e.fromLabel) return `changed assignee from ${e.fromLabel} to ${e.toLabel}`;

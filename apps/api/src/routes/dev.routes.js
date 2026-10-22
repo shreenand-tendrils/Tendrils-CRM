@@ -11,7 +11,7 @@ const cookieOpts = { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 8 * 360
 
 router.get('/status', (req, res) => res.json({ enabled: true, current: devEmailFromCookieHeader(req.headers.cookie) }));
 
-const ROLE_LABELS = { PLATFORM_ADMIN: 'Platform admin (Root / Boss)', EMPLOYEE: 'Employee', CLIENT_ADMIN: 'Client admin (Client boss)', CLIENT_MEMBER: 'Client member' };
+const ROLE_LABELS = { PLATFORM_ADMIN: 'Platform admin (Root / Boss)', MANAGER: 'Employee', EMPLOYEE: 'Employee', CLIENT_ADMIN: 'Client admin (Client boss)', CLIENT_MEMBER: 'Client member' };
 const ROLE_ORDER = ['PLATFORM_ADMIN', 'EMPLOYEE', 'CLIENT_ADMIN', 'CLIENT_MEMBER'];
 
 // Every demo account with its role label and teams, so the switcher shows WHO each person is.

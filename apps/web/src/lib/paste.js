@@ -1,3 +1,4 @@
+import { api } from "../api";
 // Clipboard helpers: pasting an image or PDF into a description attaches it to the item.
 export const PASTE_MARK = (name) => `[Pasted image: ${name}]`;
 
@@ -19,3 +20,14 @@ export function insertAtCursor(el, text) {
 
 /** Append text to a controlled value on its own line. */
 export const appendLine = (value = "", text) => `${value}${value && !value.endsWith("\n") ? "\n" : ""}${text}`;
+
+/** Upload a pasted image so it shows inside the text (not in the Files list). Returns the attachment id. */
+export async function uploadInline(file, target) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("inline", "1");
+  Object.entries(target).forEach(([k, v]) => fd.append(k, v));
+  return (await api.post("/files", fd)).data;
+}
+export const isImage = (f) => f.type.startsWith("image/");
+export const IMG_MARK = (id) => `[[img:${id}]]`;

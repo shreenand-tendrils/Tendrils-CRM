@@ -2,7 +2,7 @@ import { prisma } from '../db.js';
 import { notifyUser } from './activity.js';
 
 const DAY = 86400000;
-const DONE = ['RESOLVED', 'CLOSED'];
+const DONE = ['REVIEW_TEST', 'CLOSED']; // resolved or closed: nothing left to be late on
 
 /** Fire reminders whose time has come (once each). */
 export async function fireDueReminders(now = new Date()) {

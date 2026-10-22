@@ -28,7 +28,7 @@ router.get('/projects', async (req, res) =>
       include: {
         organization: { select: { id: true, name: true } },
         teams: { select: { teamId: true, team: { select: { id: true, name: true } } } },
-        _count: { select: { tickets: true, tasks: true, attachments: true } },
+        _count: { select: { tickets: true, tasks: true, attachments: { where: { inline: false } } } },
         // Team composition and chat are staff-only; clients never receive them.
         ...(req.isInternal ? { members: { include: { user: { select: userSelect } } }, chatRoom: { select: { id: true } } } : {}),
       },
@@ -66,16 +66,14 @@ router.post('/projects', requirePermission('project.create'), async (req, res) =
 router.get('/projects/:id/attachments', async (req, res) => {
   const p = await prisma.project.findUnique({ where: { id: req.params.id }, select: { id: true, organizationId: true } });
   if (!p || !canSeeOrg(req, p.organizationId)) throw new AppError('Project not found', 404);
-  res.json(await prisma.attachment.findMany({ where: { projectId: p.id }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
+  res.json(await prisma.attachment.findMany({ where: { projectId: p.id, inline: false }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
 });
 
 // A client asks for a project and chooses which team(s) should do it. Those teams' managers are added and told;
 // with no team chosen, every manager is told. Staff then plan it like any other project.
 router.post('/projects/request', requirePermission('project.request'), async (req, res) => {
-  const { teamIds = [], ...data0 } = parseBody(projectRequest, req.body);
-  const clientOrgId = req.memberships.find((m) => m.organization?.type === 'CLIENT')?.organizationId;
-  const data = { ...data0, organizationId: data0.organizationId || clientOrgId };
-  if (!data.organizationId || !canSeeOrg(req, data.organizationId)) throw new AppError('Your client workspace could not be determined. Ask an admin to check your membership.', 403);
+  const { teamIds = [], ...data } = parseBody(projectRequest, req.body);
+  if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   const teams = await validTeams(teamIds, { forClient: true });
   const managers = teams.length ? await findTeamManagers(teams) : [];
   const project = await prisma.project.create({
@@ -94,6 +92,16 @@ router.post('/projects/request', requirePermission('project.request'), async (re
 });
 
 // Replace the project team. Allowed for managers and the project lead.
+// Description only (used to link pasted images right after a project is created).
+router.patch('/projects/:id', async (req, res) => {
+  const p = await prisma.project.findUnique({ where: { id: req.params.id } });
+  if (!p || !canSeeOrg(req, p.organizationId)) throw new AppError('Project not found', 404);
+  if (!(req.can('project.create') || (!req.isInternal && p.requestedByClient))) throw new AppError("You can't edit this project.", 403);
+  const description = typeof req.body?.description === 'string' ? req.body.description : null;
+  if (description === null) throw new AppError('Nothing to update', 400);
+  res.json(await prisma.project.update({ where: { id: p.id }, data: { description } }));
+});
+
 router.put('/projects/:id/members', requirePermission('user.list'), async (req, res) => {
   const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: { members: true } });
   if (!project || !canSeeOrg(req, project.organizationId)) throw new AppError('Project not found', 404);

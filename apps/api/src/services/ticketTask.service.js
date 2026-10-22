@@ -1,8 +1,7 @@
 import { logActivity } from './activity.js';
 import { AppError } from '../errors/AppError.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
-import { notifyReviewReady } from './ticketReview.js';
-import { TICKET_TO_TASK, TASK_TO_TICKET, taskTitleFor } from './ticketTaskMaps.js';
+import { statusKey, ticketToTaskStatus, TASK_TO_TICKET, taskTitleFor } from './ticketTaskMaps.js';
 
 // Tickets and their auto-created task stay in step:
 //  * a ticket with an assignee always has exactly one auto task (Task.autoCreated) for that assignee
@@ -22,7 +21,7 @@ export async function syncTaskFromTicket(db, ticket, { prevAssigneeId = null, ch
         title: taskTitleFor(ticket), description: ticket.description ?? null, organizationId: ticket.organizationId,
         projectId: ticket.projectId ?? null, ticketId: ticket.id, teamId: ticket.teamId ?? null, autoCreated: true, creatorId: actor?.id ?? ticket.assigneeId,
         assigneeId: ticket.assigneeId, assignees: { create: [{ userId: ticket.assigneeId }] },
-        priority: ticket.priority, dueDate: ticket.dueDate ?? null, status: TICKET_TO_TASK[ticket.status] || 'TODO',
+        priority: ticket.priority, dueDate: ticket.dueDate ?? null, status: ticketToTaskStatus(ticket.status, ticket.progress),
       },
     });
     const teamLinks = await db.ticketTeamAccess.findMany({ where: { ticketId: ticket.id }, select: { teamId: true, accessRole: true } });
@@ -37,7 +36,10 @@ export async function syncTaskFromTicket(db, ticket, { prevAssigneeId = null, ch
   if (has('dueDate')) data.dueDate = ticket.dueDate ?? null;
   if (has('projectId')) data.projectId = ticket.projectId ?? null;
   if (has('teamId') || has('teamIds')) data.teamId = ticket.teamId ?? null;
-  if (has('status') && TICKET_TO_TASK[ticket.status]) data.status = TICKET_TO_TASK[ticket.status];
+  if (has('status') || has('progress')) {
+    data.status = ticketToTaskStatus(ticket.status, ticket.progress);
+    if (data.status !== task.status) data.completedAt = data.status === 'DONE' ? new Date() : null;
+  }
 
   if (has('assigneeId')) {
     let ids = task.assignees.map((a) => a.userId).filter((id) => id !== prevAssigneeId); // drop the previous owner, keep helpers
@@ -76,25 +78,14 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
   if (!task.autoCreated || !task.ticketId) return null;
   const ticket = await db.ticket.findUnique({ where: { id: task.ticketId } });
   if (task.status === 'DONE') await assertTaskSubtasksDone(db, task.id);
-  let next = TASK_TO_TICKET[task.status];
-  if (!ticket || !next) return null;
-  // A completed auto-task for a client-raised ticket is a handoff, not client approval.
-  // Keep employee-originated tickets on the existing internal workflow.
-  if (task.status === 'DONE' && ticket.visibility === 'CLIENT') {
-    const requesterIsInternal = await db.membership.findFirst({
-      where: { userId: ticket.requesterId, isActive: true, organization: { type: 'INTERNAL', isActive: true } },
-      select: { id: true },
-    });
-    if (!requesterIsInternal) next = 'CLIENT_REVIEW';
-  }
-  if (next === ticket.status || (next !== 'CLIENT_REVIEW' && TICKET_TO_TASK[ticket.status] === task.status)) return null; // already consistent unless a client-review handoff is required
-  const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next } });
+  const next = TASK_TO_TICKET[task.status];
+  if (!ticket || !next || ticketToTaskStatus(ticket.status, ticket.progress) === task.status) return null; // already consistent
+  const updated = await db.ticket.update({ where: { id: ticket.id }, data: { status: next.status, progress: next.progress, closedAt: null } });
   await logActivity({
     actorId: actor?.id, organizationId: updated.organizationId, entityType: 'ticket', entityId: updated.id, action: 'updated',
-    summary: `Ticket ${updated.key} moved to ${next.replaceAll('_', ' ').toLowerCase()} (task progress)`,
+    summary: `Ticket ${updated.key} moved to ${next.status.replaceAll('_', ' ').toLowerCase()} (task progress)`,
     metadata: { visibility: updated.visibility, requesterId: updated.requesterId },
   });
-  await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: ticket.status, toValue: next, note: 'Moved by task progress', clientVisible: true }]);
-  if (next === 'REVIEW' || next === 'CLIENT_REVIEW') await notifyReviewReady(updated, actor);
+  await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: statusKey(ticket.status, ticket.progress), toValue: statusKey(next.status, next.progress), note: 'Moved by task progress', clientVisible: true }]);
   return updated;
 }

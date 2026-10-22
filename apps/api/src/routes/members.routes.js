@@ -11,12 +11,7 @@ import { checkMemberChange, checkGrant, roleFitsOrgType } from '../rbac/policies
 // People & access (admin console). Its audit events use entityType 'access': visible to admins only, never to staff or clients. Two ways in: manual provisioning (POST /admin/members) and email
 // invitations (POST /admin/invitations). Either way, sign-in is Google and access is decided by membership.
 const router = Router();
-// Inviting, provisioning, and managing workspace memberships are Platform Admin-only.
-// Employee permissions for tickets/tasks must never imply access-management privileges.
-const guard = (req, res, next) => {
-  const isPlatformAdmin = (req.memberships || []).some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN');
-  return isPlatformAdmin ? next() : res.status(403).json({ error: 'Only a Platform Admin can invite or manage members.', code: 'PLATFORM_ADMIN_REQUIRED' });
-};
+const guard = requirePermission('member.manage');
 const RESEND_COOLDOWN_MS = 60 * 1000;
 const include = {
   user: { select: { id: true, name: true, email: true, image: true } },
@@ -30,7 +25,7 @@ const presentInv = (i) => ({ ...i, memberType: i.organization.type === 'INTERNAL
 router.get('/admin/rbac', (_req, res) =>
   res.json({
     permissions: Object.entries(PERMISSIONS).map(([key, label]) => ({ key, label })),
-    roles: Object.entries(ROLE_PERMISSIONS).map(([role, permissions]) => ({ role, label: ROLE_LABELS[role], permissions })),
+    roles: Object.entries(ROLE_PERMISSIONS).filter(([role]) => role !== 'MANAGER').map(([role, permissions]) => ({ role, label: ROLE_LABELS[role], permissions })),
   })
 );
 

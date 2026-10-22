@@ -76,8 +76,8 @@ test('grant rules: role fits workspace, only Platform admin grants admin', () =>
 });
 
 test('client ticket flow: can only approve or send back from CLIENT_REVIEW', () => {
-  assert.ok(clientStatusChangeAllowed('CLIENT_REVIEW', 'CLOSED') && clientStatusChangeAllowed('CLIENT_REVIEW', 'IN_PROGRESS'));
-  assert.ok(!clientStatusChangeAllowed('OPEN', 'CLOSED') && !clientStatusChangeAllowed('IN_PROGRESS', 'RESOLVED') && !clientStatusChangeAllowed('CLIENT_REVIEW', 'OPEN'));
+  assert.ok(clientStatusChangeAllowed('REVIEW_TEST', 'CLOSED') && clientStatusChangeAllowed('REVIEW_TEST', 'OPEN') && clientStatusChangeAllowed('REVIEW_HELP', 'OPEN'));
+  assert.ok(!clientStatusChangeAllowed('OPEN', 'CLOSED') && !clientStatusChangeAllowed('OPEN', 'REVIEW_TEST') && !clientStatusChangeAllowed('REVIEW_HELP', 'CLOSED'));
   const ctx = (role) => { const memberships = [{ role, organizationId: 'o', organization: { type: role.startsWith('CLIENT') ? 'CLIENT' : 'INTERNAL' } }]; const p = permissionsFor(memberships); return { currentUser: { id: 'u' }, memberships, isInternal: !role.startsWith('CLIENT'), can: (x) => p.has(x) }; };
   const t = { organizationId: 'o', requesterId: 'u', assigneeId: 'e' };
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER'), t), 'client');
@@ -88,7 +88,7 @@ test('project updates: members, leads and managers post; clients never do', () =
   const ctx = (role, id = 'u') => { const memberships = [{ role, organizationId: 'o', organization: { type: role.startsWith('CLIENT') ? 'CLIENT' : 'INTERNAL' } }]; const p = permissionsFor(memberships); return { currentUser: { id }, memberships, isInternal: !role.startsWith('CLIENT'), can: (x) => p.has(x) }; };
   const project = { members: [{ userId: 'dev' }] };
   assert.ok(canPostProjectUpdate(ctx('EMPLOYEE', 'dev'), project));
-  assert.ok(!canPostProjectUpdate(ctx('EMPLOYEE', 'other'), project));
+  assert.ok(canPostProjectUpdate(ctx('EMPLOYEE', 'other'), project), 'every employee holds the former manager permissions');
   assert.ok(canPostProjectUpdate(ctx('MANAGER', 'other'), project) && canPostProjectUpdate(ctx('MANAGER'), project));
   assert.ok(!canPostProjectUpdate(ctx('CLIENT_ADMIN', 'dev'), project));
 });

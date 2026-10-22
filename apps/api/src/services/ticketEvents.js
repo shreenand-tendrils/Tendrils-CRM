@@ -1,6 +1,10 @@
 // Pure helpers that turn a ticket change into history events (no DB access, unit-tested).
 
-export const CLIENT_STATUS_LABEL = { OPEN: 'Received', TRIAGED: 'Reviewed by the team', IN_PROGRESS: 'In progress', BLOCKED: 'In progress', REVIEW: 'In progress', CLIENT_REVIEW: 'Waiting for your review', RESOLVED: 'Done', CLOSED: 'Closed' };
+import { statusKey } from './ticketTaskMaps.js';
+export const CLIENT_STATUS_LABEL = {
+  OPEN: 'Received', 'OPEN:IN_PROGRESS': 'In progress', 'OPEN:QA': 'Being tested', REVIEW_HELP: 'We need more information from you', 'REVIEW_HELP:NEED_MORE_INFO': 'We need more information from you',
+  REVIEW_TEST: 'Waiting for your review', 'REVIEW_TEST:RESOLVED': 'Waiting for your review', CLOSED: 'Closed',
+};
 const dateKey = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
 
 /**
@@ -14,8 +18,10 @@ export function diffTicketEvents({ old, updated, oldTeamIds = [], newTeamIds = [
   const add = (type, fromValue, toValue, extra = {}) => out.push({ type, fromValue: fromValue ?? null, toValue: toValue ?? null, clientVisible: false, ...extra });
 
   if (old.title !== updated.title) add('TITLE', old.title, updated.title, { fromLabel: old.title, toLabel: updated.title, clientVisible: true });
-  if ((old.description || '') !== (updated.description || '')) add('DESCRIPTION', null, null, { clientVisible: true });
-  if (old.status !== updated.status) add('STATUS', old.status, updated.status, { clientVisible: true });
+  // pasted-image markers are not a change a person wrote
+  const plain = (s) => (s || '').replace(/\[\[img:[a-z0-9-]+\]\]/gi, '').trim();
+  if (plain(old.description) !== plain(updated.description)) add('DESCRIPTION', null, null, { clientVisible: true });
+  if (statusKey(old.status, old.progress) !== statusKey(updated.status, updated.progress)) add('STATUS', statusKey(old.status, old.progress), statusKey(updated.status, updated.progress), { clientVisible: true });
   if (old.priority !== updated.priority) add('PRIORITY', old.priority, updated.priority, { clientVisible: true });
   if (dateKey(old.dueDate) !== dateKey(updated.dueDate)) add('DUE_DATE', dateKey(old.dueDate), dateKey(updated.dueDate), { fromLabel: dateKey(old.dueDate), toLabel: dateKey(updated.dueDate), clientVisible: true });
   if (old.visibility !== updated.visibility) add('VISIBILITY', old.visibility, updated.visibility);

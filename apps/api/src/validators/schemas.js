@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Priority, ProjectStatus, TaskStatus, TicketStatus, Visibility } from './enums.js';
+import { Priority, ProjectStatus, TaskStatus, TicketStatus, TicketProgress, Visibility } from './enums.js';
 
 const en = (values) => z.enum(values);
 
@@ -99,6 +99,7 @@ export const ticketUpdate = z.object({
   title: z.string().trim().min(3).max(220).optional(),
   description: z.string().nullable().optional(),
   status: en(TicketStatus).optional(),
+  progress: en(TicketProgress).optional().nullable(),
   priority: en(Priority).optional(),
   visibility: en(Visibility).optional(),
   assigneeId: nullId,
@@ -121,7 +122,7 @@ export const teamCreate = z.object({
 });
 
 export const projectMembersSet = z.object({ memberIds: idList, leadId: optId, teamIds: idList.optional() });
-export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id.optional(), startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
+export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
 
 export const chatMessageCreate = z.object({
   body: z.string().trim().min(1).max(4000),

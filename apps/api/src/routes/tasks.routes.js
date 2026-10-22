@@ -7,7 +7,6 @@ import {
 } from '../services/index.js';
 import { assigneesOutsideTeams } from '../services/ticketRouting.js';
 import { taskCommentRecipients } from '../services/taskComments.js';
-import { employeeIds, finishBlocked, NEEDS_MANAGER_REVIEW_MESSAGE } from '../services/ticketReview.js';
 import { commentCreate } from '../validators/schemas.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -25,7 +24,7 @@ const include = {
   assignee: { select: userSelect },
   assignees: { include: { user: { select: userSelect } } },
   creator: { select: userSelect },
-  _count: { select: { comments: true, attachments: true } },
+  _count: { select: { comments: true, attachments: { where: { inline: false } } } },
 };
 const asRows = (ids) => ids.map((userId) => ({ userId }));
 const link = (t) => `/?task=${t.id}`;
@@ -127,12 +126,8 @@ router.patch('/tasks/:id', async (req, res) => {
   if ((teamIds || data.teamId !== undefined) && !req.can('task.assign')) throw new AppError('Only authorized task assigners can change participating teams.', 403);
   if (data.teamId) { const validTeam = await prisma.team.findFirst({ where: { id: data.teamId, organization: { type: 'INTERNAL' } }, select: { id: true } }); if (!validTeam) throw new AppError('Invalid task team.', 400, 'INVALID_TEAM'); }
   if (teamIds) { const validTeams = teamIds.length ? await prisma.team.findMany({ where: { id: { in: teamIds }, organization: { type: 'INTERNAL' } }, select: { id: true } }) : []; if (validTeams.length !== new Set(teamIds).size) throw new AppError('One or more task teams are invalid.', 400, 'INVALID_TEAM'); }
-  if (data.status === 'DONE' && old.autoCreated && old.ticketId && !req.can('ticket.triage')) {
-    const tk = await prisma.ticket.findUnique({ where: { id: old.ticketId }, select: { requesterId: true } });
-    const emp = await employeeIds(prisma, [tk?.requesterId]);
-    if (finishBlocked({ internal: true, canTriage: false, status: 'RESOLVED', requesterIsEmployee: emp.has(tk?.requesterId) })) throw new AppError('This task mirrors a ticket that needs a employee review. Move it to Review and an employee can resolve or close it.', 403, 'NEEDS_MANAGER_REVIEW');
-  }
   if (data.status === 'DONE') await assertTaskSubtasksDone(prisma, old.id);
+  if (data.status !== undefined && data.status !== old.status) data.completedAt = data.status === 'DONE' ? new Date() : null;
   if (data.parentId !== undefined && data.parentId !== old.parentId) {
     if (data.parentId === old.id) throw new AppError('A task cannot be its own parent.', 400, 'TASK_CYCLE');
     if (data.parentId) {
@@ -224,7 +219,7 @@ router.delete('/tasks/:id/comments/:commentId', async (req, res) => {
 
 router.get('/tasks/:id/attachments', async (req, res) => {
   const t = await loadTask(req);
-  res.json(await prisma.attachment.findMany({ where: { taskId: t.id }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
+  res.json(await prisma.attachment.findMany({ where: { taskId: t.id, inline: false }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
 });
 
 export default router;

@@ -5,7 +5,7 @@ import { ticketScope, canSeeOrg, requirePermission } from '../middleware/index.j
 import {
   logActivity, notifyAssignment, assertAssignable, assertProjectInOrg, assertInternalTeam, syncTaskFromTicket, notifyPeople, findTriagers, findTeamManagers, loadTeamMemberIds, recordTicketEvents, loadNames, diffTicketEvents, clientView,
 } from '../services/index.js';
-import { employeeIds, finishBlocked, notifyReviewReady, NEEDS_MANAGER_REVIEW_MESSAGE } from '../services/ticketReview.js';
+import { deriveProgress, progressValid } from '../services/ticketTaskMaps.js';
 import { canDeleteTicket } from '../services/ticketReviewRules.js';
 import fs from 'node:fs/promises';
 import nodePath from 'node:path';
@@ -55,12 +55,7 @@ async function assertTicketWorkComplete(ticketId) {
   }
 }
 
-router.get('/tickets', async (req, res) => {
-  const list = await listTickets(req);
-  if (!req.isInternal) return res.json(list);
-  const emp = await employeeIds(prisma, list.map((t) => t.requesterId));
-  res.json(list.map((t) => ({ ...t, employeeReview: !emp.has(t.requesterId) })));
-});
+router.get('/tickets', async (req, res) => res.json(await listTickets(req)));
 
 async function listTickets(req) {
   const q = req.query.q ? String(req.query.q) : '';
@@ -73,10 +68,10 @@ async function listTickets(req) {
         project: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true, email: true } },
         requester: { select: { id: true, name: true, email: true } },
-        _count: { select: { comments: true, tasks: true, attachments: true } },
+        _count: { select: { comments: true, tasks: true, attachments: { where: { inline: false } } } },
         ...(req.isInternal ? { teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } } } : {}),
         // the linked work item is internal: clients never see it
-        tasks: { where: req.isInternal ? { autoCreated: true } : {}, orderBy: { createdAt: 'asc' }, select: { id: true, title: true, description: true, status: true, createdAt: true, dueDate: true, autoCreated: true, parentId: true, subtasks: { orderBy: { createdAt: 'asc' }, select: { id: true, title: true, description: true, status: true, createdAt: true, dueDate: true, parentId: true } } } },
+        ...(req.isInternal ? { tasks: { where: { autoCreated: true }, take: 1, select: { id: true, status: true, assigneeId: true } } } : {}),
       },
     })
   );
@@ -99,7 +94,7 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
   let { teamIds = [], ...data } = parsed;
   if (!canSeeOrg(req, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!req.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
-  // Clients may only ASK for teams (the ones the admin made visible to clients); employees of those teams get it.
+  // Clients may only ASK for teams (the ones the admin made visible to clients); managers of those teams get it.
   const clientPicks = !req.isInternal ? normalizeTeamPicks(data.teamId, teamIds) : null;
   if (clientPicks) {
     const ids = [clientPicks.teamId, ...clientPicks.teamIds].filter(Boolean);
@@ -152,14 +147,14 @@ router.post('/tickets', requirePermission('ticket.create'), async (req, res) => 
       ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
     ]);
   }
-  // Staff who route a ticket to a team that is not theirs tell that team's employees, so it gets picked up.
+  // Staff who route a ticket to a team that is not theirs tell that team's managers, so it gets picked up.
   if (req.isInternal && accessTeamIds.some((id) => !ownTeamIds.includes(id))) {
     const managers = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
     await notifyPeople({ userIds: managers.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${req.currentUser.name || req.currentUser.email}: ${t.title}`, href: ticketUrl(t) });
   }
   // A client request is a TICKET (never a task). Triagers are told so it gets an owner; the assignee gets a task later.
   if (!req.isInternal) {
-    // Team chosen by the client => that team's employees; no team (or a team with no manager) => all employees.
+    // Team chosen by the client => that team's managers; no team (or a team with no manager) => all managers.
     let audience = accessTeamIds.length ? await findTeamManagers(accessTeamIds) : [];
     if (!audience.length) audience = await findTriagers();
     await notifyPeople({ userIds: audience.map((u) => u.id), actorId: req.currentUser.id, type: 'ASSIGNMENT', title: `New client ticket ${t.key} (${org.name})`, body: `${req.currentUser.name || req.currentUser.email} raised: ${t.title}`, href: ticketUrl(t) });
@@ -187,16 +182,7 @@ router.patch('/tickets/:id', async (req, res) => {
   if (scope === 'none' || forbidden.length) {
     throw new AppError(scope === 'none' ? "You can't edit this ticket." : `Your role can't change: ${forbidden.join(', ')}.`, 403);
   }
-  if (data.status !== undefined && req.isInternal && !req.can('ticket.triage')) {
-    const emp = await employeeIds(prisma, [old.requesterId]);
-    if (finishBlocked({ internal: true, canTriage: false, status: data.status, requesterIsEmployee: emp.has(old.requesterId) })) throw new AppError(NEEDS_MANAGER_REVIEW_MESSAGE, 403, 'NEEDS_MANAGER_REVIEW');
-  }
-  if (req.isInternal && data.status && old.visibility === 'CLIENT') {
-    const requesterIsEmployee = (await employeeIds(prisma, [old.requesterId])).has(old.requesterId);
-    if (!requesterIsEmployee && data.status === 'CLOSED') throw new AppError('Employees cannot close client tickets. Move the ticket to Resolved/Review so the client can review and approve it.', 403, 'CLIENT_APPROVAL_REQUIRED');
-    if (!requesterIsEmployee && data.status === 'RESOLVED') data.status = 'CLIENT_REVIEW';
-  }
-  if (['RESOLVED', 'CLOSED', 'CLIENT_REVIEW'].includes(data.status)) await assertTicketWorkComplete(old.id);
+  if (['REVIEW_TEST', 'CLOSED'].includes(data.status)) await assertTicketWorkComplete(old.id);
   if (scope === 'client' && data.status !== undefined && !clientStatusChangeAllowed(old.status, data.status)) {
     throw new AppError('You can only approve or send back a ticket that is waiting for your review.', 403, 'CLIENT_STATUS_LOCKED');
   }
@@ -242,7 +228,6 @@ router.patch('/tickets/:id', async (req, res) => {
   if (t.assigneeId && t.assigneeId !== old.assigneeId) {
     await notifyAssignment({ userId: t.assigneeId, actor: req.currentUser, title: `${t.key} — ${t.title}`, kind: 'ticket', href: ticketUrl(t) });
   }
-  if (data.status === 'REVIEW' && old.status !== 'REVIEW' && !req.can('ticket.triage')) await notifyReviewReady(t, req.currentUser);
   {
     const oldIds = (old.teamAccesses || []).map((a) => a.teamId);
     const newIds = routingTouched ? nextAccessIds : oldIds;
@@ -256,8 +241,8 @@ router.patch('/tickets/:id', async (req, res) => {
     if (req.isInternal) {
       await notifyTicket(req, t, {
         toRequester: true,
-        title: data.status === 'CLIENT_REVIEW' ? `${t.key} is ready for your review` : `${t.key} is now ${nice(data.status)}`,
-        body: data.status === 'CLIENT_REVIEW' ? `Please review "${t.title}" and approve it or send it back.` : `Your request "${t.title}" moved to ${nice(data.status)}.`,
+        title: data.status === 'REVIEW_TEST' ? `${t.key} is ready for your review` : data.status === 'REVIEW_HELP' ? `${t.key} needs more information from you` : `${t.key} is now ${nice(data.status)}`,
+        body: data.status === 'REVIEW_HELP' ? `Please reply on "${t.title}" so the team can continue.` : data.status === 'REVIEW_TEST' ? `Please review "${t.title}" and approve it or send it back.` : `Your request "${t.title}" moved to ${nice(data.status)}.`,
       });
     } else {
       await notifyTicket(req, t, { title: `${t.key}: client ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${req.currentUser.name || req.currentUser.email} ${data.status === 'CLOSED' ? 'approved' : 'asked for changes on'} "${t.title}".` });
@@ -311,9 +296,21 @@ router.delete('/tickets/:id', async (req, res) => {
   res.json({ ok: true, detachedTasks: detached });
 });
 
+// Everyone who can open the ticket (clients included) can see the work items behind it, read-only. Internal comments stay internal.
+router.get('/tickets/:id/tasks', async (req, res) => {
+  const t = await loadVisibleTicket(req);
+  res.json(await prisma.task.findMany({
+    where: { ticketId: t.id }, orderBy: { createdAt: 'asc' },
+    select: {
+      id: true, title: true, description: true, status: true, priority: true, dueDate: true, createdAt: true, completedAt: true, parentId: true, autoCreated: true,
+      team: { select: { id: true, name: true } }, assignees: { select: { user: { select: { id: true, name: true, email: true } } } },
+    },
+  }));
+});
+
 router.get('/tickets/:id/attachments', async (req, res) => {
   const t = await loadVisibleTicket(req);
-  res.json(await prisma.attachment.findMany({ where: { ticketId: t.id }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
+  res.json(await prisma.attachment.findMany({ where: { ticketId: t.id, inline: false }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } }));
 });
 
 router.post('/tickets/:id/comments', async (req, res) => {
