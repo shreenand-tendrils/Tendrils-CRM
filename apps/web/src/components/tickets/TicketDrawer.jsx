@@ -10,7 +10,7 @@ import TicketHistory from "./TicketHistory";
 import TicketAttachments from "./TicketAttachments";
 import TicketReminder from "./TicketReminder";
 import Window from "../ui/Window";
-import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
+import PasteTextarea from "../ui/PasteTextarea";
 import RichText from "../ui/RichText";
 import TicketTasks from "./TicketTasks";
 import { STATUSES, STATUS_LABEL, PROGRESS_FOR, PROGRESS_LABEL, clientStatusText, daysPassed, dayLabel } from "../../lib/ticketStatus";
@@ -23,21 +23,6 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [text, setText] = useState("");
   const [pastePreview, setPastePreview] = useState("");
   const [pasteHint, setPasteHint] = useState("");
-  // Images pasted into a comment appear inside the comment (not in Files); PDFs are attached as files.
-  const handlePaste = async (e) => {
-    const files = clipboardFiles(e);
-    if (!files.length) return;
-    e.preventDefault();
-    try {
-      const marks = [];
-      for (const f of files) {
-        if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { ticketId: ticket.id })).id));
-        else await onUpload({ target: { files: [f], value: "" } }, ticket.id);
-      }
-      if (marks.length) { const markerText = marks.join("\n"); setText((v) => appendLine(v, markerText)); setPastePreview(markerText); }
-      setPasteHint("");
-    } catch { setPasteHint("Could not paste the image."); }
-  };
   const [tab, setTab] = useState(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments");
   const [visibility, setVisibility] = useState("CLIENT");
   const [editing, setEditing] = useState(false);
@@ -222,11 +207,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <label htmlFor="ticket-edit-title">Ticket title</label>
           <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
           <label htmlFor="ticket-edit-description">Description</label>
-          <textarea id="ticket-edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={4} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
-            onPaste={async (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); try { const marks = []; for (const f of files) { if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { ticketId: ticket.id })).id)); else await onUpload({ target: { files: [f], value: "" } }, ticket.id); } if (marks.length) setEditDescription((v) => appendLine(v, marks.join("\n"))); } catch { setPasteHint("Could not paste the image."); } }} />
-          {editing && /\[\[img:/.test(editDescription) && (
-            <RichText text={editDescription} style={{ marginTop: 8, maxWidth: 420 }} />
-          )}
+          <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={4} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)} onError={(m) => setPasteHint(m)} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
       ) : (
@@ -254,8 +235,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </div>
       ))}
       {tab === "comments" && <form className="comment-form" onSubmit={post}>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} onPaste={handlePaste} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) post(e); }} placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)" rows={3} aria-label="Comment" />
-        {pastePreview && <RichText text={pastePreview} style={{ marginTop: 8, maxWidth: 360 }} />}
+        <PasteTextarea value={text} onChange={setText} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)} onError={(m) => setPasteHint(m)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) post(e); }} placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)" rows={3} aria-label="Comment" />
         {pasteHint && <small className="hint">{pasteHint}</small>}
         <div className="row">
           {staff && <select value={visibility} onChange={(e) => setVisibility(e.target.value)} aria-label="Comment visibility"><option value="CLIENT">Visible to client</option><option value="INTERNAL">Internal note</option></select>}

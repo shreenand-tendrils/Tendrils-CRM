@@ -4,7 +4,7 @@ import "../../styles/rich.css";
 
 const MARK = /\[\[img:([a-z0-9-]+)\]\]/gi;
 
-function InlineImage({ id, canDelete }) {
+export function InlineImage({ id, canDelete, onRemove }) {
   const [src, setSrc] = useState(null);
   const [gone, setGone] = useState(id.startsWith("pending")); // never uploaded: show nothing
   useEffect(() => {
@@ -15,13 +15,14 @@ function InlineImage({ id, canDelete }) {
   }, [id]);
   if (gone) return null; // deleted: nothing is left behind in the text
   const remove = async () => {
+    if (onRemove) { await onRemove(id); return; }
     if (!window.confirm("Delete this pasted image? The ticket and its history stay exactly as they are.")) return;
     try { await api.delete(`/files/${id}`); setGone(true); } catch (e) { window.alert(e.response?.data?.error || "Could not delete the image"); }
   };
   return (
     <span className="inline-img">
       {src ? <a href={src} target="_blank" rel="noreferrer"><img src={src} alt="Pasted" /></a> : <small className="hint">Loading image…</small>}
-      {canDelete && <button type="button" className="inline-img-x" onClick={remove} aria-label="Delete image" title="Delete image">✕</button>}
+      {(canDelete || onRemove) && <button type="button" className="inline-img-x" onClick={remove} aria-label="Delete image" title="Delete image">✕</button>}
     </span>
   );
 }

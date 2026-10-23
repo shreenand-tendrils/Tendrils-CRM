@@ -3,7 +3,7 @@ import { X, ShieldCheck, Info } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
 import { peopleOfTeams } from "../../lib/teams";
-import { clipboardFiles, insertAtCursor, isImage } from "../../lib/paste";
+import { clipboardFiles, isImage } from "../../lib/paste";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 
 // field = [name, label, type, required, visible(me)]
@@ -84,7 +84,12 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
       const clientWorkspace = (me.memberships || []).find((m) => m.organization?.type === "CLIENT")?.organization?.id;
       if (clientWorkspace) payload.organizationId = clientWorkspace;
     }
-    if (canPaste && pasted.length) payload.__files = pasted;
+    if (canPaste && pasted.length) {
+      payload.__files = pasted;
+      // images that are still in the list show inside the description after saving (the text box itself stays clean)
+      const marks = pasted.filter((p) => p.marker).map((p) => `[[img:${p.marker}]]`);
+      if (marks.length) payload.description = `${payload.description || ""}${payload.description ? "\n" : ""}${marks.join("\n")}`;
+    }
     onSubmit(kind, payload);
   };
 
@@ -103,9 +108,9 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <>
                     <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]}
-                      onPaste={canPaste && name === "description" ? (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); const marks = []; const added = files.map((f, i) => { if (!isImage(f)) return { file: f, marker: null, preview: null }; const marker = `pending-${pasted.length + i}`; marks.push(`[[img:${marker}]]`); return { file: f, marker, preview: URL.createObjectURL(f) }; }); if (marks.length) insertAtCursor(e.target, marks.join("\n")); setPasted((cur) => [...cur, ...added]); } : undefined} />
+                      onPaste={canPaste && name === "description" ? (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); const marks = []; const added = files.map((f, i) => { if (!isImage(f)) return { file: f, marker: null, preview: null }; const marker = `pending-${Date.now().toString(36)}${i}`; marks.push(marker); return { file: f, marker, preview: URL.createObjectURL(f) }; }); setPasted((cur) => [...cur, ...added]); } : undefined} />
                     {canPaste && name === "description" && (pasted.length
-                      ? <div className="chips">{pasted.map((p) => <i className="chip-link" key={p.file.name}>{p.preview && <img src={p.preview} alt="Pasted screenshot preview" style={{ display: "block", maxWidth: 220, maxHeight: 140, objectFit: "contain", borderRadius: 8, marginTop: 6 }} />} {p.file.name} <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => { if (p.preview) URL.revokeObjectURL(p.preview); setPasted((cur) => cur.filter((x) => x !== p)); }}>×</button></i>)}<small className="hint">Images show inside the text once saved. Delete the [[img:…]] line to drop one.</small></div>
+                      ? <div className="chips">{pasted.map((p) => <i className="chip-link" key={p.file.name}>{p.preview && <img src={p.preview} alt="Pasted screenshot preview" style={{ display: "block", maxWidth: 220, maxHeight: 140, objectFit: "contain", borderRadius: 8, marginTop: 6 }} />} {p.file.name} <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => { if (p.preview) URL.revokeObjectURL(p.preview); setPasted((cur) => cur.filter((x) => x !== p)); }}>×</button></i>)}<small className="hint">Images show inside the text once saved. Click × to drop one.</small></div>
                       : <small className="hint">Tip: paste a screenshot here with Ctrl+V. It appears inside the description when you save.</small>)}
                   </>
                 : type === "people" ? <PeoplePicker name={name} users={data.users} />

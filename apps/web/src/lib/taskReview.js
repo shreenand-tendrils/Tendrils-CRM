@@ -35,19 +35,36 @@ export function taskFacts(me, task) {
   return { authority, mayFinish, reviewerTeamIds };
 }
 
-/** Which statuses may this person pick, and why not. Returns [{ value, label, disabled, why }]. */
-export function statusChoices({ me, task, pendingSubtasks = 0, columns }) {
+/** Who may move this task? Doer = the people it was given to (+ admins, + a subtask's parent assignee, + a teammate when nobody owns it).
+ *  Reviewer = approves or sends back what is in Review. Everyone else can read it but not change its status. */
+export function statusRights(me, task, parentAssigneeIds = []) {
   const { authority, mayFinish } = taskFacts(me, task);
-  const locked = authority === "TICKET";
+  const id = me?.user?.id;
+  const assigneeIds = [...new Set([task.assigneeId, ...(task.assignees || []).map((a) => a.user?.id || a.userId)].filter(Boolean))];
+  const isAdmin = !!me?.permissions?.includes("task.update_any");
+  const isAssignee = assigneeIds.includes(id);
+  const unassignedMate = assigneeIds.length === 0 && (me?.teamIds || []).some((t) => [...(task.teamAccesses || []).filter((a) => a.accessRole !== "REVIEWER").map((a) => a.teamId), task.teamId].includes(t));
+  const asDoer = authority !== "TICKET" && (isAdmin || isAssignee || parentAssigneeIds.includes(id) || unassignedMate);
+  const asReviewer = authority !== "TICKET" && mayFinish && !isAssignee && ["PEER", "TEAM"].includes(authority);
+  const canApproveNow = authority !== "TICKET" && mayFinish && (isAdmin || !isAssignee || authority === "TEAM");
+  return { authority, mayFinish, isAssignee, isAdmin, asDoer, asReviewer, canApproveNow, any: asDoer || (asReviewer && ["REVIEW", "DONE"].includes(task.status)), assigneeIds };
+}
+
+/** Which statuses may this person pick, and why not. Returns [{ value, label, disabled, why }]. */
+export function statusChoices({ me, task, pendingSubtasks = 0, columns, parentAssigneeIds = [] }) {
+  const r = statusRights(me, task, parentAssigneeIds);
+  const { authority, mayFinish } = r;
   return columns.map(([value, label]) => {
     let why = "";
     if (task.status !== value) {
-      if (locked) why = "set by the ticket";
+      const reviewerOk = r.asReviewer && ((task.status === "REVIEW" && ["DONE", "IN_PROGRESS"].includes(value)) || (task.status === "DONE" && value === "IN_PROGRESS"));
+      if (authority === "TICKET") why = "set by the ticket";
+      else if (!r.asDoer && !reviewerOk) why = "only the assignee";
       else if (["REVIEW", "DONE"].includes(value) && pendingSubtasks > 0) why = `${pendingSubtasks} subtask${pendingSubtasks === 1 ? "" : "s"} open`;
       else if (value === "DONE" && authority !== "NONE" && task.status !== "REVIEW") why = "submit for review first";
       else if (value === "DONE" && !mayFinish) why = authority === "CLIENT" ? "client approves" : authority === "TEAM" ? "requesting team approves" : "a teammate approves";
+      else if (task.status === "DONE" && !mayFinish) why = "only the reviewer can reopen";
     }
-    if (task.status === "DONE" && value !== "DONE" && !mayFinish) why = "only the reviewer can reopen";
     return { value, label, disabled: !!why, why };
   });
 }

@@ -52,3 +52,6 @@
 .task-board .task-card .task-card-top select { flex: 1 1 0; min-width: 0; max-width: 100%; width: 100%; text-overflow: ellipsis; }
 .task-card, .task-cards, .task-column { min-width: 0; }
 .task-column { overflow: hidden; }
+
+.paste-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.paste-strip .inline-img img { max-width: 170px; max-height: 100px; object-fit: contain; border-radius: 8px; }

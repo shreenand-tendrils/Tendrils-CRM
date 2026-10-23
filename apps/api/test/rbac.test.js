@@ -191,8 +191,8 @@ test('client tickets enter review only after all real linked tasks are Done', ()
   assert.equal(shouldSubmitClientTicketForReview({ ...base, taskStatus: 'REVIEW' }), false);
 });
 
-test('teammates of a task’s work team can move it, strangers cannot', () => {
+test('a teammate who is not on a task cannot edit it (only the people it was given to, its creator, the reviewing team, admins)', () => {
   const mate = { currentUser: { id: 'm' }, memberships: [{ teamMemberships: [{ teamId: 'eng' }] }], can: (p) => ['task.update_own'].includes(p) };
-  assert.ok(canEditTask(mate, { creatorId: 'x', assigneeId: 'y', teamId: 'eng', teamAccesses: [{ teamId: 'eng', accessRole: 'OWNER' }] }));
-  assert.ok(!canEditTask(mate, { creatorId: 'x', assigneeId: 'y', teamId: 'seo', teamAccesses: [{ teamId: 'seo', accessRole: 'OWNER' }] }));
+  assert.ok(!canEditTask(mate, { creatorId: 'x', assigneeId: 'y', assignees: [], teamId: 'eng', teamAccesses: [{ teamId: 'eng', accessRole: 'OWNER' }] }));
+  assert.ok(canEditTask(mate, { creatorId: 'x', assigneeId: 'm', assignees: [], teamId: 'eng', teamAccesses: [] }));
 });

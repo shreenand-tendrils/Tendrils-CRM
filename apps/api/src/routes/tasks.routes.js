@@ -195,7 +195,6 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
 router.patch('/tasks/:id', async (req, res) => {
   const old = await prisma.task.findFirst({ where: { id: req.params.id, ...taskTeamScope(req) }, include: { assignees: true, teamAccesses: true } });
   if (!old || !req.isInternal || !canSeeOrg(req, old.organizationId)) throw new AppError('Task not found', 404);
-  if (!canEditTask(req, old)) throw new AppError("You can only edit tasks you created or are assigned to.", 403);
   const { assigneeIds, assigneeId, teamIds, ...data } = parseBody(taskUpdate, req.body);
   const ids = resolveAssignees({ assigneeIds, assigneeId });
   if (ids && !req.can('task.assign')) throw new AppError("You don't have permission to change assignees (task.assign).", 403);
@@ -212,6 +211,29 @@ router.patch('/tasks/:id', async (req, res) => {
   const actorCanReview = canApproveTask({ canUpdateAny: req.can('task.update_any'), actorTeamIds, reviewerTeamIds });
   const mayFinish = canFinishTask({ authority, actorId: req.currentUser.id, canUpdateAny: req.can('task.update_any'), actorTeamIds, reviewerTeamIds, workTeamIds, creatorId: old.creatorId, assigneeIds: assigneeIdsNow });
   const hasTeamReviewer = authority === 'TEAM';
+
+  // WHO MAY DO WHAT. Details: creator, assignees, the reviewing team, admins (canEditTask).
+  // STATUS: only the people the task was given to (plus admins). A subtask can also be ticked by its parent's assignee.
+  // The only other person who may touch the status is the reviewer, and only to approve or send back what is in Review.
+  const me = req.currentUser.id;
+  const isAdmin = req.can('task.update_any');
+  const isAssignee = assigneeIdsNow.includes(me);
+  let parentMate = false;
+  if (old.parentId) {
+    const parent = await prisma.task.findUnique({ where: { id: old.parentId }, select: { assigneeId: true, assignees: { select: { userId: true } } } });
+    parentMate = !!parent && [parent.assigneeId, ...parent.assignees.map((a) => a.userId)].includes(me);
+  }
+  const unassignedMate = assigneeIdsNow.length === 0 && workTeamIds.some((id) => actorTeamIds.includes(id)); // nobody owns it yet: a teammate can pick it up
+  const asDoer = isAdmin || isAssignee || parentMate || unassignedMate;
+  const statusMove = data.status !== undefined && data.status !== old.status;
+  const reviewerMove = !isAssignee && mayFinish && ['PEER', 'TEAM'].includes(authority)
+    && ((old.status === 'REVIEW' && ['DONE', 'IN_PROGRESS'].includes(data.status)) || (old.status === 'DONE' && data.status === 'IN_PROGRESS'));
+  const canEdit = canEditTask(req, old);
+  const onlyStatus = Object.keys(data).length === 1 && data.status !== undefined && !ids && !teamIds;
+  if (!canEdit && !(onlyStatus && (reviewerMove || (unassignedMate && statusMove)))) throw new AppError('You can only edit tasks you created or are assigned to.', 403, 'TASK_EDIT_FORBIDDEN');
+  if (statusMove && !asDoer && !reviewerMove) {
+    throw new AppError(assigneeIdsNow.length ? 'Only the people this task is assigned to can change its status.' : 'You cannot change this task’s status.', 403, 'TASK_STATUS_ASSIGNEE_ONLY');
+  }
   if (data.status === 'DONE' && authority === 'TICKET') {
     throw new AppError('This task mirrors a ticket. It becomes Done only through the ticket approval action.', 403, 'TICKET_APPROVAL_REQUIRED');
   }

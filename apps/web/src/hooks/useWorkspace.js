@@ -25,6 +25,7 @@ export function useWorkspace() {
       setData(next);
       setError("");
     } catch (e) {
+      if (!first.current && e.response?.status !== 401) return; // a background refresh failed: keep what is on screen instead of blanking the app
       setData({});
       setError(e.response?.status === 401 ? "" : e.response?.data?.error || "Could not load your workspace. Check API, database and sign-in settings.");
     } finally {

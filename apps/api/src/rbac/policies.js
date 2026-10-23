@@ -9,9 +9,6 @@ export function canEditTask(ctx, task) {
   const isReviewTeam = (task.teamAccesses || []).some((a) => a.accessRole === 'REVIEWER' && myTeamIds.has(a.teamId));
   if (isReviewTeam) return true;
   if (!ctx.can('task.update_own')) return false;
-  // Inside a team everybody is a teammate: members of a task's work team (not only its assignee) can move it along.
-  const workTeamIds = [...(task.teamAccesses || []).filter((a) => a.accessRole !== 'REVIEWER').map((a) => a.teamId), task.teamId].filter(Boolean);
-  if (workTeamIds.some((id) => myTeamIds.has(id))) return true;
   return task.creatorId === me(ctx) || task.assigneeId === me(ctx) || (task.assignees || []).some((a) => (a.userId ?? a.user?.id) === me(ctx));
 }
 

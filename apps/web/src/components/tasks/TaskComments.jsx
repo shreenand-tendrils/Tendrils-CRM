@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import RichText from "../ui/RichText";
-import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
+import PasteTextarea from "../ui/PasteTextarea";
 
 const ago = (d) => {
   const s = Math.max(1, Math.round((Date.now() - new Date(d)) / 1000));
@@ -34,21 +34,6 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
     try { await api.delete(`/tasks/${task.id}/comments/${c.id}`); await load(); onChanged?.(); }
     catch (e) { notify?.(e.response?.data?.error || "Could not delete", "error"); }
   };
-  // Pasted images appear inside the comment (not in Files); PDFs are attached as files.
-  const paste = async (e) => {
-    const files = clipboardFiles(e);
-    if (!files.length) return;
-    e.preventDefault();
-    try {
-      const marks = [];
-      for (const f of files) {
-        if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id));
-        else { const fd = new FormData(); fd.append("file", f); fd.append("taskId", task.id); await api.post("/files", fd); onChanged?.(); }
-      }
-      if (marks.length) { const markerText = marks.join("\n"); setText((v) => appendLine(v, markerText)); setPastePreview(markerText); }
-    } catch (err) { notify?.(err.response?.data?.error || "Could not paste the image", "error"); }
-  };
-
   if (!items) return <p className="hint">Loading comments…</p>;
   return (
     <div className="task-comments">
@@ -64,10 +49,10 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
       <div ref={endRef} />
       {canComment ? (
         <div className="comment-form">
-          <textarea value={text} rows={3} aria-label="Task comment" placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)"
-            onChange={(e) => setText(e.target.value)} onPaste={paste}
+          <PasteTextarea value={text} rows={3} onChange={setText} target={{ taskId: task.id }} aria-label="Task comment" placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)"
+            onOtherFile={async (f) => { const fd = new FormData(); fd.append("file", f); fd.append("taskId", task.id); await api.post("/files", fd); onChanged?.(); }}
+            onError={(m) => notify?.(m, "error")}
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }} />
-          {pastePreview && <RichText text={pastePreview} style={{ marginTop: 8, maxWidth: 360 }} />}
           <div className="row"><small className="hint">Only your team sees task comments. Assignees are notified.</small><button className="primary" disabled={!text.trim() || busy} onClick={send}><Send size={14} /> {busy ? "Sending…" : "Comment"}</button></div>
         </div>
       ) : <small className="hint">You can read comments but not post.</small>}

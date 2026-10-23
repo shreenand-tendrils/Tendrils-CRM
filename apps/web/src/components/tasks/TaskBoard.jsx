@@ -2,9 +2,10 @@ import { Plus, Ticket, MessageSquare, Paperclip, ListChecks, ShieldCheck } from 
 import { formatDate, isOverdue } from "../../lib/formatters";
 import AvatarStack from "../ui/AvatarStack";
 import { PriorityBadge } from "../ui/StatusBadge";
-import { can, canEditTask } from "../../lib/rbac";
+import { can } from "../../lib/rbac";
 import { incompleteSubtaskCount, subtaskStats } from "../../lib/workThread";
-import { statusChoices, taskFacts, REVIEW_LABEL } from "../../lib/taskReview";
+import { statusChoices, statusRights, REVIEW_LABEL } from "../../lib/taskReview";
+import { Lock } from "lucide-react";
 import "../../styles/workflow.css";
 
 export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "In review"], ["DONE", "Done"]];
@@ -29,17 +30,20 @@ export default function TaskBoard({ tasks = [], allTasks, me, onStatusChange, on
             <header><span>{label}</span><b>{list.length}</b></header>
             <div className="task-cards">
               {list.map((t) => {
-                const { authority } = taskFacts(me, t);
+                const parent = t.parentId ? universe.find((x) => x.id === t.parentId) : null;
+                const parentIds = parent ? [parent.assigneeId, ...(parent.assignees || []).map((a) => a.user?.id)].filter(Boolean) : [];
+                const rights = statusRights(me, t, parentIds);
+                const { authority } = rights;
                 const subs = subtaskStats(t.id, universe);
                 const pending = incompleteSubtaskCount(t.id, universe);
-                const choices = statusChoices({ me, task: t, pendingSubtasks: pending, columns: COLUMNS });
+                const choices = statusChoices({ me, task: t, pendingSubtasks: pending, columns: COLUMNS, parentAssigneeIds: parentIds });
                 const waiting = reviewChip(t, authority);
                 const reviewers = (t.teamAccesses || []).filter((a) => a.accessRole === "REVIEWER");
                 return (
                   <article className="task-card" key={t.id} style={onOpen ? { cursor: "pointer" } : undefined} tabIndex={onOpen ? 0 : undefined} role={onOpen ? "button" : undefined} aria-label={onOpen ? `Open task ${t.title}` : undefined} onClick={() => onOpen?.(t)} onKeyDown={(e) => { if (onOpen && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t); } }}>
                     <div className="task-card-top">
                       <PriorityBadge value={t.priority} />
-                      <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!canEditTask(me, t)} title={!canEditTask(me, t) ? "You can only move tasks of your own teams" : undefined} onChange={(e) => onStatusChange?.(t, e.target.value)}>
+                      <select aria-label="Change task status" onClick={(e) => e.stopPropagation()} value={t.status} disabled={!rights.any} title={!rights.any ? "Only the people this task is assigned to can change its status" : undefined} onChange={(e) => onStatusChange?.(t, e.target.value)}>
                         {choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}
                       </select>
                     </div>

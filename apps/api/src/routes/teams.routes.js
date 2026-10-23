@@ -58,7 +58,8 @@ async function loadTeam(req) {
 router.patch('/teams/:id', requirePermission('team.manage'), async (req, res) => {
   const team = await loadTeam(req);
   const data = parseBody(teamBody.partial().extend({ isActive: z.boolean().optional() }), req.body);
-  const updated = await prisma.team.update({ where: { id: team.id }, data });
+  if (data.name && data.name.toLowerCase() !== team.name.toLowerCase() && await prisma.team.findFirst({ where: { organizationId: team.organizationId, id: { not: team.id }, name: { equals: data.name, mode: 'insensitive' }, isActive: true } })) throw new AppError('A team with this name already exists.', 409);
+  const updated = await prisma.team.update({ where: { id: team.id }, data: { ...data, ...(data.description === '' ? { description: null } : {}) } });
   await logActivity({ actorId: req.currentUser.id, organizationId: team.organizationId, entityType: 'team', entityId: team.id, action: 'updated', summary: `Updated team ${updated.name}${data.isActive === false ? ' (archived)' : data.isActive === true ? ' (restored)' : ''}` });
   res.json(updated);
 });

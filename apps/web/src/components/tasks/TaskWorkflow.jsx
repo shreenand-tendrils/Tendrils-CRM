@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Check, Plus, ShieldCheck, Undo2, Play, Send, RotateCcw } from "lucide-react";
 import { api } from "../../api";
 import { can, canEditTask } from "../../lib/rbac";
-import { taskFacts, REVIEW_HINT, REVIEW_LABEL } from "../../lib/taskReview";
+import { statusRights, REVIEW_HINT, REVIEW_LABEL } from "../../lib/taskReview";
 import { subtasksOf, subtaskStats, personName } from "../../lib/workThread";
 import { StatusBadge } from "../ui/StatusBadge";
 import "../../styles/workflow.css";
@@ -15,29 +15,34 @@ const waitingFor = (task, authority) => authority === "CLIENT" ? "the client" : 
 
 /** One clear "what happens next" bar for a task: where it is, who reviews it, and the single next action. */
 export function TaskWorkflowBar({ task, tasks, me, onStatusChange }) {
-  const { authority, mayFinish } = taskFacts(me, task);
+  const parent = task.parentId ? tasks.find((t) => t.id === task.parentId) : null;
+  const parentIds = parent ? [parent.assigneeId, ...(parent.assignees || []).map((a) => a.user?.id)].filter(Boolean) : [];
+  const r = statusRights(me, task, parentIds);
+  const { authority } = r;
   const { done, total } = subtaskStats(task.id, tasks);
   const pending = total - done;
-  const editable = canEditTask(me, task);
   const at = stepIndex(task.status);
   const go = (status) => onStatusChange?.(task, status);
+  const owners = (task.assignees || []).map((a) => personName(a.user)).filter(Boolean).join(", ");
   let actions = null;
   if (authority === "TICKET") actions = <p className="hint">{REVIEW_HINT.TICKET}</p>;
-  else if (!editable) actions = <p className="hint">You can follow this task, but only its team can move it.</p>;
-  else if (["BACKLOG", "TODO"].includes(task.status)) actions = <button className="primary" onClick={() => go("IN_PROGRESS")}><Play size={14} /> Start work</button>;
-  else if (["IN_PROGRESS", "BLOCKED"].includes(task.status)) {
+  else if (task.status === "REVIEW") {
+    actions = r.canApproveNow
+      ? <><button className="primary" onClick={() => go("DONE")}><Check size={14} /> Approve · mark done</button><button className="secondary" onClick={() => go("IN_PROGRESS")}><Undo2 size={14} /> Send back</button></>
+      : <p className="hint" role="status">Waiting for {waitingFor(task, authority)} to review.{r.isAssignee && authority !== "CLIENT" && authority !== "TEAM" ? " You cannot approve your own work." : ""}</p>;
+  } else if (task.status === "DONE") {
+    actions = r.canApproveNow ? <button className="secondary" onClick={() => go("IN_PROGRESS")}><RotateCcw size={14} /> Reopen</button> : <p className="hint">Done. Only the reviewer can reopen it.</p>;
+  } else if (!r.asDoer) {
+    actions = <p className="hint">Only {owners || "the assignee"} can move this task. You can follow it and comment.</p>;
+  } else if (["BACKLOG", "TODO"].includes(task.status)) actions = <button className="primary" onClick={() => go("IN_PROGRESS")}><Play size={14} /> Start work</button>;
+  else {
     actions = pending > 0
       ? <p className="hint" role="status">Finish the {pending} open subtask{pending === 1 ? "" : "s"} below first.</p>
       : authority === "NONE"
         ? <button className="primary" onClick={() => go("DONE")}><Check size={14} /> Mark done</button>
         : <button className="primary" onClick={() => go("REVIEW")}><Send size={14} /> Submit for review</button>;
-    if (task.status === "IN_PROGRESS") actions = <>{actions}<button className="secondary" onClick={() => go("BLOCKED")}>Blocked</button></>;
-    else actions = <>{actions}<button className="secondary" onClick={() => go("IN_PROGRESS")}>Unblock</button></>;
-  } else if (task.status === "REVIEW") {
-    actions = mayFinish
-      ? <><button className="primary" onClick={() => go("DONE")}><Check size={14} /> Approve · mark done</button><button className="secondary" onClick={() => go("IN_PROGRESS")}><Undo2 size={14} /> Send back</button></>
-      : <p className="hint" role="status">Waiting for {waitingFor(task, authority)} to review.{authority !== "CLIENT" && authority !== "TEAM" ? " You cannot approve your own work." : ""}</p>;
-  } else if (task.status === "DONE") actions = mayFinish ? <button className="secondary" onClick={() => go("IN_PROGRESS")}><RotateCcw size={14} /> Reopen</button> : <p className="hint">Approved. Only the reviewer can reopen it.</p>;
+    actions = <>{actions}{task.status === "IN_PROGRESS" ? <button className="secondary" onClick={() => go("BLOCKED")}>Blocked</button> : <button className="secondary" onClick={() => go("IN_PROGRESS")}>Unblock</button>}</>;
+  }
 
   return (
     <div className="wf-bar" aria-label="Task workflow">
@@ -90,7 +95,7 @@ export function SubtaskChecklist({ task, tasks, me, onOpenTask, onRefresh, notif
       {total > 0 && <div className="progress" aria-hidden="true"><i style={{ width: `${Math.round((done / total) * 100)}%` }} /></div>}
       <ul>
         {kids.map((k) => {
-          const mineToTick = canEditTask(me, k);
+          const mineToTick = statusRights(me, k, [task.assigneeId, ...(task.assignees || []).map((a) => a.user?.id)].filter(Boolean)).asDoer;
           return (
             <li key={k.id} className={k.status === "DONE" ? "done" : ""}>
               <input type="checkbox" checked={k.status === "DONE"} disabled={!mineToTick} onChange={() => toggle(k)} aria-label={`Mark subtask ${k.title} ${k.status === "DONE" ? "not done" : "done"}`} />

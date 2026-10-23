@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Ticket as TicketIcon, UploadCloud } from "lucide-react";
 import { api } from "../../api";
 import { formatDate } from "../../lib/formatters";
-import { clipboardFiles, appendLine, uploadInline, isImage, IMG_MARK } from "../../lib/paste";
+import PasteTextarea from "../ui/PasteTextarea";
 import RichText from "../ui/RichText";
 import PeoplePicker from "../ui/PeoplePicker";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
@@ -10,7 +10,7 @@ import { peopleOfTeams } from "../../lib/teams";
 import { daysPassed, dayLabel } from "../../lib/ticketStatus";
 import { PriorityBadge, StatusBadge } from "../ui/StatusBadge";
 import { can, canEditTask } from "../../lib/rbac";
-import { statusChoices, taskFacts } from "../../lib/taskReview";
+import { statusChoices, statusRights } from "../../lib/taskReview";
 import { TaskWorkflowBar, SubtaskChecklist } from "./TaskWorkflow";
 import { COLUMNS } from "./TaskBoard";
 import Window from "../ui/Window";
@@ -54,15 +54,17 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const thread = collectThread(tasks, { ticketId: task.ticketId, focusId: task.id });
   const kind = task.autoCreated ? "Ticket record" : task.parentId ? "Subtask" : "Task";
   const pendingSubtasks = incompleteSubtaskCount(task.id, tasks);
-  const { authority } = taskFacts(me, task);
-  const choices = statusChoices({ me, task, pendingSubtasks, columns: COLUMNS });
   const parentTask = task.parentId ? tasks.find((t) => t.id === task.parentId) || task.parent : null;
+  const parentIds = parentTask ? [parentTask.assigneeId, ...(parentTask.assignees || []).map((a) => a.user?.id)].filter(Boolean) : [];
+  const rights = statusRights(me, task, parentIds);
+  const { authority } = rights;
+  const choices = statusChoices({ me, task, pendingSubtasks, columns: COLUMNS, parentAssigneeIds: parentIds });
 
   const side = (
     <>
       <div className="win-card">
         <div className="detail"><span>Status</span>
-          {editable && authority !== "TICKET"
+          {rights.any && authority !== "TICKET"
             ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}</select>
             : <StatusBadge value={task.status} />}
         </div>
@@ -105,9 +107,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <h2>{task.title}</h2>
         {editing ? (
           <div className="field">
-            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it"
-              onPaste={async (e) => { const files = clipboardFiles(e); if (!files.length) return; e.preventDefault(); try { const marks = []; for (const f of files) { if (isImage(f)) marks.push(IMG_MARK((await uploadInline(f, { taskId: task.id })).id)); else await attach(f); } if (marks.length) setDesc((v) => appendLine(v, marks.join("\n"))); } catch { notify?.("Could not paste the image", "error"); } }} />
-            {/\[\[img:/.test(desc) && <RichText text={desc} style={{ marginTop: 8, maxWidth: 420 }} />}
+            <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (
