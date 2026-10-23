@@ -99,7 +99,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const clientTasks = !staff && ticket.status === "OPEN" && ticket.tasksInReview > 0 && (
     <div className="linked-task">
       <ThumbsUp size={22} color="#5746e8" />
-      <span><b>{ticket.tasksInReview} task{ticket.tasksInReview === 1 ? " is" : "s are"} ready for your review</b><small>Approve each one, or ask for changes. When the last task is approved, the ticket closes.</small></span>
+      <span><b>{ticket.tasksInReview} task{ticket.tasksInReview === 1 ? " is" : "s are"} ready for your review</b><small>Approve each one, or ask for changes. When the last task is approved, the ticket closes by itself.</small></span>
       <button className="primary" onClick={() => setTab("tasks")}>Review now</button>
     </div>
   );

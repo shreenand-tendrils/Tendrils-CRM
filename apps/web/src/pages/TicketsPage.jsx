@@ -14,8 +14,8 @@ export default function TicketsPage({ data, onSelect }) {
   const { search } = useAppStore();
   const me = data.me;
   const staff = !!me?.isInternal;
-  const [view, setView] = useState("all"); // all | mine | unrouted | overdue
   const [params] = useSearchParams();
+  const [view, setView] = useState(params.get("overdue") ? "overdue" : "all"); // all | mine | unrouted | overdue
   const [status, setStatus] = useState(params.get("status") ?? "OPEN"); // Open is the default filter; cards on Overview link here
   const [priority, setPriority] = useState("");
   const [teamId, setTeamId] = useState("");

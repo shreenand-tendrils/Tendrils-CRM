@@ -9,6 +9,7 @@ import { assigneesOutsideTeams } from '../services/ticketRouting.js';
 import { taskCommentRecipients } from '../services/taskComments.js';
 import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview, reviewAuthorityOf, canFinishTask, REVIEW_HINT } from '../services/taskReviewRules.js';
 import { recordClientReviewRequest } from '../services/taskClientReview.js';
+import { syncTaskFromTicket } from '../services/ticketTask.service.js';
 import { commentCreate } from '../validators/schemas.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
@@ -165,6 +166,15 @@ router.post('/tasks', requirePermission('task.create'), async (req, res) => {
         create: { taskId: created.id, teamId, accessRole: 'REVIEWER', addedById: req.currentUser.id },
         update: { accessRole: 'REVIEWER' },
       });
+    }
+    // Sync: new work on a ticket that was waiting for the client's final OK puts the ticket back to In progress.
+    if (data.ticketId && !parentId) {
+      const tk = await tx.ticket.findUnique({ where: { id: data.ticketId }, select: { id: true, status: true } });
+      if (tk?.status === 'REVIEW_TEST') {
+        const reopened = await tx.ticket.update({ where: { id: tk.id }, data: { status: 'OPEN', progress: 'IN_PROGRESS', closedAt: null } });
+        await syncTaskFromTicket(tx, reopened, { changed: ['status', 'progress'], actor: req.currentUser });
+        await recordTicketEvents(tx, tk.id, req.currentUser.id, [{ type: 'STATUS', fromValue: 'REVIEW_TEST:RESOLVED', toValue: 'OPEN:IN_PROGRESS', note: 'New task added', clientVisible: true }]);
+      }
     }
     return created;
   });

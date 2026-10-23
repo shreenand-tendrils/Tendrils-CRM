@@ -46,3 +46,9 @@
 .review-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .review-actions textarea { width: 100%; }
 @media (max-width: 640px) { .wf-bar, .subtasks { padding: 12px; } }
+
+/* Board cards: the status select must never be wider than its card (it was overflowing into the next column). */
+.task-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.task-board .task-card .task-card-top select { flex: 1 1 0; min-width: 0; max-width: 100%; width: 100%; text-overflow: ellipsis; }
+.task-card, .task-cards, .task-column { min-width: 0; }
+.task-column { overflow: hidden; }

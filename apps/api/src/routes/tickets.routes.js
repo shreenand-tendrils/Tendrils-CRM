@@ -311,7 +311,7 @@ router.post('/tickets/:id/tasks/:taskId/review', async (req, res) => {
   if (req.isInternal || ticketEditScope(req, t) !== 'client') throw new AppError('Only the client who raised this ticket can review its tasks.', 403, 'CLIENT_ONLY');
   const { decision, note } = parseBody(taskClientReview, req.body);
   const out = await reviewTaskAsClient({ ticket: t, taskId: req.params.taskId, decision, note, actor: req.currentUser });
-  res.json({ task: { id: out.task.id, status: out.task.status }, ticketStatus: out.ticket.status, closed: out.closed });
+  res.json({ task: { id: out.task.id, status: out.task.status }, ticketStatus: out.ticket.status, allApproved: !!out.allApproved, closed: !!out.closed });
 });
 
 router.get('/tickets/:id/attachments', async (req, res) => {

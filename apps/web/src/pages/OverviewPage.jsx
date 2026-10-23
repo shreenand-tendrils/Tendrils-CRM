@@ -30,7 +30,7 @@ export default function OverviewPage({ data, onSelectTicket }) {
   return (
     <>
       <div className="banner">
-        <div><span className="kicker">YOUR OPERATIONS AT A GLANCE</span><h2>Make room for great work.</h2><p>{staff ? "Tickets assigned to you turn into tasks automatically — everything you own is below." : "Raise requests and follow their progress in one place."}</p></div>
+        <div><span className="kicker">YOUR OPERATIONS AT A GLANCE</span><h2>Make room for great work.</h2><p>Tickets, their tasks and everything you own are below.</p></div>
         <div className="banner-mark">t.</div>
       </div>
 

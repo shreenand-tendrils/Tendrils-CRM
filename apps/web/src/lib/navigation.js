@@ -4,13 +4,13 @@ import { LayoutDashboard, Building2, FolderKanban, Ticket, ListTodo, Users, Acti
 export const primaryNavigation = [
   { label: "Overview", to: "/", icon: LayoutDashboard },
   { label: "Tickets", to: "/tickets", icon: Ticket },
-  { label: "Clients", to: "/clients", icon: Building2 },
-  { label: "Projects", to: "/projects", icon: FolderKanban },
   { label: "Tasks", to: "/tasks", icon: ListTodo, staff: true },
   { label: "Chat", to: "/chat", icon: MessagesSquare, staff: true },
+  { label: "Clients", to: "/clients", icon: Building2 },
+  { label: "Projects", to: "/projects", icon: FolderKanban },
   { label: "Resources", to: "/resources", icon: Files },
-  // { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
   { label: "Teams", to: "/teams", icon: Users, staff: true },
+  // { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
 ];
 export const adminNavigation = [{ label: "Admin console", to: "/admin", icon: ShieldCheck }];
 export const utilityNavigation = [{ label: "Activity log", to: "/activity", icon: Activity }, { label: "Notifications", to: "/notifications", icon: Bell }, { label: "Settings", to: "/settings", icon: Settings }];

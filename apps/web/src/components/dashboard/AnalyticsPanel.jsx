@@ -1,85 +1,96 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Inbox, CheckCircle2, Timer, Hourglass, AlertTriangle, ListTodo, ListChecks, Gauge, LifeBuoy, SearchCheck, Lock, FolderOpen } from "lucide-react";
 import { api } from "../../api";
-import Panel from "../ui/Panel";
+import RangePicker, { presetRange } from "../ui/RangePicker";
 import { STATUSES, STATUS_LABEL } from "../../lib/ticketStatus";
 import "../../styles/status.css";
+import "../../styles/analytics.css";
 
-const iso = (d) => d.toISOString().slice(0, 10);
 const monthName = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" });
-const stat = (label, value, hint) => (
-  <div className="win-card" style={{ padding: "10px 14px", minWidth: 140 }} key={label} title={hint}>
-    <small className="hint">{label}</small><b style={{ fontSize: 22 }}>{value ?? "—"}</b>
-  </div>
-);
+const STATUS_ICON = { OPEN: FolderOpen, REVIEW_TEST: SearchCheck, REVIEW_HELP: LifeBuoy, CLOSED: Lock };
 
-// Ticket status cards (click = open that list), plus opened/closed analytics for a date range, per month.
+function Kpi({ icon: Icon, tone = "violet", label, value, hint, to }) {
+  const body = (
+    <>
+      <i className={`kpi-icon ${tone}`}><Icon size={17} /></i>
+      <span className="kpi-label">{label}</span>
+      <b className="kpi-value">{value ?? "—"}</b>
+      <small className="kpi-hint">{hint}</small>
+    </>
+  );
+  return to ? <Link className="kpi" to={to}>{body}</Link> : <div className="kpi">{body}</div>;
+}
+
+// Ticket status cards (click = open that list) + range analytics, all as cards. The range is one small picker.
 export default function AnalyticsPanel({ staff }) {
-  const now = new Date();
-  const [from, setFrom] = useState(iso(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1))));
-  const [to, setTo] = useState(iso(now));
+  const [range, setRange] = useState(() => presetRange("6m"));
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
   useEffect(() => {
     let live = true;
-    api.get("/analytics", { params: { from, to } }).then((r) => { if (live) { setData(r.data); setErr(""); } }).catch((e) => { if (live) setErr(e.response?.data?.error || "Could not load analytics"); });
+    api.get("/analytics", { params: range }).then((r) => { if (live) { setData(r.data); setErr(""); } }).catch((e) => { if (live) setErr(e.response?.data?.error || "Could not load analytics"); });
     return () => { live = false; };
-  }, [from, to]);
+  }, [range.from, range.to]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const preset = (kind) => {
-    const n = new Date();
-    if (kind === "month") setFrom(iso(new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), 1))));
-    if (kind === "3m") setFrom(iso(new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - 2, 1))));
-    if (kind === "year") setFrom(iso(new Date(Date.UTC(n.getUTCFullYear(), 0, 1))));
-    setTo(iso(n));
-  };
-  const max = Math.max(1, ...(data?.months || []).flatMap((m) => [m.opened, m.closed]));
   const t = data?.tickets, k = data?.tasks;
+  const max = Math.max(1, ...(data?.months || []).flatMap((m) => [m.opened, m.closed]));
+  const days = (v) => (v == null ? "—" : `${v}d`);
 
   return (
-    <>
-      <div className="metrics">
+    <section className="analytics" aria-label="Ticket analytics">
+      <div className="kpi-grid status-cards">
         {STATUSES.map((s) => (
-          <Link key={s} to={`/tickets?status=${s}`} className="metric" style={{ textDecoration: "none", color: "inherit" }} title={`Show ${STATUS_LABEL[s]} tickets`}>
-            <span className={`status s-${s.toLowerCase().replaceAll("_", "-")}`}>● {STATUS_LABEL[s]}</span>
-            <b style={{ fontSize: 30, display: "block" }}>{data?.status?.[s] ?? "…"}</b>
-            <small className="hint">tickets · click to view</small>
+          <Link key={s} to={`/tickets?status=${s}`} className="kpi status-card" title={`Show ${STATUS_LABEL[s]} tickets`}>
+            <i className={`kpi-icon st-${s.toLowerCase().replaceAll("_", "-")}`}>{(() => { const I = STATUS_ICON[s]; return <I size={17} />; })()}</i>
+            <span className="kpi-label">{STATUS_LABEL[s]}</span>
+            <b className="kpi-value">{data?.status?.[s] ?? "…"}</b>
+            <small className="kpi-hint">tickets · view list</small>
           </Link>
         ))}
       </div>
-      <Panel title="Ticket analytics" sub="A clearer view of workload, turnaround and overdue work across your selected date range">
-        <div className="row" style={{ flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" }}>
-          <label className="hint">From <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
-          <label className="hint">To <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
-          <button className="secondary" onClick={() => preset("month")}>This month</button>
-          <button className="secondary" onClick={() => preset("3m")}>Last 3 months</button>
-          <button className="secondary" onClick={() => preset("year")}>This year</button>
-        </div>
-        {err && <p className="hint">{err}</p>}
-        {data && (
-          <>
-            <div className="row analytics-summary" style={{ flexWrap: "wrap", gap: 10, alignItems: "stretch" }}>
-              {stat("Opened in range", t.opened)}{stat("Closed in range", t.closed)}
-              {stat("Avg days to close", t.avgDaysToClose, "Average days from opening to closing, for tickets closed in this range")}
-              {stat("Avg days open now", t.avgDaysOpen, "Average age of tickets that are not closed yet")}
-              {stat("Overdue", t.overdue, "Not closed and past the due date")}
-              {staff && k && <>{stat("Open tasks", k.open)}{stat("Overdue tasks", k.overdue)}{stat("Tasks done in range", k.done)}{stat("Avg days to finish a task", k.avgDaysToDone)}</>}
+
+      <div className="analytics-head">
+        <div><h3>Ticket analytics</h3><p>Workload, turnaround and overdue work for the selected period</p></div>
+        <RangePicker from={range.from} to={range.to} onChange={setRange} />
+      </div>
+      {err && <p className="hint">{err}</p>}
+      {data && (
+        <>
+          <div className="kpi-grid">
+            <Kpi icon={Inbox} tone="violet" label="Opened" value={t.opened} hint="in this period" />
+            <Kpi icon={CheckCircle2} tone="green" label="Closed" value={t.closed} hint="in this period" />
+            <Kpi icon={Timer} tone="blue" label="Avg time to close" value={days(t.avgDaysToClose)} hint="opening → closing" />
+            <Kpi icon={Hourglass} tone="amber" label="Avg age (open)" value={days(t.avgDaysOpen)} hint="tickets not closed yet" />
+            <Kpi icon={AlertTriangle} tone="rose" label="Overdue tickets" value={t.overdue} hint="past due, not closed" to="/tickets?overdue=1" />
+            {staff && k && <>
+              <Kpi icon={ListTodo} tone="blue" label="Open tasks" value={k.open} hint="work in motion" to="/tasks" />
+              <Kpi icon={AlertTriangle} tone="rose" label="Overdue tasks" value={k.overdue} hint="need a follow-up" to="/tasks" />
+              <Kpi icon={ListChecks} tone="green" label="Tasks done" value={k.done} hint="in this period" />
+              <Kpi icon={Gauge} tone="violet" label="Avg time per task" value={days(k.avgDaysToDone)} hint="start → done" />
+            </>}
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-head">
+              <b>Opened vs closed per month</b>
+              <span className="legend"><i className="dot open" /> Opened <i className="dot done" /> Closed</span>
             </div>
-            <div className="ticket-analytics-chart" style={{ display: "flex", gap: 12, alignItems: "flex-end", minHeight: 190, marginTop: 20, overflowX: "auto", padding: "16px 12px 8px", borderRadius: 12, background: "var(--surface-subtle, rgba(127,127,127,.06))" }} role="img" aria-label="Tickets opened and closed per month">
+            <div className="bars" role="img" aria-label="Tickets opened and closed per month">
               {data.months.map((m) => (
-                <div key={m.month} style={{ textAlign: "center", minWidth: 62, flex: "1 0 62px" }}>
-                  <div style={{ display: "flex", gap: 5, alignItems: "flex-end", height: 132, justifyContent: "center", borderBottom: "1px solid var(--border, #ddd)" }}>
-                    <div title={`${m.opened} opened`} style={{ width: 18, height: `${(m.opened / max) * 100}%`, minHeight: m.opened ? 3 : 0, background: "#5746e8", borderRadius: "4px 4px 0 0" }} />
-                    <div title={`${m.closed} closed`} style={{ width: 18, height: `${(m.closed / max) * 100}%`, minHeight: m.closed ? 3 : 0, background: "#0f9d8a", borderRadius: "4px 4px 0 0" }} />
+                <div className="bar-col" key={m.month}>
+                  <div className="bar-pair">
+                    <div className="bar open" title={`${m.opened} opened`} style={{ height: `${(m.opened / max) * 100}%`, minHeight: m.opened ? 3 : 0 }} />
+                    <div className="bar done" title={`${m.closed} closed`} style={{ height: `${(m.closed / max) * 100}%`, minHeight: m.closed ? 3 : 0 }} />
                   </div>
-                  <small className="hint">{monthName(m.month)}</small><small style={{ display: "block" }}>{m.opened} / {m.closed}</small>
+                  <small>{monthName(m.month)}</small>
+                  <small className="nums">{m.opened} / {m.closed}</small>
                 </div>
               ))}
             </div>
-            <div className="row" style={{ gap: 14, flexWrap: "wrap", marginTop: 10 }}><small className="hint"><i style={{ background: "#5746e8", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Opened</small><small className="hint"><i style={{ background: "#0f9d8a", display: "inline-block", width: 10, height: 10, borderRadius: 3 }} /> Closed (per month)</small></div>
-          </>
-        )}
-      </Panel>
-    </>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { StatusBadge } from "../ui/StatusBadge";
 import { formatDate } from "../../lib/formatters";
 import RichText from "../ui/RichText";
+import { clipboardFiles, uploadInline, appendLine, IMG_MARK, isImage } from "../../lib/paste";
 import "../../styles/workflow.css";
 
 // What the client sees behind a ticket: the team's tasks with their subtasks as a checklist.
@@ -14,6 +15,7 @@ export default function TicketTasks({ ticketId, refreshKey, canReview = false, o
   const [asking, setAsking] = useState(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const load = () => api.get(`/tickets/${ticketId}/tasks`).then((r) => setRows(r.data)).catch(() => setRows([]));
   useEffect(() => { load(); }, [ticketId, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!rows) return <p className="hint">Loading tasks…</p>;
@@ -24,10 +26,23 @@ export default function TicketTasks({ ticketId, refreshKey, canReview = false, o
     setBusy(true);
     try {
       const { data } = await api.post(`/tickets/${ticketId}/tasks/${task.id}/review`, { decision, note: decision === "CHANGES" ? note : undefined });
-      notify?.(decision === "APPROVE" ? (data.closed ? "Approved — the ticket is now closed" : "Approved") : "Sent back to the team");
+      notify?.(decision === "APPROVE" ? (data.closed ? "Approved — all tasks are done, the ticket is closed" : data.allApproved ? "Approved — all tasks are done" : "Approved") : "Sent back to the team");
       setAsking(null); setNote("");
       await load(); onChanged?.();
     } catch (err) { notify?.(err.response?.data?.error || "Could not save your review", "error"); } finally { setBusy(false); }
+  };
+
+  // Paste a screenshot straight into the note: it uploads to the ticket and shows inside the text.
+  const onPaste = async (e) => {
+    const files = clipboardFiles(e).filter(isImage);
+    if (!files.length) return;
+    e.preventDefault();
+    setUploading(true);
+    try {
+      let next = note;
+      for (const f of files) { const a = await uploadInline(f, { ticketId }); next = appendLine(next, IMG_MARK(a.id)); }
+      setNote(next);
+    } catch (err) { notify?.(err.response?.data?.error || "Could not attach the pasted image", "error"); } finally { setUploading(false); }
   };
 
   const roots = rows.filter((t) => !t.parentId);
@@ -48,8 +63,9 @@ export default function TicketTasks({ ticketId, refreshKey, canReview = false, o
             <small className="muted">{t.team?.name ? `${t.team.name} · ` : ""}{people.length ? people.join(", ") : "Unassigned"} · Due {formatDate(t.dueDate)}</small>
             {waiting && (asking === t.id ? (
               <div className="review-actions">
-                <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What should the team change?" aria-label="What should change" />
-                <button className="primary" disabled={busy || note.trim().length < 2} onClick={() => review(t, "CHANGES")}>Send back</button>
+                <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} onPaste={onPaste} placeholder="What should the team change? You can paste screenshots here." aria-label="What should change" />
+                {note.includes("[[img:") && <RichText text={note} style={{ fontSize: 13 }} />}
+                <button className="primary" disabled={busy || uploading || note.trim().length < 2} onClick={() => review(t, "CHANGES")}>{uploading ? "Uploading…" : "Send back"}</button>
                 <button className="secondary" onClick={() => { setAsking(null); setNote(""); }}>Cancel</button>
               </div>
             ) : (
