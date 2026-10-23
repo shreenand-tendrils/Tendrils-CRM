@@ -7,8 +7,8 @@ export function canFinishTask({ authority, actorId, canUpdateAny = false, actorT
   if (authority === "NONE") return true;
   if (canUpdateAny) return true;
   if (authority === "CLIENT") return false;
-  if (authority === "TEAM") return canApproveTask({ actorTeamIds, reviewerTeamIds });
   if (assigneeIds.includes(actorId)) return false;
+  if (authority === "TEAM") return canApproveTask({ actorTeamIds, reviewerTeamIds });
   return actorId === creatorId || workTeamIds.some((id) => actorTeamIds.includes(id));
 }
 
@@ -46,7 +46,7 @@ export function statusRights(me, task, parentAssigneeIds = []) {
   const unassignedMate = assigneeIds.length === 0 && (me?.teamIds || []).some((t) => [...(task.teamAccesses || []).filter((a) => a.accessRole !== "REVIEWER").map((a) => a.teamId), task.teamId].includes(t));
   const asDoer = authority !== "TICKET" && (isAdmin || isAssignee || parentAssigneeIds.includes(id) || unassignedMate);
   const asReviewer = authority !== "TICKET" && mayFinish && !isAssignee && ["PEER", "TEAM"].includes(authority);
-  const canApproveNow = authority !== "TICKET" && mayFinish && (isAdmin || !isAssignee || authority === "TEAM");
+  const canApproveNow = authority !== "TICKET" && mayFinish && (isAdmin || !isAssignee);
   return { authority, mayFinish, isAssignee, isAdmin, asDoer, asReviewer, canApproveNow, any: asDoer || (asReviewer && ["REVIEW", "DONE"].includes(task.status)), assigneeIds };
 }
 

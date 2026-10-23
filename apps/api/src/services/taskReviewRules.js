@@ -34,8 +34,8 @@ export function canFinishTask({ authority, actorId, canUpdateAny = false, actorT
   if (authority === 'NONE') return true;
   if (canUpdateAny) return true;
   if (authority === 'CLIENT') return false;
+  if (assigneeIds.includes(actorId)) return false; // TEAM and PEER: never the doer reviewing their own work
   if (authority === 'TEAM') return canApproveTask({ actorTeamIds, reviewerTeamIds });
-  if (assigneeIds.includes(actorId)) return false; // PEER: somebody other than the doer
   return actorId === creatorId || workTeamIds.some((id) => actorTeamIds.includes(id));
 }
 

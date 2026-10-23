@@ -91,6 +91,7 @@ router.get('/tasks', async (req, res) => {
 
 router.post('/tasks', requirePermission('task.create'), async (req, res) => {
   const { assigneeIds, assigneeId, teamIds = [], parentId, ...data } = parseBody(taskCreate, req.body);
+  if (['REVIEW', 'DONE'].includes(data.status)) throw new AppError('A new task starts in To do or In progress. Its status is changed by the person it is assigned to.', 400, 'NEW_TASK_STATUS');
   let ids = resolveAssignees({ assigneeIds, assigneeId }) ?? [];
   const me = req.currentUser.id;
   const cross = req.can('task.assign') || req.can('work.cross_team'); // may send work to other teams

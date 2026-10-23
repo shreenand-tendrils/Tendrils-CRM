@@ -41,3 +41,10 @@ test('who may mark Done: no deadlocks, no self-approval', () => {
   assert.equal(canFinishTask({ ...base, authority: 'TEAM', actorId: 'x', actorTeamIds: ['design'], reviewerTeamIds: ['design'] }), true);
   assert.equal(canFinishTask({ ...base, authority: 'TEAM', actorId: 'dev', reviewerTeamIds: ['design'] }), false);
 });
+
+test('team-to-team: the doer never approves their own work, even if also in the requesting team', () => {
+  const base = { authority: 'TEAM', reviewerTeamIds: ['design'], actorTeamIds: ['design', 'eng'], workTeamIds: ['eng'], creatorId: 'lead', assigneeIds: ['dev'] };
+  assert.equal(canFinishTask({ ...base, actorId: 'dev' }), false);
+  assert.equal(canFinishTask({ ...base, actorId: 'lead', actorTeamIds: ['design'] }), true);
+  assert.equal(canFinishTask({ ...base, actorId: 'dev', canUpdateAny: true }), true, 'admin override');
+});
