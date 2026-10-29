@@ -94,7 +94,7 @@ const pageMeta = {
   ],
   "/settings": [
     "Settings",
-    "Workspace configuration and security information.",
+    "Your access, WhatsApp, AI assistant (MCP) connections and security.",
   ],
 };
 

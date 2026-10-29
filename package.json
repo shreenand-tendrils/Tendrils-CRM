@@ -1,6 +1,6 @@
 {
   "name": "tendrils-operations-platform",
-  "version": "4.8.24",
+  "version": "4.9.0",
   "private": true,
   "workspaces": [
     "apps/*"

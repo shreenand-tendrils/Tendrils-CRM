@@ -21,6 +21,7 @@ import reminders from './reminders.routes.js';
 import admin from './admin.routes.js';
 import members from './members.routes.js';
 import clientPortal from './clientPortal.routes.js';
+import integrations from './integrations.routes.js';
 
 const router = Router();
 if (isDevLoginEnabled()) {
@@ -28,5 +29,5 @@ if (isDevLoginEnabled()) {
   router.use('/dev', dev);
 }
 router.use(requireUser);
-for (const r of [identity, dashboard, workspace, organizations, projects, tickets, tasks, teams, users, notifications, files, documents, chat, updates, notes, reminders, members, clientPortal, admin]) router.use(r);
+for (const r of [identity, dashboard, workspace, organizations, projects, tickets, tasks, teams, users, notifications, files, documents, chat, updates, notes, reminders, members, clientPortal, integrations, admin]) router.use(r);
 export default router;

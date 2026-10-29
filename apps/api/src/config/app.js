@@ -8,6 +8,9 @@ import { authHandler } from '../auth.js';
 import api from '../routes/index.js';
 import { notFound, errorHandler } from '../middleware/error.middleware.js';
 import { env } from './env.js';
+import { internalAuth } from '../middleware/internalAuth.js';
+import whatsappWebhook from '../routes/whatsapp.webhook.js';
+import mcp from '../routes/mcp.routes.js';
 
 // Behind the Vercel proxy the Host header is the Render host; Auth.js builds callback/redirect URLs from it.
 // Force the public (Vercel) host so Google gets https://<vercel-host>/auth/callback/google.
@@ -25,7 +28,9 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(compression());
   app.use(cors({ origin: env.webOrigins, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
+  app.use(internalAuth);
+  // keep the raw bytes of webhook bodies: Meta's HMAC signature is computed over them
+  app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { if (req.originalUrl.startsWith('/webhooks/')) req.rawBody = buf; } }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use(morgan('dev'));
 
@@ -42,9 +47,11 @@ export function createApp() {
   const writes = rateLimit({
     windowMs: 60000,
     limit: 240,
-    skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.path.startsWith('/dev/'),
+    skip: (req) => Boolean(req.internalUserId) || req.method === 'GET' || req.method === 'HEAD' || req.path.startsWith('/dev/'),
   });
-  app.use('/api/v1', rateLimit({ windowMs: 60000, limit: 1200 }), writes, api);
+  app.use('/webhooks/whatsapp', rateLimit({ windowMs: 60000, limit: 600 }), whatsappWebhook);
+  app.use('/mcp', mcp);
+  app.use('/api/v1', rateLimit({ windowMs: 60000, limit: 1200, skip: (req) => Boolean(req.internalUserId) }), writes, api);
 
   app.use(notFound);
   app.use(errorHandler);

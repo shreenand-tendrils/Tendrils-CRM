@@ -32,6 +32,8 @@ model User {
   projectUpdates ProjectUpdate[]
   documents Document[]
   chatDeliveries ChatDelivery[]
+  whatsapp WhatsAppLink?
+  apiTokens ApiToken[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -558,4 +560,70 @@ model ProjectTeam {
   team Team @relation(fields:[teamId],references:[id],onDelete:Cascade)
   @@id([projectId,teamId])
   @@index([teamId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// WhatsApp + API tokens (v4.9.0)
+// ---------------------------------------------------------------------------------------------
+enum WaLinkStatus {
+  PENDING
+  ACTIVE
+}
+enum WaDirection {
+  IN
+  OUT
+}
+
+// One WhatsApp number per user. PENDING = a link code was issued, the number is not proven yet.
+// The number is proven when the user sends the code FROM that number to the business number (no OTP SMS needed).
+model WhatsAppLink {
+  id String @id @default(cuid())
+  userId String @unique
+  phone String? @unique // E.164 digits only, e.g. 919812345678 (what Meta sends as `from`)
+  status WaLinkStatus @default(PENDING)
+  codeHash String? // sha256 of the one-time link code
+  codeExpiresAt DateTime?
+  notifyEnabled Boolean @default(true)
+  notifyTypes String[] @default([]) // NotificationType values the user wants on WhatsApp
+  aiEnabled Boolean @default(true) // allow free-text AI assistant for this user (needs ANTHROPIC_API_KEY)
+  windowOpenUntil DateTime? // end of Meta's 24h customer-service window (free-form messages allowed until then)
+  context Json? // short-lived bot state: last list shown, pending confirmation, last ticket
+  verifiedAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([codeHash])
+}
+
+// Audit + idempotency log. `waId` (wamid) is unique so a webhook retry never runs a command twice.
+model WhatsAppMessage {
+  id String @id @default(cuid())
+  waId String? @unique
+  direction WaDirection
+  phone String
+  userId String?
+  kind String @default("text") // text, image, document, interactive, template, status
+  body String? @db.Text
+  status String? // OUT: queued, sent, delivered, read, failed; IN: received, handled, ignored
+  error String?
+  createdAt DateTime @default(now())
+  @@index([userId,createdAt])
+  @@index([phone,createdAt])
+}
+
+// Personal access token: lets an AI client (MCP) or a script act AS the user, with exactly the user's permissions.
+// Only the sha256 hash is stored; the raw token is shown once at creation.
+model ApiToken {
+  id String @id @default(cuid())
+  userId String
+  name String
+  tokenHash String @unique
+  prefix String
+  scopes String[] @default([]) // empty = full access of the user; ["read"] = read-only tools
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@index([userId,revokedAt])
 }

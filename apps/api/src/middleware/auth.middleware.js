@@ -1,11 +1,27 @@
 import { getSession } from '@auth/express';
 import { authConfig } from '../auth.js';
-import { loadContextByEmail, STAFF_ROLES, MANAGER_ROLES } from '../services/session.js';
+import { loadContextByEmail, loadContextByUserId, STAFF_ROLES, MANAGER_ROLES } from '../services/session.js';
 import { devEmailFromCookieHeader } from '../services/devAuth.js';
 import { acceptInvitesForEmail } from '../services/invitations.service.js';
 
+function attach(req, ctx) {
+  req.currentUser = ctx.currentUser;
+  req.memberships = ctx.memberships;
+  req.isInternal = ctx.isInternal;
+  req.isManager = ctx.isManager;
+  req.permissions = ctx.permissions;
+  req.can = ctx.can;
+}
+
 export async function requireUser(req, res, next) {
   try {
+    // In-process call from WhatsApp / MCP, signed by the server itself (see services/internalApi.js).
+    if (req.internalUserId) {
+      const ictx = await loadContextByUserId(req.internalUserId);
+      if (!ictx) return res.status(403).json({ error: 'Your account has no active membership.', code: 'NO_MEMBERSHIP' });
+      attach(req, ictx);
+      return next();
+    }
     const devEmail = devEmailFromCookieHeader(req.headers.cookie); // null unless DEV_LOGIN=true (non-production)
     let email = devEmail;
     if (!email) {
@@ -17,13 +33,7 @@ export async function requireUser(req, res, next) {
     let ctx = await loadContextByEmail(email);
     if (!ctx && !devEmail && (await acceptInvitesForEmail(email))) ctx = await loadContextByEmail(email); // invited after they first signed in
     if (!ctx) return res.status(403).json({ error: 'Your account has no active membership. Ask a Tendrils administrator to invite you.', code: 'NO_MEMBERSHIP' });
-
-    req.currentUser = ctx.currentUser;
-    req.memberships = ctx.memberships;
-    req.isInternal = ctx.isInternal;
-    req.isManager = ctx.isManager;
-    req.permissions = ctx.permissions;
-    req.can = ctx.can;
+    attach(req, ctx);
     next();
   } catch (e) {
     next(e);
