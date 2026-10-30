@@ -1,4 +1,4 @@
-// Mirrors apps/api/src/services/taskReviewRules.js so buttons match what the API accepts. The API stays the authority.
+// Mirrors apps/api/src/services/review.js so buttons match what the API accepts. The API stays the authority.
 //   TICKET mirror record | NONE self-managed or subtask | CLIENT client approves | TEAM requesting team | PEER a teammate
 export const canApproveTask = ({ canUpdateAny = false, actorTeamIds = [], reviewerTeamIds = [] } = {}) => Boolean(canUpdateAny || reviewerTeamIds.some((id) => actorTeamIds.includes(id)));
 

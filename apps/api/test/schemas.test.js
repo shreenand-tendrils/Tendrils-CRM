@@ -40,7 +40,7 @@ test('validator enums match prisma/schema.prisma', async () => {
 
 test('multi-assignee, members and daily update schemas', async () => {
   const s = await import('../src/validators/schemas.js');
-  const { resolveAssignees } = await import('../src/services/assignees.js');
+  const { resolveAssignees } = await import('../src/services/review.js');
   assert.deepEqual(s.taskCreate.parse({ organizationId: 'o', title: 'Task', assigneeIds: ['a', 'b'] }).assigneeIds, ['a', 'b']);
   assert.equal(s.taskCreate.safeParse({ organizationId: 'o', title: 'Task', assigneeIds: 'a' }).success, false);
   assert.deepEqual(resolveAssignees({ assigneeIds: ['a', 'a', 'b'] }), ['a', 'b']);

@@ -3,12 +3,13 @@ import { Users, Plus, Pencil, Trash2, UserPlus, RotateCcw, X } from "lucide-reac
 import EmptyState from "../components/ui/EmptyState";
 import PeoplePicker from "../components/ui/PeoplePicker";
 import AvatarStack from "../components/ui/AvatarStack";
+import Avatar from "../components/ui/Avatar";
 import { api } from "../api";
-import { can } from "../lib/rbac";
+import { can, ROLE_LABELS } from "../lib/rbac";
 
 function Shell({ title, onClose, children, foot }) {
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal" role="dialog" aria-label={title}>
         <div className="modal-head"><span><h2>{title}</h2></span><button type="button" onClick={onClose} aria-label="Close"><X /></button></div>
         <div className="modal-body">{children}</div>
@@ -24,6 +25,8 @@ export default function TeamsPage({ data, me, onRefresh, notify }) {
   const [rows, setRows] = useState(data.teams || []);
   const [editor, setEditor] = useState(null);   // { team? } create or edit
   const [rosterFor, setRosterFor] = useState(null);
+  const [viewId, setViewId] = useState(null); // team whose member list is open
+  const viewing = rows.find((t) => t.id === viewId) || null;
   const [staff, setStaff] = useState([]);
   const load = useCallback(() => (manage ? api.get("/teams", { params: { all: 1 } }).then((r) => setRows(r.data)).catch(() => setRows(data.teams || [])) : setRows(data.teams || [])), [manage, data.teams]);
   useEffect(() => { load(); }, [load]);
@@ -55,14 +58,15 @@ export default function TeamsPage({ data, me, onRefresh, notify }) {
       {manage && <div className="row" style={{ marginBottom: 14 }}><button className="primary" onClick={() => openEditor(null)}><Plus size={14} /> New team</button><small className="hint">Only the Platform admin can create teams and change who is in them.</small></div>}
       <div className="cards">
         {rows.map((t) => (
-          <article className="team-card" key={t.id} style={t.isActive === false ? { opacity: 0.6 } : undefined}>
+          <article className="team-card" key={t.id} style={{ cursor: "pointer", ...(t.isActive === false ? { opacity: 0.6 } : {}) }} role="button" tabIndex={0} aria-label={`Show members of ${t.name}`}
+            onClick={() => setViewId(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setViewId(t.id); } }}>
             <div className="project-icon"><Users /></div>
             <h3>{t.name}{t.isActive === false && " (archived)"}</h3>
             <p>{t.description || "A focused team collaborating on client delivery."}</p>
             <AvatarStack users={(t.members || []).map((m) => m.membership?.user).filter(Boolean)} max={5} />
-            <small>{(t.members || []).length} members{manage ? ` · ${t.clientVisible === false ? "hidden from clients" : "clients can choose it"}` : ""}</small>
+            <small>{(t.members || []).length} members · tap to see the list{manage ? ` · ${t.clientVisible === false ? "hidden from clients" : "clients can choose it"}` : ""}</small>
             {manage && (
-              <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              <div className="row" style={{ flexWrap: "wrap", gap: 6, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
                 {t.isActive === false
                   ? <button className="secondary" onClick={() => restore(t)}><RotateCcw size={14} /> Restore</button>
                   : <>
@@ -77,6 +81,26 @@ export default function TeamsPage({ data, me, onRefresh, notify }) {
         {!rows.length && <EmptyState icon={<Users />} title="No teams yet" text={manage ? "Create the first team above." : "Teams will appear here once the admin creates them."} />}
       </div>
 
+      {viewing && (
+        <Shell title={`${viewing.name} · ${(viewing.members || []).length} member${(viewing.members || []).length === 1 ? "" : "s"}`} onClose={() => setViewId(null)} foot={<button className="secondary" onClick={() => setViewId(null)}>Close</button>}>
+          {viewing.description && <p className="hint">{viewing.description}</p>}
+          {(viewing.members || []).length ? (
+            <ul className="team-members">
+              {(viewing.members || []).map((m) => {
+                const u = m.membership?.user;
+                if (!u) return null;
+                return (
+                  <li key={m.membership.id}>
+                    <Avatar name={u.name || u.email} />
+                    <span><b>{u.name || u.email}</b><small>{u.email}</small></span>
+                    <i className="chip-link soft">{ROLE_LABELS?.[m.membership.role] || String(m.membership.role || "").toLowerCase().replace("_", " ")}</i>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : <p className="hint">No one is in this team yet.</p>}
+        </Shell>
+      )}
       {editor && (
         <Shell title={editor.team ? "Edit team" : "New team"} onClose={() => setEditor(null)} foot={<><button className="secondary" onClick={() => setEditor(null)}>Cancel</button><button className="primary" disabled={form.name.trim().length < 2} onClick={saveTeam}>Save</button></>}>
           <div className="field"><label htmlFor="team-name">Team name</label><input id="team-name" value={form.name} maxLength={120} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>

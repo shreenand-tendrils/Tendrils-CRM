@@ -22,7 +22,7 @@ function FilesModal({ project, canUpload, onClose, onChanged, notify }) {
     catch (err) { notify?.(err.response?.data?.error || "Upload failed", "error"); }
   };
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal" onPaste={(e) => { const files = clipboardFiles(e); if (files.length && canUpload) { e.preventDefault(); files.forEach(send); } }}>
         <div className="modal-head"><span><small>PROJECT FILES</small><h2>{project.name}</h2></span><button type="button" onClick={onClose} aria-label="Close"><X /></button></div>
         <div className="modal-body">
@@ -56,7 +56,7 @@ function TeamModal({ project, users, teams = [], onClose, onSaved, notify }) {
   };
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal">
         <div className="modal-head"><span><small>PROJECT TEAM</small><h2>{project.name}</h2></span><button type="button" onClick={onClose}><X /></button></div>
         <div className="modal-body">

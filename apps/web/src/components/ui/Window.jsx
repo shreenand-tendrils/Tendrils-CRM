@@ -12,7 +12,7 @@ export default function Window({ label, head, side, onClose, children }) {
     return () => { document.body.style.overflow = prev; };
   }, []);
   return (
-    <div className="win-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="win-overlay">
       <section className="win" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={ref}>
         <header className="win-head">
           {head}

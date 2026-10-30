@@ -1,3 +1,3 @@
 export {
-  requireUser, requireManager, requireInternal, requirePermission, isManager, canSeeOrg, orgScope, ticketScope, taskTeamScope, internalTeamIds, activityScope,
+  requireUser, requireManager, requireInternal, requirePermission, ctxOf, isManager, canSeeOrg, orgScope, ticketScope, taskTeamScope, internalTeamIds, activityScope,
 } from './auth.middleware.js';

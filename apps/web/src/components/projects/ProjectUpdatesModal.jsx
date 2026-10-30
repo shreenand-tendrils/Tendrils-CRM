@@ -20,7 +20,7 @@ export default function ProjectUpdatesModal({ project, canPost, onClose, notify 
   };
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal">
         <div className="modal-head"><span><small>PROJECT UPDATES</small><h2>{project.name}</h2></span><button type="button" onClick={onClose}><X /></button></div>
         <div className="modal-body">

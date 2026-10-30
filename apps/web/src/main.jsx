@@ -5,5 +5,6 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/plus-jakarta-sans';
 import App from './App.jsx';
 import './styles.css';
+import './styles/mobile.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);

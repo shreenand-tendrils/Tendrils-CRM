@@ -2,8 +2,8 @@ import { logActivity } from './activity.js';
 import { AppError } from '../errors/AppError.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
 import { statusKey, ticketToTaskStatus, TASK_TO_TICKET, taskTitleFor, shouldSubmitClientTicketForReview } from './ticketTaskMaps.js';
-import { incompleteWorkTasks } from './ticketWorkRules.js';
-export { incompleteWorkTasks } from './ticketWorkRules.js';
+import { incompleteWorkTasks } from './review.js';
+export { incompleteWorkTasks } from './review.js';
 
 // Tickets and their auto-created task stay in step:
 //  * a ticket with an assignee always has exactly one auto task (Task.autoCreated) for that assignee

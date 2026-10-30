@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, ShieldCheck, Info } from "lucide-react";
+import { X, ShieldCheck, Info, Paperclip } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
 import { peopleOfTeams } from "../../lib/teams";
@@ -36,6 +36,10 @@ const configs = {
   ] },
   client: { title: "Add client workspace", fields: [["name", "Client name", "text", true], ["slug", "Workspace slug (lowercase, dashes)", "text", true]] },
 };
+// Mirrors the API upload rules (apps/api/src/routes/files.routes.js) so people get a clear message before saving.
+const MAX_MB = 15;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+const ALLOWED_TYPE = /^(image\/(jpeg|png|gif|webp)|application\/pdf|text\/(plain|csv)|application\/zip|application\/vnd\.|application\/msword)/i;
 const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks", "teamAssignees"];
 
 function optionsFor(type, data, orgId, teamIds = []) {
@@ -61,7 +65,19 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
   const [sharedIds, setSharedIds] = useState([]);
   const [projTeams, setProjTeams] = useState([]);
   const [pasted, setPasted] = useState([]); // images pasted into the description, attached right after saving
+  const [attached, setAttached] = useState([]); // files picked with "Attach files", uploaded right after saving
+  const [fileErr, setFileErr] = useState("");
   const canPaste = ["ticket", "task", "project", "projectRequest"].includes(kind);
+  const addFiles = (list) => {
+    const ok = [], bad = [];
+    for (const f of Array.from(list || [])) {
+      if (f.size > MAX_BYTES) bad.push(`${f.name} is over ${MAX_MB} MB`);
+      else if (!ALLOWED_TYPE.test(f.type || "")) bad.push(`${f.name}: this file type is not supported`);
+      else if (!attached.some((a) => a.name === f.name && a.size === f.size)) ok.push(f);
+    }
+    setAttached((cur) => [...cur, ...ok]);
+    setFileErr(bad.join(" · "));
+  };
   const config = configs[kind];
   const me = data.me;
   if (!config) return null;
@@ -84,8 +100,9 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
       const clientWorkspace = (me.memberships || []).find((m) => m.organization?.type === "CLIENT")?.organization?.id;
       if (clientWorkspace) payload.organizationId = clientWorkspace;
     }
+    if (canPaste && attached.length) payload.__files = attached.map((file) => ({ file, marker: null })); // plain attachments (not inline)
     if (canPaste && pasted.length) {
-      payload.__files = pasted;
+      payload.__files = [...(payload.__files || []), ...pasted];
       // images that are still in the list show inside the description after saving (the text box itself stays clean)
       const marks = pasted.filter((p) => p.marker).map((p) => `[[img:${p.marker}]]`);
       if (marks.length) payload.description = `${payload.description || ""}${payload.description ? "\n" : ""}${marks.join("\n")}`;
@@ -94,7 +111,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
   };
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <form className="modal" onSubmit={submit} role="dialog" aria-label={config.title}>
         <div className="modal-head">
           <span><small>WORKSPACE</small><h2>{config.title}</h2></span>
@@ -134,6 +151,16 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
           ))}
+          {canPaste && (
+            <div className="field">
+              <label htmlFor="f-attach">Attach files <small className="hint">(optional · up to {MAX_MB} MB each)</small></label>
+              <label className="upload" htmlFor="f-attach"><Paperclip size={18} /><span>Choose files to attach (images, PDF, documents, ZIP)</span>
+                <input id="f-attach" type="file" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+              {attached.length > 0 && <div className="chips">{attached.map((f) => <i className="chip-link" key={`${f.name}-${f.size}`}><Paperclip size={12} /> {f.name} <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setAttached((cur) => cur.filter((x) => x !== f))}>×</button></i>)}</div>}
+              {fileErr && <small className="hint" style={{ color: "#c2304f" }}>{fileErr}</small>}
+            </div>
+          )}
           {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a Platform admin to assign others.</p>}
         </div>
         <div className="modal-foot">

@@ -27,7 +27,11 @@ router.get('/analytics', async (req, res) => {
   const from = parseDay(req.query.from, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1)));
   const to = new Date(to0.getTime() + DAY); // inclusive end day
   if (from >= to || to - from > 800 * DAY) return res.status(400).json({ error: 'Pick a valid date range (up to about 2 years).' });
-  const scope = ticketScope(req);
+  // ?scope=mine narrows everything to the caller's own work (tickets they raised or hold, tasks assigned to them).
+  const me = req.currentUser.id;
+  const mine = req.query.scope === 'mine';
+  const base = ticketScope(req);
+  const scope = mine ? { AND: [base, { OR: req.isInternal ? [{ assigneeId: me }, { requesterId: me }] : [{ requesterId: me }] }] } : base;
   const [byStatus, inRange, openRows] = await Promise.all([
     prisma.ticket.groupBy({ by: ['status'], where: scope, _count: { _all: true } }),
     prisma.ticket.findMany({ where: { AND: [scope, { OR: [{ createdAt: { gte: from, lt: to } }, { closedAt: { gte: from, lt: to } }] }] }, select: { createdAt: true, closedAt: true }, take: 10000 }),
@@ -42,6 +46,7 @@ router.get('/analytics', async (req, res) => {
   }
   const status = Object.fromEntries(byStatus.map((g) => [g.status, g._count._all]));
   const out = {
+    scope: mine ? 'mine' : 'all',
     range: { from: from.toISOString().slice(0, 10), to: to0.toISOString().slice(0, 10) },
     status: { OPEN: status.OPEN || 0, REVIEW_TEST: status.REVIEW_TEST || 0, REVIEW_HELP: status.REVIEW_HELP || 0, CLOSED: status.CLOSED || 0 },
     tickets: {
@@ -52,7 +57,7 @@ router.get('/analytics', async (req, res) => {
     months: [...months.values()],
   };
   if (req.isInternal) {
-    const tScope = { AND: [orgScope(req), taskTeamScope(req)] };
+    const tScope = { AND: [orgScope(req), taskTeamScope(req), ...(mine ? [{ OR: [{ assigneeId: me }, { assignees: { some: { userId: me } } }] }] : [])] };
     const [tOpened, tDone, tOpen, tOverdue] = await Promise.all([
       prisma.task.count({ where: { AND: [tScope, { createdAt: { gte: from, lt: to } }] } }),
       prisma.task.findMany({ where: { AND: [tScope, { completedAt: { gte: from, lt: to } }] }, select: { createdAt: true, completedAt: true }, take: 10000 }),

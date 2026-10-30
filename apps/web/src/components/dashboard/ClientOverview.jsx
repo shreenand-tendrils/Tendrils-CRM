@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Inbox, Hammer, Eye, CheckCircle2, FolderKanban, Megaphone, Ticket } from "lucide-react";
-import MetricCard from "./MetricCard";
+import { FolderKanban, Megaphone, Ticket } from "lucide-react";
 import Panel from "../ui/Panel";
 import EmptyState from "../ui/EmptyState";
 import { StatusBadge } from "../ui/StatusBadge";
 import { api } from "../../api";
+import { on } from "../../lib/realtime";
 import { formatDate, pretty } from "../../lib/formatters";
 
 // What a client sees: their requests by stage, anything waiting on them, project progress and team updates.
@@ -13,20 +13,14 @@ import { formatDate, pretty } from "../../lib/formatters";
 export default function ClientOverview({ data, onSelectTicket }) {
   const [o, setO] = useState(null);
   const sig = (data.tickets || []).map((t) => `${t.id}:${t.status}`).join("|"); // reload when a ticket moves
-  useEffect(() => { api.get("/client/overview").then((r) => setO(r.data)).catch(() => setO({ stages: {}, awaiting: [], projects: [], updates: [] })); }, [sig]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => on("app.refresh", () => setTick((n) => n + 1)), []); // Refresh button + automatic refresh
+  useEffect(() => { api.get("/client/overview").then((r) => setO(r.data)).catch(() => setO({ stages: {}, awaiting: [], projects: [], updates: [] })); }, [sig, tick]);
   if (!o) return <small className="muted">Loading your dashboard…</small>;
-  const st = o.stages || {};
   const open = (id) => { const t = (data.tickets || []).find((x) => x.id === id); if (t) onSelectTicket?.(t); };
 
   return (
     <>
-      <div className="metrics">
-        <MetricCard label="Received" value={st.received || 0} icon={Inbox} foot="Waiting for the team to pick up" />
-        <MetricCard label="In progress" value={st.inProgress || 0} icon={Hammer} tone="blue" foot="Being worked on now" />
-        <MetricCard label="Needs your review" value={st.awaitingYou || 0} icon={Eye} tone="orange" foot="Approve or send back" />
-        <MetricCard label="Completed" value={st.done || 0} icon={CheckCircle2} tone="blue" foot="Resolved or closed" />
-      </div>
-
       {o.awaiting.length > 0 && (
         <Panel title="Waiting for your review" sub="The team finished these. Approve them or ask for changes.">
           {o.awaiting.map((t) => (

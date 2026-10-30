@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview } from '../src/services/taskReviewRules.js';
+import { canApproveTask, taskReviewerTeamIds, taskNeedsTeamReview } from '../src/services/review.js';
 
 test('cross-team task records creator teams other than the destination as reviewers', () => {
   assert.deepEqual(taskReviewerTeamIds(['design', 'engineering', 'design'], 'engineering'), ['design']);
@@ -16,7 +16,7 @@ test('only the requester/reviewer team or an authorized global reviewer can appr
   assert.equal(canApproveTask({ actorTeamIds: ['receiving-team'], reviewerTeamIds: [] }), false);
 });
 
-import { reviewAuthorityOf, canFinishTask } from '../src/services/taskReviewRules.js';
+import { reviewAuthorityOf, canFinishTask } from '../src/services/review.js';
 
 test('review authority: who reviews which task', () => {
   assert.equal(reviewAuthorityOf({ autoCreated: true }), 'TICKET');

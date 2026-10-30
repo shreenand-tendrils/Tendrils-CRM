@@ -126,7 +126,7 @@ test('staff keep seeing a ticket they raised for another team', () => {
   assert.equal(canViewTicket(me, { ...t, requesterId: 'someone-else' }), false);
 });
 
-import { taskCommentRecipients } from '../src/services/taskComments.js';
+import { taskCommentRecipients } from '../src/services/review.js';
 test('task comments notify the creator and assignees, never the author, no duplicates', () => {
   const task = { creatorId: 'c', assigneeId: 'a', assignees: [{ userId: 'a' }, { userId: 'b' }] };
   assert.deepEqual(taskCommentRecipients(task, 'a').sort(), ['b', 'c']);
@@ -146,7 +146,7 @@ test('client team picks: first owns, the rest are shared, duplicates dropped', (
   assert.deepEqual(normalizeTeamPicks(undefined, []), { teamId: null, teamIds: [] });
 });
 
-import { finishBlocked } from '../src/services/ticketReviewRules.js';
+import { finishBlocked } from '../src/services/review.js';
 test('admin review: employees cannot finish client-origin tickets; platform admins and employee-origin tickets are fine', () => {
   const base = { internal: true, canTriage: false, requesterIsEmployee: false };
   for (const status of ['RESOLVED', 'CLOSED', 'CLIENT_REVIEW']) assert.equal(finishBlocked({ ...base, status }), true, status);
@@ -156,7 +156,7 @@ test('admin review: employees cannot finish client-origin tickets; platform admi
   assert.equal(finishBlocked({ ...base, status: 'CLOSED', internal: false }), false, 'clients use their own approve/send-back rule');
 });
 
-import { canDeleteTicket } from '../src/services/ticketReviewRules.js';
+import { canDeleteTicket } from '../src/services/review.js';
 test('ticket delete: admins any, requester only while untouched', () => {
   const t = { canDeleteAny: false, isRequester: true, status: 'OPEN', assigneeId: null, othersCommented: false };
   assert.equal(canDeleteTicket(t), true);
@@ -170,7 +170,7 @@ test('ticket delete: admins any, requester only while untouched', () => {
 });
 
 
-import { incompleteWorkTasks } from '../src/services/ticketWorkRules.js';
+import { incompleteWorkTasks } from '../src/services/review.js';
 test('ticket review is blocked by unfinished linked tasks/subtasks, but not the ticket mirror task', () => {
   const tasks = [
     { id: 'mirror', title: 'Ticket mirror', autoCreated: true, status: 'DONE' },

@@ -18,7 +18,7 @@ function TeamsModal({ member, teams, onClose, onSaved, notify }) {
   const [ids, setIds] = useState(member.teams.map((t) => t.id));
   const save = () => api.put(`/admin/members/${member.id}/teams`, { teamIds: ids }).then(() => { notify("Teams updated"); onSaved(); onClose(); }).catch((e) => notify(e.response?.data?.error || "Could not update teams", "error"));
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="overlay">
       <div className="modal">
         <div className="modal-head"><span><small>TEAMS</small><h2>{member.user.name || member.user.email}</h2></span><button type="button" onClick={onClose}><X /></button></div>
         <div className="modal-body"><p className="hint">A person can belong to several teams.</p><TeamChecks teams={teams} value={ids} onChange={setIds} /></div>

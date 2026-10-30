@@ -1,6 +1,5 @@
-import { Building2, FolderKanban, ListTodo, Ticket, Clock3, ArrowUpRight } from "lucide-react";
+import { Building2, FolderKanban, ListTodo, Ticket, ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import MetricCard from "../components/dashboard/MetricCard";
 import ActivityFeed from "../components/dashboard/ActivityFeed";
 import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
@@ -34,13 +33,7 @@ export default function OverviewPage({ data, onSelectTicket }) {
         <div className="banner-mark">t.</div>
       </div>
 
-      <AnalyticsPanel staff />
-      <div className="metrics">
-        <MetricCard label="Active projects" value={m.projects} icon={FolderKanban} foot="Across your workspaces" />
-        <MetricCard label="Open tickets" value={m.tickets} icon={Ticket} tone="orange" foot="Requests needing progress" />
-        {staff && <MetricCard label="Active tasks" value={m.tasks} icon={ListTodo} tone="blue" foot="Work in motion" />}
-        {staff && <MetricCard label="Overdue tasks" value={m.overdue} icon={Clock3} tone="rose" foot="Need a follow-up" />}
-      </div>
+      <AnalyticsPanel staff projects={m.projects} />
 
       <div className="two-col">
         {staff ? (

@@ -1,6 +1,6 @@
 import { Plus, RefreshCw } from "lucide-react";
 
-export default function PageHeader({ title, subtitle, actionLabel, onAction, onRefresh }) {
+export default function PageHeader({ title, subtitle, actionLabel, onAction, onRefresh, refreshing }) {
   return (
     <div className="heading">
       <div>
@@ -10,7 +10,7 @@ export default function PageHeader({ title, subtitle, actionLabel, onAction, onR
       </div>
       <div className="actions">
         {actionLabel && <button className="primary" onClick={onAction}><Plus size={18} />{actionLabel}</button>}
-        <button className="secondary" onClick={onRefresh} aria-label="Refresh"><RefreshCw size={16} /><span className="label">Refresh</span></button>
+        <button className="secondary" onClick={() => onRefresh?.()} disabled={refreshing} aria-label="Refresh"><RefreshCw size={16} className={refreshing ? "spin" : ""} /><span className="label">Refresh</span></button>
       </div>
     </div>
   );

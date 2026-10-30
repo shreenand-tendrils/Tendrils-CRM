@@ -1,6 +1,6 @@
 export { logActivity, notifyUser } from './activity.js';
 export { notifyAssignment } from './assignment.service.js';
-export { resolveAssignees } from './assignees.js';
+export { resolveAssignees, taskCommentRecipients, incompleteWorkTasks } from './review.js';
 export { syncTaskFromTicket, syncTicketFromTask, assertTaskSubtasksDone, assertTicketWorkComplete } from './ticketTask.service.js';
 export * from './guards.js';
 export * from './notify.service.js';
@@ -8,3 +8,5 @@ export { sendInviteEmail, sendAccessGrantedEmail, fireAndLog, emailEnabled } fro
 export * from './invitations.service.js';
 export { recordTicketEvents, loadNames } from './ticketHistory.service.js';
 export { diffTicketEvents, clientView } from './ticketEvents.js';
+export { listTasks, createTask, patchTask, listTaskComments, addTaskComment, deleteTaskComment, listTaskAttachments } from './tasks.service.js';
+export { listTickets, createTicket, patchTicket, getTicketHistory, listTicketComments, deleteTicket, listTicketTasks, reviewTicketTask, listTicketAttachments, addTicketComment } from './tickets.service.js';

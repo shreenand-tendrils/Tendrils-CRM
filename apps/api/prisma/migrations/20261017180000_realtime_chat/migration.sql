@@ -1,5 +1,11 @@
--- AlterEnum
-ALTER TYPE "RoomType" ADD VALUE 'DIRECT';
+-- AlterEnum (transaction-safe for PostgreSQL < 12, which forbids ALTER TYPE ... ADD VALUE
+-- inside a transaction: rename, recreate with the new value, re-point the column).
+ALTER TYPE "RoomType" RENAME TO "RoomType_old";
+CREATE TYPE "RoomType" AS ENUM ('GENERAL', 'PROJECT', 'DIRECT');
+ALTER TABLE "ChatRoom" ALTER COLUMN "type" DROP DEFAULT;
+ALTER TABLE "ChatRoom" ALTER COLUMN "type" TYPE "RoomType" USING ("type"::text::"RoomType");
+ALTER TABLE "ChatRoom" ALTER COLUMN "type" SET DEFAULT 'PROJECT';
+DROP TYPE "RoomType_old";
 
 -- AlterTable
 ALTER TABLE "ChatRoom" ADD COLUMN     "directKey" TEXT;
