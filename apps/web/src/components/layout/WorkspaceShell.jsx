@@ -25,6 +25,7 @@ import ClientsPage from "../../pages/ClientsPage";
 import TeamsPage from "../../pages/TeamsPage";
 import ActivityPage from "../../pages/ActivityPage";
 import NotificationsPage from "../../pages/NotificationsPage";
+import ReportsPage from "../../pages/ReportsPage";
 import SettingsPage from "../../pages/SettingsPage";
 import ChatPage from "../../pages/ChatPage";
 // import UpdatesPage from "../../pages/UpdatesPage";
@@ -256,6 +257,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
             <Route path="/teams" element={guard(can(me, "team.view"), "teams", <TeamsPage data={data} me={me} onRefresh={refresh} notify={note} />)} />
             <Route path="/activity" element={<ActivityPage data={data} />} />
             <Route path="/notifications" element={<NotificationsPage data={data} onRefresh={refresh} />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage me={me} />} />
           </Routes>
 
