@@ -7,7 +7,7 @@ import { canEditTask } from '../rbac/policies.js';
 import { logActivity } from './activity.js';
 import { notifyAssignment } from './assignment.service.js';
 import { notifyPeople, findTeamManagers } from './notify.service.js';
-import { assertAssignees, assertProjectInOrg, assertTicketInOrg, loadTeamMemberIds } from './guards.js';
+import { assertDueNotPast, assertAssignees, assertProjectInOrg, assertTicketInOrg, loadTeamMemberIds } from './guards.js';
 import { syncTaskFromTicket, syncTicketFromTask, assertTaskSubtasksDone } from './ticketTask.service.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
 import { assigneesOutsideTeams } from './ticketRouting.js';
@@ -155,6 +155,7 @@ export async function patchTask(ctx, id, input) {
   const old = await prisma.task.findFirst({ where: { id, ...taskTeamScope(ctx) }, include: { assignees: true, teamAccesses: true } });
   if (!old || !ctx.isInternal || !canSeeOrg(ctx, old.organizationId)) throw new AppError('Task not found', 404);
   const { assigneeIds, assigneeId, teamIds, ...data } = input;
+  assertDueNotPast(data.dueDate, old.dueDate);
   const ids = resolveAssignees({ assigneeIds, assigneeId });
   if (ids && !ctx.can('task.assign')) throw new AppError("You don't have permission to change assignees (task.assign).", 403);
   if ((teamIds || data.teamId !== undefined) && !ctx.can('task.assign')) throw new AppError('Only authorized task assigners can change participating teams.', 403);
@@ -325,7 +326,9 @@ export async function addTaskComment(ctx, taskId, input) {
   const { body } = input;
   const c = await prisma.comment.create({ data: { body, visibility: 'INTERNAL', taskId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
   await logActivity({ actorId: ctx.currentUser.id, organizationId: t.organizationId, entityType: 'task', entityId: t.id, action: 'commented', summary: `Comment added to task ${t.title}` });
-  await notifyPeople({ userIds: taskCommentRecipients(t, ctx.currentUser.id), actorId: ctx.currentUser.id, type: 'COMMENT', title: `New comment on task: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email}: ${body.slice(0, 200)}`, href: link(t), email: false });
+  const earlier = await prisma.comment.findMany({ where: { taskId: t.id }, select: { authorId: true }, distinct: ['authorId'] });
+  const toIds = [...new Set([...taskCommentRecipients(t, ctx.currentUser.id), ...earlier.map((e) => e.authorId)])].filter((id) => id !== ctx.currentUser.id);
+  await notifyPeople({ userIds: toIds, actorId: ctx.currentUser.id, type: 'COMMENT', title: `New comment on task: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} commented on the task "${t.title}":\n"${body.slice(0, 200)}"`, href: link(t) });
   return c;
 }
 

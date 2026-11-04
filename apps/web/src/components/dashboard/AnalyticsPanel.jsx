@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Inbox, CheckCircle2, Timer, Hourglass, AlertTriangle, ListTodo, ListChecks, Gauge, LifeBuoy, SearchCheck, Lock, FolderOpen, FolderKanban } from "lucide-react";
+import { Inbox, CheckCircle2, Timer, AlertTriangle, ListTodo, ListChecks, LifeBuoy, SearchCheck, Lock, FolderOpen } from "lucide-react";
 import { api } from "../../api";
 import { on } from "../../lib/realtime";
 import RangePicker, { presetRange } from "../ui/RangePicker";
@@ -26,7 +26,7 @@ function Kpi({ icon: Icon, tone = "violet", label, value, hint, to }) {
 }
 
 // Ticket status cards (click = open that list) + range analytics, all as cards. The range is one small picker.
-export default function AnalyticsPanel({ staff, projects }) {
+export default function AnalyticsPanel({ staff }) {
   const [range, setRange] = useState(() => presetRange("6m"));
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
@@ -45,19 +45,22 @@ export default function AnalyticsPanel({ staff, projects }) {
 
   return (
     <section className="analytics" aria-label="Ticket analytics">
+      <div className="analytics-section-head">
+        <div><h3>Current ticket queue</h3><p>Live snapshot of tickets by their current status</p></div>
+      </div>
       <div className="kpi-grid status-cards">
         {STATUSES.map((s) => (
-          <Link key={s} to={`/tickets?status=${s}`} className="kpi status-card" title={`Show ${(staff ? STATUS_LABEL : CLIENT_LABEL)[s]} tickets`}>
+          <Link key={s} to={`/tickets?status=${s}${scope === "mine" ? "&view=mine" : ""}`} className="kpi status-card" title={`Show ${(staff ? STATUS_LABEL : CLIENT_LABEL)[s]} tickets`}>
             <i className={`kpi-icon st-${s.toLowerCase().replaceAll("_", "-")}`}>{(() => { const I = STATUS_ICON[s]; return <I size={17} />; })()}</i>
             <span className="kpi-label">{(staff ? STATUS_LABEL : CLIENT_LABEL)[s]}</span>
             <b className="kpi-value">{data?.status?.[s] ?? "…"}</b>
-            <small className="kpi-hint">tickets · view list</small>
+            <small className="kpi-hint">currently in this status · view</small>
           </Link>
         ))}
       </div>
 
       <div className="analytics-head">
-        <div><h3>Ticket analytics</h3><p>Workload, turnaround and overdue work for the selected period</p></div>
+        <div><h3>Activity &amp; workload</h3><p>{scope === "mine" ? "Your assigned and raised work" : "Everything available within your team and workspace access"} · {range.from} to {range.to}</p></div>
         <div className="analytics-tools">
           <div className="seg" role="group" aria-label="Whose numbers">
             <button type="button" className={scope === "all" ? "on" : ""} aria-pressed={scope === "all"} onClick={() => setScope("all")}>{staff ? "Everything I can see" : "All my company"}</button>
@@ -70,20 +73,18 @@ export default function AnalyticsPanel({ staff, projects }) {
       {data && (
         <>
           <div className="kpi-grid">
-            <Kpi icon={Inbox} tone="violet" label="Opened" value={t.opened} hint="in this period" />
-            <Kpi icon={CheckCircle2} tone="green" label="Closed" value={t.closed} hint="in this period" />
-            <Kpi icon={Timer} tone="blue" label="Avg time to close" value={days(t.avgDaysToClose)} hint="opening → closing" />
-            <Kpi icon={Hourglass} tone="amber" label="Avg age (open)" value={days(t.avgDaysOpen)} hint="tickets not closed yet" />
-            <Kpi icon={AlertTriangle} tone="rose" label="Overdue tickets" value={t.overdue} hint="past due, not closed" to="/tickets?overdue=1" />
-            {staff && projects != null && <Kpi icon={FolderKanban} tone="violet" label="Active projects" value={projects} hint="across your workspaces" to="/projects" />}
+            <Kpi icon={Inbox} tone="violet" label="New tickets" value={t.opened} hint="tickets created in this period" />
+            <Kpi icon={CheckCircle2} tone="green" label="Tickets closed" value={t.closed} hint="closure recorded in this period" />
+            <Kpi icon={Timer} tone="blue" label="Avg. resolution" value={days(t.avgDaysToClose)} hint="creation → closure" />
+            <Kpi icon={AlertTriangle} tone="rose" label="Overdue tickets" value={t.overdue} hint="currently past due" to={`/tickets?overdue=1${scope === "mine" ? "&mine=1" : ""}`} />
             {staff && k && <>
-              <Kpi icon={ListTodo} tone="blue" label="Open tasks" value={k.open} hint="work in motion" to="/tasks" />
-              <Kpi icon={AlertTriangle} tone="rose" label="Overdue tasks" value={k.overdue} hint="need a follow-up" to="/tasks" />
-              <Kpi icon={ListChecks} tone="green" label="Tasks done" value={k.done} hint="in this period" />
-              <Kpi icon={Gauge} tone="violet" label="Avg time per task" value={days(k.avgDaysToDone)} hint="start → done" />
+              <Kpi icon={ListTodo} tone="blue" label="Open tasks" value={k.open} hint="currently in progress" to={`/tasks${scope === "mine" ? "?mine=1" : ""}`} />
+              <Kpi icon={AlertTriangle} tone="rose" label="Overdue tasks" value={k.overdue} hint="currently past due" to={`/tasks${scope === "mine" ? "?mine=1" : ""}`} />
+              <Kpi icon={ListChecks} tone="green" label="Tasks completed" value={k.done} hint="completed in this period" />
             </>}
           </div>
 
+          {t.closedWithoutTimestamp > 0 && <p className="analytics-note">{t.closedWithoutTimestamp} currently closed {t.closedWithoutTimestamp === 1 ? "ticket has" : "tickets have"} no recorded closure date, so {t.closedWithoutTimestamp === 1 ? "its" : "their"} historical closure is not included in the selected-period totals.</p>}
           <div className="chart-card">
             <div className="chart-head">
               <b>Opened vs closed per month</b>

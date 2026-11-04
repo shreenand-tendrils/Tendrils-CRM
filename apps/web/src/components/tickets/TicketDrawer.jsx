@@ -52,6 +52,10 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const incompleteWorkCount = countIncompleteWork(linkedTree);
   const reviewBlocked = incompleteWorkCount > 0;
   const staff = me.isInternal;
+  // Team-to-team ticket (raised by an employee): the person who raised it reviews, approves or sends back, like a client.
+  const teamToTeam = staff && Boolean(ticket.requesterIsEmployee);
+  const isRequester = ticket.requesterId === me.user.id;
+  const peerReview = teamToTeam && isRequester && ticket.assigneeId !== me.user.id;
   // Teams that are SAVED on the ticket decide who can be assigned. Unsaved changes in the pickers do not.
   const savedShared = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.teamId);
   const groups = assigneeGroups(teams, ticket.teamId, savedShared);
@@ -73,10 +77,10 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     setText(""); setPastePreview("");
   };
 
-  const clientReview = !staff && ticket.status === "REVIEW_TEST" && (
+  const clientReview = (!staff || peerReview) && ticket.status === "REVIEW_TEST" && (
     <div className="linked-task">
       <ThumbsUp size={22} color="#5746e8" />
-      <span><b>Ready for your review</b><small>Approve it, or send it back with a comment explaining what to change.</small></span>
+      <span><b>Ready for your review</b><small>{staff ? "The team finished this ticket. " : ""}Approve it, or send it back with a comment explaining what to change.</small></span>
       <button className="primary" onClick={() => onUpdate(ticket.id, { status: "CLOSED" })}>Approve</button>
       <button className="secondary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}><Undo2 size={14} /> Send back</button>
     </div>
@@ -134,14 +138,39 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
   const side = (
     <>
+      {staff && <TicketReminder ticket={ticket} />}
+      {staff && (
+        <div className="linked-task" style={{ flexWrap: "wrap" }}>
+          <ListChecks size={22} color="#5746e8" />
+          <span><b>Tasks ({linkedRoots.length})</b><small>{ticket.teamId ? "Branch work off this ticket, for your team or another one." : "Route the ticket to a team before adding tasks."}</small></span>
+          {can(me, "task.create") && <button className="primary" disabled={!ticket.teamId} onClick={() => onAddTask?.(ticket)}><Plus size={14} /> Add linked task</button>}
+          {linkedRoots.length > 0 && (
+            <>
+              <div className="ticket-progress"><small className="muted">{rootsDone} of {linkedRoots.length} done{inReview > 0 ? ` · ${inReview} waiting for review` : ""}</small><div className="progress" aria-hidden="true"><i style={{ width: `${Math.round((rootsDone / linkedRoots.length) * 100)}%` }} /></div></div>
+              <div className="linked-rows">
+                {linkedRoots.map((t) => {
+                  const subs = linkedTree.flatMap(function walk(n) { return [n, ...n.children.flatMap(walk)]; }).filter((n) => n.task.parentId === t.id);
+                  return (
+                    <button key={t.id} type="button" onClick={() => onOpenTask?.(t)} aria-label={`Open task ${t.title}`}>
+                      <span><b>{t.title}</b><small style={{ display: "block" }}>{taskPeople(t).join(", ") || "Unassigned"}{subs.length ? ` · ${subs.filter((n) => n.task.status === "DONE").length}/${subs.length} subtasks` : ""}</small></span>
+                      <StatusBadge value={t.status} />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {teamBlock}
       <div className="win-card">
         {!staff && <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>}
+        <div className="detail"><span>Created by</span><b>{ticket.requester?.name || ticket.requester?.email || "—"}</b></div>
         <div className="detail"><span>Client</span><b>{ticket.organization?.name}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
         <div className="detail"><span>Status</span>
           {canStatus
-            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
+            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || (teamToTeam && isRequester) || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
             : staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}
         </div>
         {staff && reviewBlocked && <p className="hint" role="status"><Info size={13} style={{ verticalAlign: -2 }} /> Review is locked: {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " still needs" : "s still need"} to be marked Done.</p>}
@@ -167,30 +196,6 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </button>
       )}
       {triage && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Pick the team first, then assign someone from it. Assigning creates a task for that person automatically, and the two stay in sync.</p>}
-      {staff && <TicketReminder ticket={ticket} />}
-      {staff && (
-        <div className="linked-task" style={{ flexWrap: "wrap" }}>
-          <ListChecks size={22} color="#5746e8" />
-          <span><b>Tasks ({linkedRoots.length})</b><small>{ticket.teamId ? "Branch work off this ticket, for your team or another one." : "Route the ticket to a team before adding tasks."}</small></span>
-          {can(me, "task.create") && <button className="primary" disabled={!ticket.teamId} onClick={() => onAddTask?.(ticket)}><Plus size={14} /> Add linked task</button>}
-          {linkedRoots.length > 0 && (
-            <>
-              <div className="ticket-progress"><small className="muted">{rootsDone} of {linkedRoots.length} done{inReview > 0 ? ` · ${inReview} waiting for review` : ""}</small><div className="progress" aria-hidden="true"><i style={{ width: `${Math.round((rootsDone / linkedRoots.length) * 100)}%` }} /></div></div>
-              <div className="linked-rows">
-                {linkedRoots.map((t) => {
-                  const subs = linkedTree.flatMap(function walk(n) { return [n, ...n.children.flatMap(walk)]; }).filter((n) => n.task.parentId === t.id);
-                  return (
-                    <button key={t.id} type="button" onClick={() => onOpenTask?.(t)} aria-label={`Open task ${t.title}`}>
-                      <span><b>{t.title}</b><small style={{ display: "block" }}>{taskPeople(t).join(", ") || "Unassigned"}{subs.length ? ` · ${subs.filter((n) => n.task.status === "DONE").length}/${subs.length} subtasks` : ""}</small></span>
-                      <StatusBadge value={t.status} />
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      )}
     </>
   );
 

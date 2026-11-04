@@ -22,6 +22,8 @@ import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "..
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
 export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
   const [editing, setEditing] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const [desc, setDesc] = useState("");
   const [ownerTeam, setOwnerTeam] = useState(task?.teamId || "");
   const [sharedTeams, setSharedTeams] = useState((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId));
@@ -104,7 +106,18 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   return (
     <Window label={`Task ${task.title}`} onClose={onClose} side={side} head={<><b className="win-key">{kind}</b><StatusBadge value={task.status} /><PriorityBadge value={task.priority} /></>}>
       <div>
-        <h2>{task.title}</h2>
+        {renaming ? (
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <input aria-label="Task name" value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} maxLength={220} style={{ flex: 1 }} autoFocus />
+            <button className="primary" disabled={titleDraft.trim().length < 2} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { title: titleDraft.trim() }); setRenaming(false); notify?.("Task renamed"); onRefresh?.(); } catch (e) { notify?.(e.response?.data?.error || "Could not rename the task"); } }}>Save</button>
+            <button className="secondary" onClick={() => setRenaming(false)}>Cancel</button>
+          </div>
+        ) : (
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h2>{task.title}</h2>
+            {editable && !task.autoCreated && <button className="secondary" aria-label="Rename task" onClick={() => { setTitleDraft(task.title); setRenaming(true); }}>Rename</button>}
+          </div>
+        )}
         {editing ? (
           <div className="field">
             <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />

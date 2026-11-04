@@ -14,14 +14,15 @@
 
 ## Backend (`apps/api/src`)
 - `config/`: environment and Express app composition.
-- `routes/`: one router per domain/resource; the organization/activity read paths are wired through controllers and repositories as the pattern for further extraction.
-- `middleware/`: authentication/authorization and centralized errors.
-- `services/`: email and activity/notification side effects.
-- `controllers/`: request orchestration, separated from transport declarations.
-- `repositories/`: reusable Prisma query methods for data access.
-- `errors/`: reusable application error and async handler.
-- `validators/`: reusable request validation helpers.
+- `routes/`: thin transport only — parse the request (`parseBody`/params/query), call a service, shape the response. No domain logic, no Prisma calls beyond a lookup the scope helpers need.
+- `middleware/`: request-level concerns only — auth (`requireUser`, permission gates) and centralized errors. Row-scope `where` clauses live in `rbac/scope.js`, not here.
+- `rbac/`: role→permission map (`permissions.js`), record-level decisions (`policies.js`), and the Prisma `where`-clause builders for org/team/activity scoping (`scope.js`).
+- `services/`: all domain behaviour. `review.js` is the single home for ticket/task review rules and the client-review workflow; `storage.js` is the local-disk upload adapter (the S3 seam); `internalApi.js` + `internalAuth.js` are the "act-as-user" loopback WhatsApp/MCP use; `index.js` is the barrel routes import from.
+- `agent/`, `mcp/`, `realtime/`: the MCP tool registry, the MCP HTTP endpoint, and the WebSocket hub/handlers.
+- `controllers/` + `repositories/`: the original workspace read path (kept); new domain logic goes in `services/`, not new controller/repository pairs.
+- `errors/`: `AppError` + async handler.
+- `validators/`: zod schemas and `parseBody`.
 - `db.js`: Prisma client singleton.
-- `prisma/`: schema and seed.
+- `prisma/` (under apps/api): schema, migrations, seed, and data-repair scripts such as `backfill-task-review-access.js` — never route files.
 
-Routes are intentionally kept resource-oriented. Next refactor iteration can move individual handler logic into `controllers/` and database query logic into `repositories/` as the MVP expands; do not place new cross-domain business logic in `server.js` or route index files.
+Routes must never carry cross-entity rules, transactions, notifications or backfills; those belong in `services/` (or `prisma/` for one-off repairs).

@@ -69,7 +69,12 @@
   .app.collapsed { @apply grid-cols-[78px_minmax(0,1fr)]; }
   .app > main { @apply min-h-screen min-w-0; }
   main { @apply flex min-w-0 flex-col; }
-  .sidebar { @apply sticky top-0 flex h-dvh min-w-0 flex-col gap-1 self-start overflow-hidden border-r border-line bg-white px-3 pt-3.5 pb-3; }
+  /* Keep the desktop sidebar attached to the viewport, not to the document's
+     scrolling grid row. The page scrolls independently; the sidebar never
+     moves with it. Only the nav region may scroll when its contents exceed
+     the available viewport height. */
+  .sidebar { @apply fixed inset-y-0 left-0 z-40 flex h-dvh min-h-0 w-[268px] min-w-0 flex-col gap-1 overflow-hidden border-r border-line bg-white px-3 pt-3.5 pb-3; }
+  .app > main { grid-column: 2; min-width: 0; }
   .sidebar nav { @apply min-h-0; }
   .sidebar .nav-scroll { @apply min-h-0 flex-1 overflow-y-auto overscroll-contain px-0.5; scrollbar-width: thin; }
   .sidebar .brand-row, .sidebar .side-bottom { @apply shrink-0; }
@@ -99,7 +104,7 @@
   .user small { @apply block truncate text-[12.5px]; }
   .user button { @apply grid size-9 flex-none place-items-center rounded-lg text-muted transition hover:bg-bad-soft hover:text-bad; }
   .role-pill { @apply mt-0.5 inline-block rounded-full bg-brand-soft px-2 py-px text-[11.5px] font-semibold not-italic text-brand; }
-  .app.collapsed .sidebar { @apply px-3; }
+  .app.collapsed .sidebar { @apply w-[78px] px-3; }
   .app.collapsed .brand > div:last-child, .app.collapsed .nav-label, .app.collapsed .nav-item .label,
   .app.collapsed .user span, .app.collapsed .user button, .app.collapsed .dev-switch, .app.collapsed .brand-row .side-close { @apply hidden; }
   .app.collapsed .nav-item { @apply justify-center p-0; }
@@ -486,7 +491,12 @@
 }
 @media (max-width: 960px) {
   .app, .app.collapsed { @apply grid-cols-[minmax(0,1fr)]; }
-  .sidebar { @apply fixed inset-y-0 left-0 z-[90] w-[min(86vw,310px)] -translate-x-[104%] overflow-y-auto transition-transform duration-200 pt-[max(18px,env(safe-area-inset-top))]; height: auto; }
+  .app > main { grid-column: 1; }
+  .sidebar { @apply fixed inset-y-0 left-0 z-[90] flex h-dvh max-h-dvh w-[min(86vw,310px)] -translate-x-[104%] flex-col overflow-hidden overscroll-none transition-transform duration-200 pt-[max(18px,env(safe-area-inset-top))]; }
+  .sidebar .nav-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .sidebar .brand-row, .sidebar .side-bottom { flex: 0 0 auto; }
+  /* A remembered desktop-collapsed preference must not make the mobile drawer narrow. */
+  .app.collapsed .sidebar { width: min(86vw, 310px); }
   .app.nav-open .sidebar { @apply translate-x-0 shadow-pop; }
   .app .scrim { @apply pointer-events-none fixed inset-0 z-[85] block bg-[#10162a]/50 opacity-0 backdrop-blur-[2px] transition-opacity duration-200; }
   .app.nav-open .scrim { @apply pointer-events-auto opacity-100; }

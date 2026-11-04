@@ -9,6 +9,7 @@ model User {
   id String @id @default(cuid())
   name String?
   email String? @unique
+  workEmail String?
   emailVerified DateTime?
   image String?
   accounts Account[]
@@ -626,4 +627,10 @@ model ApiToken {
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   createdAt DateTime @default(now())
   @@index([userId,revokedAt])
+}
+
+/// Permanent per-prefix counter for sequential ticket keys (e.g. TEN-0001, TEN-0002).
+model TicketCounter {
+  prefix String @id
+  lastNumber Int @default(0)
 }

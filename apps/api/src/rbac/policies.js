@@ -12,9 +12,7 @@ export function canEditTask(ctx, task) {
   return task.creatorId === me(ctx) || task.assigneeId === me(ctx) || (task.assignees || []).some((a) => (a.userId ?? a.user?.id) === me(ctx));
 }
 
-const isClientAdminOf = (ctx, orgId) => ctx.memberships.some((m) => m.organizationId === orgId && m.role === 'CLIENT_ADMIN');
-
-/** Can this person see the ticket at all? Client admins see their whole org, client members only what they raised. */
+/** Clients can access only client-visible tickets they personally raised. */
 export function canViewTicket(ctx, t) {
   if (ctx.isInternal) {
     if (ctx.memberships.some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN')) return true;
@@ -32,7 +30,7 @@ export function canViewTicket(ctx, t) {
   }
   if (t.visibility !== 'CLIENT') return false;
   if (!ctx.memberships.some((m) => m.organizationId === t.organizationId)) return false;
-  return isClientAdminOf(ctx, t.organizationId) || t.requesterId === me(ctx);
+  return t.requesterId === me(ctx);
 }
 
 /** Clients may approve (CLOSED) or send back (OPEN) a ticket waiting in Review/Test, and answer a Review/Help request (back to OPEN). */
@@ -58,7 +56,7 @@ export function ticketEditScope(ctx, t) {
     if (ctx.can('ticket.update_own') && t.assigneeId === me(ctx)) return 'status';
     return 'none';
   }
-  return t.requesterId === me(ctx) || isClientAdminOf(ctx, t.organizationId) ? 'client' : 'none';
+  return t.requesterId === me(ctx) ? 'client' : 'none';
 }
 
 /**

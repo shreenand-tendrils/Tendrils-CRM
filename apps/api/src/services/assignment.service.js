@@ -14,7 +14,7 @@ export async function notifyAssignment({ userId, actor, title, kind, href }) {
     body: `${actor.name || actor.email} assigned you ${kind}: ${title}`,
     href,
   });
-  sendAssignmentEmail({ to: user.email, assigneeName: user.name, itemTitle: title, itemType: kind, href }).catch((e) =>
+  sendAssignmentEmail({ to: user.email, assigneeName: user.name, itemTitle: title, itemType: kind, href, actorName: actor.name || actor.email }).catch((e) =>
     console.error('Email send failed:', e.message)
   );
 }

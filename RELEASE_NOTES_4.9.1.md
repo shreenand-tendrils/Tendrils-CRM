@@ -26,5 +26,5 @@ The zip does NOT contain `apps/api/.env` — your server's own `.env` stays exac
 - **Closed** – approved and finished.
 
 ## Files touched
-Web: `Window.jsx`, `EntityModal.jsx`, `TeamsPage.jsx`, `MembersPanel.jsx`, `ProjectUpdatesModal.jsx`, `ProjectsPage.jsx`, `WorkspaceShell.jsx`, `PageHeader.jsx`, `useWorkspace.js`, `AnalyticsPanel.jsx`, `ClientOverview.jsx`, `OverviewPage.jsx`, `main.jsx`, new `styles/mobile.css`.
+Web: new `public/privacy.html` + `public/terms.html` (public pages for Google OAuth consent screen), `Window.jsx`, `EntityModal.jsx`, `TeamsPage.jsx`, `MembersPanel.jsx`, `ProjectUpdatesModal.jsx`, `ProjectsPage.jsx`, `WorkspaceShell.jsx`, `PageHeader.jsx`, `useWorkspace.js`, `AnalyticsPanel.jsx`, `ClientOverview.jsx`, `OverviewPage.jsx`, `main.jsx`, new `styles/mobile.css`.
 API: `routes/dashboard.routes.js` (optional `?scope=mine`), `routes/files.routes.js` (also accepts CSV).

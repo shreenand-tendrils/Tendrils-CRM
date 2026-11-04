@@ -27,22 +27,58 @@ router.get('/analytics', async (req, res) => {
   const from = parseDay(req.query.from, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1)));
   const to = new Date(to0.getTime() + DAY); // inclusive end day
   if (from >= to || to - from > 800 * DAY) return res.status(400).json({ error: 'Pick a valid date range (up to about 2 years).' });
-  // ?scope=mine narrows everything to the caller's own work (tickets they raised or hold, tasks assigned to them).
+  // ?scope=mine narrows tickets to work personally owned by the caller:
+  // tickets they raised, tickets assigned to them, or tickets with a task assigned to them.
   const me = req.currentUser.id;
   const mine = req.query.scope === 'mine';
   const base = ticketScope(req);
-  const scope = mine ? { AND: [base, { OR: req.isInternal ? [{ assigneeId: me }, { requesterId: me }] : [{ requesterId: me }] }] } : base;
-  const [byStatus, inRange, openRows] = await Promise.all([
+  const mineTicket = { OR: [
+    { assigneeId: me },
+    { requesterId: me },
+    { tasks: { some: { OR: [{ assigneeId: me }, { assignees: { some: { userId: me } } }] } } },
+  ] };
+  const scope = mine ? { AND: [base, mineTicket] } : base;
+  const [byStatus, openedRows, closureEvents, currentlyClosed, openRows] = await Promise.all([
     prisma.ticket.groupBy({ by: ['status'], where: scope, _count: { _all: true } }),
-    prisma.ticket.findMany({ where: { AND: [scope, { OR: [{ createdAt: { gte: from, lt: to } }, { closedAt: { gte: from, lt: to } }] }] }, select: { createdAt: true, closedAt: true }, take: 10000 }),
+    prisma.ticket.findMany({ where: { AND: [scope, { createdAt: { gte: from, lt: to } }] }, select: { id: true, createdAt: true }, take: 10000 }),
+    // TicketEvent is the source of truth for an actual transition to CLOSED. This also
+    // counts a ticket closed during the range and subsequently reopened.
+    prisma.ticketEvent.findMany({
+      where: { type: 'STATUS', toValue: 'CLOSED', createdAt: { gte: from, lt: to }, ticket: { is: scope } },
+      select: { ticketId: true, createdAt: true, ticket: { select: { createdAt: true } } },
+      orderBy: { createdAt: 'asc' }, take: 10000,
+    }),
+    // Legacy rows may predate TicketEvent. Use their stored closedAt only when no
+    // closure event exists for that ticket; never let updatedAt override real history.
+    prisma.ticket.findMany({
+      where: { AND: [scope, { status: 'CLOSED' }] },
+      select: { id: true, createdAt: true, closedAt: true, events: { where: { type: 'STATUS', toValue: 'CLOSED' }, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } } },
+      take: 10000,
+    }),
     prisma.ticket.findMany({ where: { AND: [scope, { status: { not: 'CLOSED' } }] }, select: { createdAt: true, dueDate: true }, take: 10000 }),
   ]);
   const months = new Map();
   for (let d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1)); d < to; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.set(monthKey(d), { month: monthKey(d), opened: 0, closed: 0 });
-  let opened = 0, closed = 0, closeDays = 0;
-  for (const t of inRange) {
-    if (t.createdAt >= from && t.createdAt < to) { opened += 1; months.get(monthKey(t.createdAt)).opened += 1; }
-    if (t.closedAt && t.closedAt >= from && t.closedAt < to) { closed += 1; closeDays += (t.closedAt - t.createdAt) / DAY; months.get(monthKey(t.closedAt)).closed += 1; }
+  let opened = 0;
+  for (const t of openedRows) { opened += 1; months.get(monthKey(t.createdAt)).opened += 1; }
+
+  // Deduplicate closure transitions by ticket so KPIs mean "tickets closed", not
+  // number of status toggles. If a ticket was closed more than once in-range, use
+  // its latest closure in the selected period for the monthly chart and duration.
+  const closureByTicket = new Map();
+  for (const e of closureEvents) closureByTicket.set(e.ticketId, { createdAt: e.ticket.createdAt, closedAt: e.createdAt });
+  let closedWithoutTimestamp = 0;
+  for (const t of currentlyClosed) {
+    if (t.events.length) continue; // history is authoritative, even if outside this range
+    if (!t.closedAt) { closedWithoutTimestamp += 1; continue; }
+    if (t.closedAt >= from && t.closedAt < to && !closureByTicket.has(t.id)) closureByTicket.set(t.id, { createdAt: t.createdAt, closedAt: t.closedAt });
+  }
+  let closed = 0, closeDays = 0;
+  for (const t of closureByTicket.values()) {
+    if (t.closedAt < from || t.closedAt >= to) continue;
+    closed += 1;
+    closeDays += (t.closedAt - t.createdAt) / DAY;
+    months.get(monthKey(t.closedAt)).closed += 1;
   }
   const status = Object.fromEntries(byStatus.map((g) => [g.status, g._count._all]));
   const out = {
@@ -53,6 +89,7 @@ router.get('/analytics', async (req, res) => {
       opened, closed, avgDaysToClose: closed ? Math.round((closeDays / closed) * 10) / 10 : null,
       avgDaysOpen: openRows.length ? Math.round((openRows.reduce((n, t) => n + (now - t.createdAt) / DAY, 0) / openRows.length) * 10) / 10 : null,
       overdue: openRows.filter((t) => t.dueDate && t.dueDate < now).length,
+      closedWithoutTimestamp,
     },
     months: [...months.values()],
   };

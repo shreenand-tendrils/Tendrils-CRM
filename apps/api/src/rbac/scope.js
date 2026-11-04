@@ -43,7 +43,8 @@ export const ticketScope = (req) => {
   }
   return {
     visibility: 'CLIENT',
-    OR: req.memberships.map((m) => ({ organizationId: m.organizationId, ...(m.role === 'CLIENT_ADMIN' ? {} : { requesterId: req.currentUser.id }) })),
+    organizationId: { in: memberOrgIds(req) },
+    requesterId: req.currentUser.id,
   };
 };
 
@@ -57,6 +58,9 @@ export const taskTeamScope = (req) => {
   if (teamIds.length) clauses.push({ parent: { is: { teamAccesses: { some: { teamId: { in: teamIds } } } } } });
   clauses.push({ creatorId: req.currentUser.id }); // creators keep tasks they made for other teams
   clauses.push({ assigneeId: req.currentUser.id });
+  clauses.push({ assignees: { some: { userId: req.currentUser.id } } }); // co-assignees
+  clauses.push({ ticket: { is: { OR: [{ assigneeId: req.currentUser.id }, { requesterId: req.currentUser.id }] } } }); // tasks of tickets I raised or hold
+  clauses.push({ parent: { is: { OR: [{ assigneeId: req.currentUser.id }, { assignees: { some: { userId: req.currentUser.id } } }] } } }); // subtasks of my tasks
   return { OR: clauses };
 };
 
@@ -65,19 +69,19 @@ export const taskTeamScope = (req) => {
  *  - Admins/managers (admin.view): everything, including 'access' events (invites, role changes) = the audit log.
  *  - Other staff: all work activity (projects, tickets, tasks, teams, daily updates) but never 'access' events.
  *  - Clients: a curated timeline of THEIR org only: project events/updates and tickets they may see (CLIENT-visible).
- *    Tasks, teams, access changes and internal items never reach clients.
+ *    Tasks, teams, access changes and internal items never reach clients. Ticket activity is requester-only.
  */
 export const activityScope = (req) => {
   if (req.isInternal) return req.can('admin.view') ? {} : { entityType: { not: 'access' } };
   const me = req.currentUser.id;
   const orgIds = memberOrgIds(req);
-  const ticketClauses = req.memberships.map((m) => ({
-    organizationId: m.organizationId,
+  const ticketClauses = [{
+    organizationId: { in: orgIds },
     entityType: 'ticket',
     AND: [
       { metadata: { path: ['visibility'], equals: 'CLIENT' } },
-      ...(m.role === 'CLIENT_ADMIN' ? [] : [{ metadata: { path: ['requesterId'], equals: me } }]),
+      { metadata: { path: ['requesterId'], equals: me } },
     ],
-  }));
+  }];
   return { organizationId: { in: orgIds }, OR: [{ entityType: 'project' }, ...ticketClauses] };
 };

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ticketTeamLabel } from "../../lib/teams";
 import { api } from "../../api";
 import { StatusBadge } from "../ui/StatusBadge";
 import { describeEvent, actorLabel } from "../../lib/ticketHistory";
@@ -40,6 +41,7 @@ function TaskNode({ node, focusTaskId, onOpenTask }) {
 // Click a task to open it; click the ticket (from a task) to jump back to the ticket.
 export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey }) {
   const [events, setEvents] = useState([]);
+  const [showAll, setShowAll] = useState(false);
   useEffect(() => {
     if (!ticketId) { setEvents([]); return undefined; }
     let live = true;
@@ -49,15 +51,29 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
 
   const tree = buildTree(tasks.filter((t) => !t.autoCreated)); // the ticket's auto record is plumbing, not work
   const timeline = mergeTimeline(events, tree);
+  const LIMIT = 8; // long histories stay compact: the latest steps show first, older ones open on demand
+  const visible = showAll ? timeline : timeline.slice(-LIMIT);
+  const hidden = timeline.length - visible.length;
+  const work = tasks.filter((t) => !t.autoCreated);
+  const doneCount = work.filter((t) => t.status === "DONE").length;
+  const who = (u) => u && (u.name || u.email);
   const rootBody = ticket && (
     <>
       <span className="thread-title">{ticket.key} · {ticket.title} {ticket.status && <StatusBadge value={ticket.status} />}{currentTicket && <span className="here">You are here</span>}</span>
-      <small>{[ticket.organization?.name, ticket.requester && `raised by ${ticket.requester.name || ticket.requester.email}`].filter(Boolean).join(" · ") || "Client request"}</small>
+      <small>{[ticket.organization?.name, ticket.requester && `created by ${ticket.requester.name || ticket.requester.email}`, ticket.createdAt && new Date(ticket.createdAt).toLocaleDateString()].filter(Boolean).join(" · ") || "Client request"}</small>
     </>
   );
 
   return (
     <div className="thread" aria-label="Work route">
+      {ticket && (
+        <div className="thread-summary">
+          <div><small>Created by</small><b>{who(ticket.requester) || "—"}</b><em>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</em></div>
+          <div><small>Team</small><b>{ticketTeamLabel(ticket) || "Not routed"}</b></div>
+          <div><small>Assignee</small><b>{who(ticket.assignee) || "Unassigned"}</b></div>
+          <div><small>Tasks</small><b>{work.length ? `${doneCount} of ${work.length} done` : "None yet"}</b></div>
+        </div>
+      )}
       <div className="thread-legend">
         <span><i style={{ background: "#5746e8" }} />Ticket</span><span><i style={{ background: "#0f9d8a" }} />Team</span>
         <span><i style={{ background: "#e8872f" }} />Assignee</span><span><i style={{ background: "#e8462f", borderRadius: 3 }} />Task</span>
@@ -70,7 +86,8 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
             : <div className={"thread-card" + (currentTicket ? " focus" : "")}>{rootBody}</div>}
         </div>
       )}
-      {timeline.map((item) => item.kind === "event" ? (
+      {hidden > 0 && <button type="button" className="secondary thread-more" onClick={() => setShowAll(true)}>Show {hidden} earlier step{hidden === 1 ? "" : "s"}</button>}
+      {visible.map((item) => item.kind === "event" ? (
         <div className="thread-item" key={item.event.id}>
           <span className={`thread-dot ${DOT[item.event.type] || ""}`} aria-hidden="true" />
           <p className="thread-text"><b>{actorLabel(item.event, true)}</b> {describeEvent(item.event)}</p>
@@ -82,6 +99,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
           <TaskNode node={item.node} focusTaskId={focusTaskId} onOpenTask={onOpenTask} />
         </div>
       ))}
+      {showAll && timeline.length > LIMIT && <button type="button" className="secondary thread-more" onClick={() => setShowAll(false)}>Show fewer</button>}
       {!timeline.length && !ticket && <p className="hint">Nothing to show yet.</p>}
       {ticket && !tasks.filter((t) => !t.autoCreated).length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
     </div>

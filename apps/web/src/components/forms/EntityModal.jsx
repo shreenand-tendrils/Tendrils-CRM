@@ -147,7 +147,7 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
                       ? [[ "", teamId ? "— Unassigned —" : "Select a team first" ], ...optionsFor(type, data, orgId, pickedTeams).filter(([v]) => v)].map(([v, l]) => <option value={v} key={v}>{l}</option>)
                       : optionsFor(type, data, orgId, pickedTeams).map(([v, l]) => <option value={v} key={v}>{l}</option>)}
                   </select>
-                ) : <input id={`f-${name}`} name={name} type={type} required={required} defaultValue={initial?.[name]} />}
+                ) : <input id={`f-${name}`} name={name} type={type} required={required} defaultValue={initial?.[name]} min={type === "date" && name === "dueDate" && !(initial?.[name] && String(initial[name]).slice(0, 10) < new Date().toISOString().slice(0, 10)) ? new Date().toISOString().slice(0, 10) : undefined} onInput={type === "date" && name === "dueDate" ? (e) => { const v = e.target.value, t = new Date().toISOString().slice(0, 10); e.target.setCustomValidity(v && v < t && v !== String(initial?.[name] || "").slice(0, 10) ? "Due date cannot be in the past" : ""); } : undefined} />}
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
           ))}

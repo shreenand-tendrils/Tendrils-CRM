@@ -61,3 +61,13 @@ export async function loadTeamMemberIds(teamIds = []) {
   for (const r of rows) map.get(r.teamId)?.add(r.membership.userId);
   return map;
 }
+
+/** Due dates can't be moved into the past. Re-saving an unchanged (already overdue) date is fine, so closing/updating old items still works. */
+export function assertDueNotPast(next, prev) {
+  if (next === undefined || next === null) return;
+  const day = (d) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const n = new Date(next);
+  if (prev && day(new Date(prev)) === day(n)) return;
+  const t = new Date();
+  if (day(n) < Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())) throw new AppError('Due date cannot be in the past. Choose today or a future date.', 400, 'DUE_DATE_PAST');
+}

@@ -55,3 +55,10 @@ pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
   .heading .actions > * { min-width: 0; }
   .toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
 }
+
+/* The mobile drawer itself stays fixed; only its navigation list scrolls. */
+@media (max-width: 960px) {
+  .sidebar { height: 100dvh; max-height: 100dvh; overflow: hidden !important; overscroll-behavior: none; }
+  .sidebar .nav-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .sidebar .brand-row, .sidebar .side-bottom { flex: 0 0 auto; }
+}

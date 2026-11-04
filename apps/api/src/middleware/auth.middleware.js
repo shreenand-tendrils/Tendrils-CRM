@@ -11,6 +11,8 @@ function attach(req, ctx) {
   req.isManager = ctx.isManager;
   req.permissions = ctx.permissions;
   req.can = ctx.can;
+  req.modes = ctx.modes;
+  req.mode = ctx.mode;
 }
 /** The auth context `attach()` put on `req` — services take this, never req/res. */
 export const ctxOf = (req) => ({
@@ -40,8 +42,9 @@ export async function requireUser(req, res, next) {
     }
     if (!email) return res.status(401).json({ error: 'Sign in required' });
     // Access is membership-based (any invited email). The session email was verified by Google at sign-in.
-    let ctx = await loadContextByEmail(email);
-    if (!ctx && !devEmail && (await acceptInvitesForEmail(email))) ctx = await loadContextByEmail(email); // invited after they first signed in
+    const mode = String(req.headers['x-tendrils-mode'] || '').toUpperCase(); // employee/client side chosen after sign-in (same email can be both)
+    let ctx = await loadContextByEmail(email, mode);
+    if (!ctx && !devEmail && (await acceptInvitesForEmail(email))) ctx = await loadContextByEmail(email, mode); // invited after they first signed in
     if (!ctx) return res.status(403).json({ error: 'Your account has no active membership. Ask a Tendrils administrator to invite you.', code: 'NO_MEMBERSHIP' });
     attach(req, ctx);
     next();

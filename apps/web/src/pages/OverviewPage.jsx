@@ -57,7 +57,7 @@ export default function OverviewPage({ data, onSelectTicket }) {
           </Panel>
         )}
         <div className="stack">
-          <Panel title="Recent activity" sub="The latest changes across your workspace"><ActivityFeed items={data.dashboard?.recent || data.activity || []} /></Panel>
+          <Panel title="Recent activity" sub="The latest changes across your workspace"><ActivityFeed items={data.dashboard?.recent || data.activity || []} limit={6} /></Panel>
           <Panel title="Quick navigation">
             <div className="quick-links">
               {[[Building2, "Client workspaces", "/clients"], [FolderKanban, "Projects", "/projects"], [Ticket, "Ticket queue", "/tickets"], ...(staff ? [[ListTodo, "Task board", "/tasks"]] : [])].map(([Icon, label, to]) => (

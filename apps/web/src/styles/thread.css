@@ -31,3 +31,10 @@ button.thread-card:hover { border-color: #5746e8; }
 .linked-rows button:hover { border-color: #5746e8; }
 .task-node { display: block; }
 .thread-branch > .thread-item .thread-branch .thread-card::before { background: #0f9d8a55; }
+
+.thread-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 2px 0 12px; }
+.thread-summary > div { background: #f7f8fc; border: 1px solid #e6e9f4; border-radius: 12px; padding: 8px 12px; min-width: 0; }
+.thread-summary small { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #6b7287; }
+.thread-summary b { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.thread-summary em { font-style: normal; font-size: 12px; color: #6b7287; }
+.thread-more { margin: 0 0 12px 28px; }

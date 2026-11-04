@@ -27,9 +27,19 @@ const realCalendarDay = z.string().refine((v) => {
 }, 'Invalid calendar date');
 
 const dateStr = realCalendarDay.pipe(dateCore);
+// Due dates are deadlines, not historical dates. Compare calendar days in UTC so
+// HTML date inputs behave consistently regardless of the server's timezone.
+const dueDateStr = dateStr.refine((d) => {
+  const today = new Date();
+  const todayStart = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const dueStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return dueStart >= todayStart;
+}, 'Due date cannot be in the past. Choose today or a future date.');
 const emptyTo = (val) => (v) => (v === '' ? val : v);
 const optDate = z.preprocess(emptyTo(undefined), dateStr.optional());
+const optDueDate = z.preprocess(emptyTo(undefined), dueDateStr.optional());
 const nullDate = z.preprocess(emptyTo(null), dateStr.nullable().optional());
+const nullDueDate = z.preprocess(emptyTo(null), dueDateStr.nullable().optional());
 
 const id = z.string().min(1);
 const optId = id.optional();
@@ -47,7 +57,7 @@ export const projectCreate = z.object({
   organizationId: id,
   status: en(ProjectStatus).default('ACTIVE'),
   startDate: optDate,
-  dueDate: optDate,
+  dueDate: optDueDate,
   memberIds: idList.optional(),
   teamIds: idList.optional(),
 });
@@ -65,7 +75,7 @@ export const taskCreate = z.object({
   assigneeIds: idList.optional(),
   priority: en(Priority).default('MEDIUM'),
   status: en(TaskStatus).default('TODO'),
-  dueDate: optDate,
+  dueDate: optDueDate,
 });
 
 export const taskUpdate = z.object({
@@ -75,7 +85,7 @@ export const taskUpdate = z.object({
   priority: en(Priority).optional(),
   assigneeId: nullId,
   assigneeIds: idList.optional(),
-  dueDate: nullDate,
+  dueDate: nullDate, // past-date rule enforced in service (unchanged overdue dates stay editable)
   position: z.number().int().min(0).optional(),
   teamId: nullId,
   teamIds: idList.optional(),
@@ -92,7 +102,7 @@ export const ticketCreate = z.object({
   assigneeId: optId,
   teamId: optId,
   teamIds: idList.optional(),
-  dueDate: optDate,
+  dueDate: optDueDate,
 });
 
 export const ticketUpdate = z.object({
@@ -122,7 +132,7 @@ export const teamCreate = z.object({
 });
 
 export const projectMembersSet = z.object({ memberIds: idList, leadId: optId, teamIds: idList.optional() });
-export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDate, teamIds: idList.optional() });
+export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDueDate, teamIds: idList.optional() });
 
 export const chatMessageCreate = z.object({
   body: z.string().trim().min(1).max(4000),

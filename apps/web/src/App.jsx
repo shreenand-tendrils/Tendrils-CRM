@@ -4,6 +4,7 @@ import { LoaderCircle } from "lucide-react";
 import { useWorkspace } from "./hooks/useWorkspace";
 import SignInScreen from "./components/layout/SignInScreen";
 import WorkspaceShell from "./components/layout/WorkspaceShell";
+import ModeChooser from "./components/auth/ModeChooser";
 
 /**
  * App = a three-state gate: loading → sign-in → workspace shell.
@@ -27,6 +28,9 @@ export default function App() {
   if (!data.me) {
     return <SignInScreen authError={authError} error={error} onRetry={refresh} />;
   }
+
+  // Same email as both employee and client: ask which side to work as (asked again after every sign-out).
+  if (data.me.modes?.length > 1 && !data.me.mode) return <ModeChooser me={data.me} />;
 
   return <WorkspaceShell data={data} refresh={refresh} setData={setData} />;
 }

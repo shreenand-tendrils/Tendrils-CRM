@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { LayoutGrid, List } from "lucide-react";
 import Panel from "../components/ui/Panel";
 import TaskBoard from "../components/tasks/TaskBoard";
@@ -10,7 +11,8 @@ import { useAppStore } from "../store";
 export default function TasksPage({ data, onCreate, onStatusChange, onOpen, doneLocked }) {
   const { search } = useAppStore();
   const [layout, setLayout] = useState("board");
-  const [mine, setMine] = useState(false);
+  const [params] = useSearchParams();
+  const [mine, setMine] = useState(() => params.get("mine") === "1");
   const [priority, setPriority] = useState("");
   const [project, setProject] = useState("");
   const meId = data.me?.user?.id;
