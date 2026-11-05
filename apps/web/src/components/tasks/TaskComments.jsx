@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import RichText from "../ui/RichText";
-import PasteTextarea from "../ui/PasteTextarea";
+import PasteTextarea from "../ui/PasteTextarea";
+import Avatar from "../ui/Avatar";
 
 const ago = (d) => {
   const s = Math.max(1, Math.round((Date.now() - new Date(d)) / 1000));
@@ -39,9 +40,12 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
     <div className="task-comments">
       {!items.length && <p className="hint">No comments yet. Ask a question or leave an update for the team.</p>}
       {items.map((c) => (
-        <div className="comment" key={c.id}>
-          <b>{c.author?.name || c.author?.email}</b>
-          <small title={new Date(c.createdAt).toLocaleString()}> · {ago(c.createdAt)}</small>
+        <div className={`comment${c.authorId === me.user.id ? " own" : ""}`} key={c.id}>
+          <div className="comment-head">
+            <Avatar name={c.author?.name || c.author?.email} />
+            <b>{c.author?.name || c.author?.email}</b>
+            <small title={new Date(c.createdAt).toLocaleString()}>{ago(c.createdAt)}</small>
+          </div>
           {(c.authorId === me.user.id) && <button type="button" className="secondary" style={{ float: "right" }} onClick={() => remove(c)} aria-label="Delete comment"><Trash2 size={13} /></button>}
           <RichText text={c.body} canDelete={c.authorId === me.user.id} />
         </div>

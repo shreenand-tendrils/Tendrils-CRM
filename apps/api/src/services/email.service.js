@@ -91,7 +91,7 @@ export function sendNotificationEmail({ to, name, subject, message, href, cta = 
   return sendMail({
     to, subject: `[Tendrils] ${subject}`,
     text: `Hi ${name || 'there'},\n\n${message}\n\nOpen it here: ${url}\n\nYou are receiving this because of activity on a ticket, task or project you are part of.\n— Tendrils Operations`,
-    html: wrap(`<h3 style="margin:0 0 8px">${esc(subject)}</h3><p>Hi ${esc(name || 'there')},</p><p>${esc(message).replace(/\n/g, '<br>')}</p>${btn(url, cta)}<p style="color:#888;font-size:12px">You are receiving this because of activity on a ticket, task or project you are part of.</p>`),
+    html: wrap(`<h3 style="margin:0 0 8px">${esc(subject)}</h3><p>Hi ${esc(name || 'there')},</p><p>${esc(message).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>').replace(/\n/g, '<br>')}</p>${btn(url, cta)}<p style="color:#888;font-size:12px">You are receiving this because of activity on a ticket, task or project you are part of.</p>`),
   });
 }
 

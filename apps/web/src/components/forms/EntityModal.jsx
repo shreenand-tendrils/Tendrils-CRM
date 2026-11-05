@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { X, ShieldCheck, Info, Paperclip } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
@@ -110,6 +110,17 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
     onSubmit(kind, payload);
   };
 
+  const attachBlock = canPaste && (
+            <div className="field">
+              <label htmlFor="f-attach">Attach files <small className="hint">(optional · up to {MAX_MB} MB each)</small></label>
+              <label className="upload" htmlFor="f-attach"><Paperclip size={18} /><span>Choose files to attach (images, PDF, documents, ZIP)</span>
+                <input id="f-attach" type="file" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              </label>
+              {attached.length > 0 && <div className="chips">{attached.map((f) => <i className="chip-link" key={`${f.name}-${f.size}`}><Paperclip size={12} /> {f.name} <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setAttached((cur) => cur.filter((x) => x !== f))}>×</button></i>)}</div>}
+              {fileErr && <small className="hint" style={{ color: "#c2304f" }}>{fileErr}</small>}
+            </div>
+          );
+
   return (
     <div className="overlay">
       <form className="modal" onSubmit={submit} role="dialog" aria-label={config.title}>
@@ -121,7 +132,8 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
           {initial?.ticketId && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Linked to {(data.tickets || []).find((t) => t.id === initial.ticketId)?.key || "the ticket"}. You can send it to another team below; it keeps the ticket’s route.</p>}
           {initial?.parentId && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Subtask of {(data.tasks || []).find((t) => t.id === initial.parentId)?.title || "the parent task"}.</p>}
           {fields.map(([name, label, type, required]) => (
-            <div className="field" key={name}>
+            <Fragment key={name}>
+            <div className="field">
               <label htmlFor={`f-${name}`}>{label}{required && <i> *</i>}</label>
               {type === "textarea" ? <>
                     <textarea id={`f-${name}`} name={name} defaultValue={initial?.[name]}
@@ -150,17 +162,10 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
                 ) : <input id={`f-${name}`} name={name} type={type} required={required} defaultValue={initial?.[name]} min={type === "date" && name === "dueDate" && !(initial?.[name] && String(initial[name]).slice(0, 10) < new Date().toISOString().slice(0, 10)) ? new Date().toISOString().slice(0, 10) : undefined} onInput={type === "date" && name === "dueDate" ? (e) => { const v = e.target.value, t = new Date().toISOString().slice(0, 10); e.target.setCustomValidity(v && v < t && v !== String(initial?.[name] || "").slice(0, 10) ? "Due date cannot be in the past" : ""); } : undefined} />}
               {name === "assigneeId" && <span className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> A task is created for the assignee automatically.</span>}
             </div>
+            {name === "description" && attachBlock}
+            </Fragment>
           ))}
-          {canPaste && (
-            <div className="field">
-              <label htmlFor="f-attach">Attach files <small className="hint">(optional · up to {MAX_MB} MB each)</small></label>
-              <label className="upload" htmlFor="f-attach"><Paperclip size={18} /><span>Choose files to attach (images, PDF, documents, ZIP)</span>
-                <input id="f-attach" type="file" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-              </label>
-              {attached.length > 0 && <div className="chips">{attached.map((f) => <i className="chip-link" key={`${f.name}-${f.size}`}><Paperclip size={12} /> {f.name} <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setAttached((cur) => cur.filter((x) => x !== f))}>×</button></i>)}</div>}
-              {fileErr && <small className="hint" style={{ color: "#c2304f" }}>{fileErr}</small>}
-            </div>
-          )}
+          {!fields.some(([n]) => n === "description") && attachBlock}
           {kind === "task" && !can(me, "task.assign") && !can(me, "work.cross_team") && <p className="hint"><Info size={13} style={{ verticalAlign: -2 }} /> Tasks you create are assigned to you. Ask a Platform admin to assign others.</p>}
         </div>
         <div className="modal-foot">

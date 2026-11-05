@@ -5,7 +5,8 @@ import Avatar from "../components/ui/Avatar";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
 import * as realtime from "../lib/realtime";
-import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+import Linkify from "../components/ui/Linkify";
 
 const time = (v) => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const TYPING_MS = 3500;
@@ -22,7 +23,7 @@ function Body({ text, members, meId }) {
   const names = [...members.map((u) => nameOf(u)), "everyone", "all"].sort((a, b) => b.length - a.length);
   const parts = text.split(new RegExp(`(@(?:${names.map(esc).join("|")}))(?![\\w])`, "gi"));
   return <>{parts.map((p, i) => {
-    if (!p.startsWith("@")) return <span key={i}>{p}</span>;
+    if (!p.startsWith("@")) return <Linkify key={i} text={p} />;
     const w = p.slice(1).toLowerCase();
     const u = members.find((m) => nameOf(m).toLowerCase() === w);
     if (!u && w !== "all" && w !== "everyone") return <span key={i}>{p}</span>;

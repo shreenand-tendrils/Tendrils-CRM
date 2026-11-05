@@ -37,3 +37,11 @@ export async function findTeamManagers(teamIds = []) {
     select: { id: true },
   });
 }
+
+/** Tell everyone in the given teams (in-app + email) that work was shared with them. `exclude` = people already notified another way. */
+export async function notifyTeams({ teamIds, actorId, title, body, href, exclude = [], type = 'ASSIGNMENT' }) {
+  const ids = [...new Set((teamIds || []).filter(Boolean))];
+  if (!ids.length) return;
+  const people = (await findTeamManagers(ids)).map((u) => u.id).filter((id) => !exclude.includes(id));
+  await notifyPeople({ userIds: people, actorId, type, title, body, href });
+}

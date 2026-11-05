@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import "../../styles/rich.css";
+import Linkify from "./Linkify";
 
 const MARK = /\[\[img:([a-z0-9-]+)\]\]/gi;
 
@@ -32,7 +33,7 @@ export default function RichText({ text = "", canDelete = false, style }) {
   const parts = String(text).split(MARK);
   return (
     <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", ...style }}>
-      {parts.map((p, i) => (i % 2 ? <InlineImage key={`${p}-${i}`} id={p} canDelete={canDelete} /> : p ? <span key={i}>{p}</span> : null))}
+      {parts.map((p, i) => (i % 2 ? <InlineImage key={`${p}-${i}`} id={p} canDelete={canDelete} /> : p ? <Linkify key={i} text={p} /> : null))}
     </div>
   );
 }

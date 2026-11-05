@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Bell } from "lucide-react";
 import Panel from "../components/ui/Panel";
-import { api } from "../api";
+import { api } from "../api";
+import Linkify from "../components/ui/Linkify";
 
 const PAGE = 10;
 
@@ -34,7 +35,7 @@ export default function NotificationsPage({ data, onRefresh }) {
       {rows.slice(0, shown).map((n) => (
         <div className="notification" key={n.id} style={n.unreadIds.length ? undefined : { opacity: 0.65 }}>
           <Bell />
-          <span><b>{n.title}{n.count > 1 ? ` (x${n.count})` : ""}</b><small>{n.body} · {new Date(n.createdAt).toLocaleString()}</small></span>
+          <span><b>{n.title}{n.count > 1 ? ` (x${n.count})` : ""}</b><small><Linkify text={n.body} /> · {new Date(n.createdAt).toLocaleString()}</small></span>
           {n.unreadIds.length > 0 && <button className="secondary" onClick={() => markRows(n.unreadIds)}>Mark read</button>}
         </div>
       ))}

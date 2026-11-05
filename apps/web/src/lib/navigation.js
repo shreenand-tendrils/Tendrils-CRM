@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FolderKanban, Ticket, ListTodo, Users, Activity, Bell, Settings, MessagesSquare, ClipboardCheck, ShieldCheck, Files, Lock, Flag, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Building2, FolderKanban, Ticket, ListTodo, Users, Activity, Bell, Settings, MessagesSquare, ClipboardCheck, ShieldCheck, Files, Lock, Flag } from "lucide-react";
 
 // staff: hidden from client users (the API also enforces this)
 export const primaryNavigation = [
@@ -9,7 +9,6 @@ export const primaryNavigation = [
   { label: "Clients", to: "/clients", icon: Building2 },
   { label: "Projects", to: "/projects", icon: FolderKanban },
   { label: "Resources", to: "/resources", icon: Files },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
   { label: "Teams", to: "/teams", icon: Users, staff: true },
   // { label: "Daily update", to: "/updates", icon: ClipboardCheck, staff: true },
 ];

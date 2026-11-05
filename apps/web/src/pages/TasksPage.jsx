@@ -7,6 +7,7 @@ import AvatarStack from "../components/ui/AvatarStack";
 import { PriorityBadge, StatusBadge } from "../components/ui/StatusBadge";
 import { formatDate, isOverdue } from "../lib/formatters";
 import { useAppStore } from "../store";
+import Linkify from "../components/ui/Linkify";
 
 export default function TasksPage({ data, onCreate, onStatusChange, onOpen, doneLocked }) {
   const { search } = useAppStore();
@@ -59,7 +60,7 @@ export default function TasksPage({ data, onCreate, onStatusChange, onOpen, done
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id} onClick={() => onOpen?.(t)} style={onOpen ? { cursor: "pointer" } : undefined}>
-                  <td data-label="Task"><b>{t.title}</b>{t.ticket && <div><span className="chip-link">From {t.ticket.key}</span></div>}</td>
+                  <td data-label="Task"><b><Linkify text={t.title} /></b>{t.ticket && <div><span className="chip-link">From {t.ticket.key}</span></div>}</td>
                   <td data-label="Project">{t.project?.name || t.organization?.name || "—"}</td>
                   <td data-label="Status"><StatusBadge value={t.status} /></td>
                   <td data-label="Priority"><PriorityBadge value={t.priority} /></td>

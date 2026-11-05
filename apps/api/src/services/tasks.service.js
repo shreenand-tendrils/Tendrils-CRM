@@ -6,7 +6,7 @@ import { orgScope, canSeeOrg, taskTeamScope, ticketScope } from '../rbac/scope.j
 import { canEditTask } from '../rbac/policies.js';
 import { logActivity } from './activity.js';
 import { notifyAssignment } from './assignment.service.js';
-import { notifyPeople, findTeamManagers } from './notify.service.js';
+import { notifyPeople, findTeamManagers, notifyTeams } from './notify.service.js';
 import { assertDueNotPast, assertAssignees, assertProjectInOrg, assertTicketInOrg, loadTeamMemberIds } from './guards.js';
 import { syncTaskFromTicket, syncTicketFromTask, assertTaskSubtasksDone } from './ticketTask.service.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
@@ -144,9 +144,8 @@ export async function createTask(ctx, input) {
   for (const userId of ids) await notifyAssignment({ userId, actor: ctx.currentUser, title: task.title, kind: 'task', href: link(task) });
   if (task.ticketId) await recordTicketEvents(prisma, task.ticketId, ctx.currentUser.id, [{ type: 'TASK', toValue: task.id, toLabel: task.title, clientVisible: false }]);
   const foreign = [...new Set([task.teamId, ...teamIds].filter((id) => id && !ownTeamIds.includes(id)))];
-  if (foreign.length && !ids.length) {
-    const managers = await findTeamManagers(foreign);
-    await notifyPeople({ userIds: managers.map((u) => u.id), actorId: me, type: 'ASSIGNMENT', title: `New task sent to your team: ${task.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} created it. Assign someone from your team.`, href: link(task) });
+  if (foreign.length) { // every member of each other team hears about it, even when someone is already assigned
+    await notifyTeams({ teamIds: foreign, actorId: me, exclude: ids, title: `New task shared with your team: ${task.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} shared the task "${task.title}" with your team.${ids.length ? '' : '\nNobody is assigned yet - open it and assign someone from your team.'}`, href: link(task) });
   }
   return task;
 }
@@ -285,6 +284,11 @@ export async function patchTask(ctx, id, input) {
     actorId: ctx.currentUser.id, organizationId: task.organizationId, entityType: 'task', entityId: task.id,
     action: 'updated', summary: `Updated task ${task.title}`,
   });
+  if (teamIds || data.teamId !== undefined) { // teams added later: the new teams' members are told too
+    const had = new Set((old.teamAccesses || []).map((a) => a.teamId));
+    const added = [...new Set([task.teamId, ...(teamIds || [])])].filter((id) => id && !had.has(id));
+    await notifyTeams({ teamIds: added, actorId: ctx.currentUser.id, exclude: nextIds || [], title: `Task shared with your team: ${task.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} added your team to the task "${task.title}".`, href: link(task) });
+  }
   if (nextIds) {
     const before = new Set([old.assigneeId, ...old.assignees.map((a) => a.userId)].filter(Boolean));
     for (const userId of nextIds.filter((u) => !before.has(u))) await notifyAssignment({ userId, actor: ctx.currentUser, title: task.title, kind: 'task', href: link(task) });

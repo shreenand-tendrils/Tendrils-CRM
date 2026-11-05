@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Trash2, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
+import { Paperclip, Trash2, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge, TicketStatusBadge } from "../ui/StatusBadge";
@@ -15,7 +15,9 @@ import RichText from "../ui/RichText";
 import TicketTasks from "./TicketTasks";
 import { STATUSES, STATUS_LABEL, PROGRESS_FOR, PROGRESS_LABEL, clientStatusText, daysPassed, dayLabel } from "../../lib/ticketStatus";
 import WorkThread from "../work/WorkThread";
-import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
+import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
+import Linkify from "../ui/Linkify";
+import Avatar from "../ui/Avatar";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
@@ -217,8 +219,18 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </div>
       ) : (
         <div>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}><h2>{ticket.title}</h2>{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</div>
-          <RichText style={{ marginTop: 6 }} text={ticket.description || "No description added."} canDelete={canEditDetails || triage} />
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}><h2><Linkify text={ticket.title} /></h2>{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</div>
+          <div className="win-meta">
+            <span><small>Raised by</small><b>{ticket.requester?.name || ticket.requester?.email || "-"}</b></span>
+            <span><small>Created</small><b>{formatDate(ticket.createdAt)}</b></span>
+            {ticket.organization?.name && <span><small>Client</small><b>{ticket.organization.name}</b></span>}
+            <span><small>Last update</small><b>{formatDate(ticket.updatedAt)}</b></span>
+          </div>
+          <div className="win-desc">
+            <small className="win-label">Description</small>
+            <RichText text={ticket.description || "No description added."} canDelete={canEditDetails || triage} />
+            {can(me, "file.upload") && <button type="button" className="win-files-chip" onClick={() => setTab("files")}><Paperclip size={13} /> Attachments ({ticket._count?.attachments || 0})</button>}
+          </div>
         </div>
       )}
 
@@ -233,9 +245,13 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       {!staff && tab === "tasks" && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
       {tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
       {tab === "comments" && comments.map((c) => (
-        <div className="comment" key={c.id}>
-          <b>{c.author?.name || c.author?.email}</b>
-          <small>{pretty(c.visibility)} · {new Date(c.createdAt).toLocaleString()}</small>
+        <div className={`comment${c.visibility === "INTERNAL" ? " internal" : ""}${c.authorId === me.user?.id ? " own" : ""}`} key={c.id}>
+          <div className="comment-head">
+            <Avatar name={c.author?.name || c.author?.email} />
+            <b>{c.author?.name || c.author?.email}</b>
+            {c.visibility === "INTERNAL" && <em className="note-pill">Internal note</em>}
+            <small>{new Date(c.createdAt).toLocaleString()}</small>
+          </div>
           <RichText text={c.body} canDelete={c.authorId === me.user?.id || triage} />
         </div>
       ))}

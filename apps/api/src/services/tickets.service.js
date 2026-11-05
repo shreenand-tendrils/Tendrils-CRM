@@ -9,7 +9,7 @@ import { storagePath, discard } from './storage.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { logActivity } from './activity.js';
 import { notifyAssignment } from './assignment.service.js';
-import { notifyPeople, findTriagers, findTeamManagers } from './notify.service.js';
+import { notifyPeople, notifyTeams, findTriagers, findTeamManagers } from './notify.service.js';
 import { assertDueNotPast, assertAssignable, assertProjectInOrg, assertInternalTeam, loadTeamMemberIds } from './guards.js';
 import { syncTaskFromTicket, assertTicketWorkComplete } from './ticketTask.service.js';
 import { recordTicketEvents, loadNames } from './ticketHistory.service.js';
@@ -246,6 +246,10 @@ export async function patchTicket(ctx, id, input) {
     const events = diffTicketEvents({ old, updated: t, oldTeamIds: oldIds, newTeamIds: newIds, names });
     if (autoUnassigned) events.forEach((e) => { if (e.type === 'ASSIGNEE') e.note = 'Cleared automatically: not a member of the new team'; });
     await recordTicketEvents(prisma, t.id, ctx.currentUser.id, events);
+    if (routingTouched) { // teams added to the ticket: every member of the newly added teams is notified by email too
+      const addedTeams = [...new Set([t.teamId, ...newIds])].filter((id) => id && !oldIds.includes(id) && id !== old.teamId);
+      await notifyTeams({ teamIds: addedTeams, actorId: ctx.currentUser.id, exclude: [t.assigneeId], title: `${t.key} was sent to your team: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} added your team to ticket ${t.key} ("${t.title}", priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nOpen it to pick it up or assign it to someone on your team.`, href: ticketUrl(t) });
+    }
   }
   await ticketLog(ctx, t, 'updated', autoUnassigned ? `Updated ticket ${t.key} (team changed, assignee cleared because they are not in the new team)` : `Updated ticket ${t.key}`);
   if (data.status && data.status !== old.status) {

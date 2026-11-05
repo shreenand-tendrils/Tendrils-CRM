@@ -5,6 +5,7 @@ import { daysPassed, dayLabel } from "../../lib/ticketStatus";
 import EmptyState from "../ui/EmptyState";
 import Avatar from "../ui/Avatar";
 import { ticketTeamLabel } from "../../lib/teams";
+import Linkify from "../ui/Linkify";
 
 export default function TicketTable({ tickets = [], onSelect, showTask, showTeam = showTask }) {
   return (
@@ -18,7 +19,7 @@ export default function TicketTable({ tickets = [], onSelect, showTask, showTeam
               <tr key={t.id} onClick={() => onSelect?.(t)} className="clickable" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect?.(t)}>
                 <td data-label="Request">
                   <b>{t.key}</b>
-                  <div>{t.title}</div>
+                  <div><Linkify text={t.title} /></div>
                   {showTask && task && <span className="chip-link" style={{ marginTop: 6 }}><ListChecks size={13} /> Task · {pretty(task.status)}</span>}
                 </td>
                 <td data-label="Client">{t.organization?.name || "—"}</td>

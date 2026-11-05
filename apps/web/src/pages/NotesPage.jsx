@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Lock, Pencil, Trash2 } from "lucide-react";
 import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
-import { api } from "../api";
+import { api } from "../api";
+import Linkify from "../components/ui/Linkify";
 
 const localToday = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in the user's timezone
 const ymd = (v) => String(v).slice(0, 10);
@@ -61,7 +62,7 @@ export default function NotesPage({ notify }) {
         {notes.map((n) => (
           <div className="update-row" key={n.id}>
             <b>{new Date(n.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{n.title ? ` — ${n.title}` : ""}</b>
-            <p style={{ whiteSpace: "pre-wrap" }}>{n.body}</p>
+            <p style={{ whiteSpace: "pre-wrap" }}><Linkify text={n.body} /></p>
             <div className="row" style={{ gap: 8 }}>
               <button className="secondary" onClick={() => setForm({ id: n.id, date: ymd(n.date), title: n.title || "", body: n.body })}><Pencil size={13} /> Edit</button>
               <button className="secondary" onClick={() => remove(n)}><Trash2 size={13} /> Delete</button>

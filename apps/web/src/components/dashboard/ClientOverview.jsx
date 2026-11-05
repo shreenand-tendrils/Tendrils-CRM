@@ -6,7 +6,8 @@ import EmptyState from "../ui/EmptyState";
 import { StatusBadge } from "../ui/StatusBadge";
 import { api } from "../../api";
 import { on } from "../../lib/realtime";
-import { formatDate, pretty } from "../../lib/formatters";
+import { formatDate, pretty } from "../../lib/formatters";
+import Linkify from "../ui/Linkify";
 
 // What a client sees: their requests by stage, anything waiting on them, project progress and team updates.
 // Internal tasks, team structure and internal comments never reach this screen (the API filters them).
@@ -47,7 +48,7 @@ export default function ClientOverview({ data, onSelectTicket }) {
             <div className="update-row" key={u.id}>
               <span className="row-head"><Megaphone size={16} /><b>{u.title}</b></span>
               <small className="muted">{u.project.name} · {u.author.name || u.author.email} · {formatDate(u.createdAt)}</small>
-              <p style={{ marginTop: 4 }}>{u.body}</p>
+              <p style={{ marginTop: 4, whiteSpace: "pre-wrap" }}><Linkify text={u.body} /></p>
             </div>
           ))}
           {!o.updates.length && <EmptyState icon={<Megaphone />} title="No updates yet" text={`When the team posts progress on a project it shows up here and you get an email. Raise a request any time with “New ticket”.`} />}

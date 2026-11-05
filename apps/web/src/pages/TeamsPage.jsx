@@ -5,7 +5,8 @@ import PeoplePicker from "../components/ui/PeoplePicker";
 import AvatarStack from "../components/ui/AvatarStack";
 import Avatar from "../components/ui/Avatar";
 import { api } from "../api";
-import { can, ROLE_LABELS } from "../lib/rbac";
+import { can, ROLE_LABELS } from "../lib/rbac";
+import Linkify from "../components/ui/Linkify";
 
 function Shell({ title, onClose, children, foot }) {
   return (
@@ -83,7 +84,7 @@ export default function TeamsPage({ data, me, onRefresh, notify }) {
 
       {viewing && (
         <Shell title={`${viewing.name} · ${(viewing.members || []).length} member${(viewing.members || []).length === 1 ? "" : "s"}`} onClose={() => setViewId(null)} foot={<button className="secondary" onClick={() => setViewId(null)}>Close</button>}>
-          {viewing.description && <p className="hint">{viewing.description}</p>}
+          {viewing.description && <p className="hint"><Linkify text={viewing.description} /></p>}
           {(viewing.members || []).length ? (
             <ul className="team-members">
               {(viewing.members || []).map((m) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Ticket as TicketIcon, UploadCloud } from "lucide-react";
+import { Ticket as TicketIcon, UploadCloud, Paperclip } from "lucide-react";
 import { api } from "../../api";
 import { formatDate } from "../../lib/formatters";
 import PasteTextarea from "../ui/PasteTextarea";
@@ -17,7 +17,9 @@ import Window from "../ui/Window";
 import WorkThread from "../work/WorkThread";
 import TaskComments from "./TaskComments";
 import TicketAttachments from "../tickets/TicketAttachments";
-import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
+import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
+import Linkify from "../ui/Linkify";
+import Avatar from "../ui/Avatar";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
 export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
@@ -114,17 +116,23 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
           </div>
         ) : (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h2>{task.title}</h2>
+            <h2><Linkify text={task.title} /></h2>
             {editable && !task.autoCreated && <button className="secondary" aria-label="Rename task" onClick={() => { setTitleDraft(task.title); setRenaming(true); }}>Rename</button>}
           </div>
         )}
+        <div className="win-meta">
+          <span><small>Created by</small><b>{task.creator?.name || task.creator?.email || "-"}</b></span>
+          <span><small>Created</small><b>{new Date(task.createdAt).toLocaleDateString()}</b></span>
+          {task.team?.name && <span><small>Team</small><b>{task.team.name}</b></span>}
+          {task.ticket?.key && <span><small>Ticket</small><b>{task.ticket.key}</b></span>}
+        </div>
         {editing ? (
           <div className="field">
             <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (
-          <div style={{ marginTop: 6 }}><RichText text={task.description || "No description added."} canDelete={editable} />{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}</div>
+          <div className="win-desc"><small className="win-label">Description</small><RichText text={task.description || "No description added."} canDelete={editable} /><div className="row" style={{ gap: 8 }}>{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}<button type="button" className="win-files-chip" onClick={() => setTab("files")}><Paperclip size={13} /> Attachments ({nFiles})</button></div></div>
         )}
       </div>
       {parentTask && <p className="hint">Subtask of <button type="button" className="linklike" onClick={() => onOpenTask?.(parentTask)}>{parentTask.title}</button></p>}

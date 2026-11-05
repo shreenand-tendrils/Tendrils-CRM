@@ -6,7 +6,8 @@ import { can } from "../../lib/rbac";
 import { incompleteSubtaskCount, subtaskStats } from "../../lib/workThread";
 import { statusChoices, statusRights, REVIEW_LABEL } from "../../lib/taskReview";
 import { Lock } from "lucide-react";
-import "../../styles/workflow.css";
+import "../../styles/workflow.css";
+import Linkify from "../ui/Linkify";
 
 export const COLUMNS = [["BACKLOG", "Backlog"], ["TODO", "To do"], ["IN_PROGRESS", "In progress"], ["BLOCKED", "Blocked"], ["REVIEW", "In review"], ["DONE", "Done"]];
 
@@ -47,7 +48,7 @@ export default function TaskBoard({ tasks = [], allTasks, me, onStatusChange, on
                         {choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}
                       </select>
                     </div>
-                    <b>{t.title}</b>
+                    <b><Linkify text={t.title} /></b>
                     <div className="task-meta">
                       {t.ticket && <span className="chip-link"><Ticket size={13} /> {t.ticket.key}</span>}
                       {authority !== "NONE" && authority !== "TICKET" && <span className="chip-link soft" title={REVIEW_LABEL[authority]}><ShieldCheck size={13} /> {REVIEW_LABEL[authority]}</span>}
