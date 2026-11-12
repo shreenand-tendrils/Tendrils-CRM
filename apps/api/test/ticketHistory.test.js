@@ -87,3 +87,13 @@ test('pasted-image markers do not count as a description change', () => {
   assert.equal(ev.filter((e) => e.type === 'DESCRIPTION').length, 0);
   assert.equal(diffTicketEvents({ old: { ...base, description: 'a' }, updated: { ...base, description: 'b' } }).filter((e) => e.type === 'DESCRIPTION').length, 1);
 });
+
+test('collaborator changes become internal-only history events', () => {
+  const base = { title: 'T', description: '', status: 'OPEN', priority: 'MEDIUM', dueDate: null, visibility: 'CLIENT', projectId: null, teamId: 'dev', assigneeId: 'a' };
+  const names = { users: { rahul: 'Rahul', kavya: 'Kavya' }, teams: {}, projects: {} };
+  const ev = diffTicketEvents({ old: base, updated: base, oldCollaboratorIds: ['rahul'], newCollaboratorIds: ['kavya'], names }).filter((e) => e.type === 'COLLABORATOR');
+  assert.equal(ev.length, 2);
+  assert.ok(ev.every((e) => e.clientVisible === false));
+  assert.deepEqual(clientView(ev), []);
+  assert.deepEqual(ev.map((e) => describeEvent(e)).sort(), ['added Kavya as a collaborator', 'removed Rahul from the collaborators']);
+});

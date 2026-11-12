@@ -38,6 +38,7 @@ export const ticketScope = (req) => {
     }
     // Whoever holds the ticket must always be able to see it.
     clauses.push({ assigneeId: req.currentUser.id });
+    clauses.push({ collaborators: { some: { userId: req.currentUser.id } } }); // collaborators from any team
     clauses.push({ requesterId: req.currentUser.id }); // staff keep tickets they raised for other teams
     return { OR: clauses };
   }
@@ -59,7 +60,7 @@ export const taskTeamScope = (req) => {
   clauses.push({ creatorId: req.currentUser.id }); // creators keep tasks they made for other teams
   clauses.push({ assigneeId: req.currentUser.id });
   clauses.push({ assignees: { some: { userId: req.currentUser.id } } }); // co-assignees
-  clauses.push({ ticket: { is: { OR: [{ assigneeId: req.currentUser.id }, { requesterId: req.currentUser.id }] } } }); // tasks of tickets I raised or hold
+  clauses.push({ ticket: { is: { OR: [{ assigneeId: req.currentUser.id }, { requesterId: req.currentUser.id }, { collaborators: { some: { userId: req.currentUser.id } } }] } } }); // tasks of tickets I raised, hold or collaborate on
   clauses.push({ parent: { is: { OR: [{ assigneeId: req.currentUser.id }, { assignees: { some: { userId: req.currentUser.id } } }] } } }); // subtasks of my tasks
   return { OR: clauses };
 };

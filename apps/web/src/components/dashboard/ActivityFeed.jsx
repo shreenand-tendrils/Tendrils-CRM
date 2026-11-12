@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Activity } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import EmptyState from "../ui/EmptyState";
+import ShowMore from "../ui/ShowMore";
 
 /** Compact feed: repeated identical events (same person + same summary) are merged into one row with a count,
  *  and only the latest `limit` rows show until "Show more" is pressed. */
@@ -24,7 +25,7 @@ export default function ActivityFeed({ items = [], limit = 8 }) {
           <span><b>{a.actor?.name || "A team member"}</b> {a.summary}{a.count > 1 ? ` (x${a.count})` : ""}<small>{new Date(a.createdAt).toLocaleString()}</small></span>
         </div>
       ))}
-      {rows.length > shown && <button className="secondary" onClick={() => setShown(shown + limit)}>Show {Math.min(limit, rows.length - shown)} more</button>}
+      {rows.length > shown && <ShowMore count={Math.min(limit, rows.length - shown)} onClick={() => setShown(shown + limit)} />}
       {!rows.length && <EmptyState icon={<Activity />} title="No activity yet" text="New changes will show up here." />}
     </div>
   );

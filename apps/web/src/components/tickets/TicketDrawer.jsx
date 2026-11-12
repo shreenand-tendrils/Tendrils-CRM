@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge, TicketStatusBadge } from "../ui/StatusBadge";
 import { can, ROLE_LABELS } from "../../lib/rbac";
-import { assigneeGroups, isInTeams, sameIds } from "../../lib/teams";
+import { assigneeGroups, isInTeams, sameIds, peopleOfTeams } from "../../lib/teams";
+import PeoplePicker from "../ui/PeoplePicker";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 import TicketHistory from "./TicketHistory";
 import TicketAttachments from "./TicketAttachments";
@@ -18,6 +19,7 @@ import WorkThread from "../work/WorkThread";
 import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
 import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
+import CopyLinkButton from "./CopyLinkButton";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
@@ -33,13 +35,16 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
   const [ownerTeamId, setOwnerTeamId] = useState("");
   const navigate = useNavigate();
+  const [collabIds, setCollabIds] = useState([]);
+  useEffect(() => { setCollabIds((ticket?.collaborators || []).map((c) => c.userId)); }, [ticket?.id, ticket?.collaborators]);
   useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
   useEffect(() => { setTab(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments"); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
   const canRoute = triage || (can(me, "ticket.route") && (ticket.teamAccesses || []).some((a) => { const team = teams.find((t) => t.id === a.teamId); return (team?.members || []).some((m) => m.membership?.user?.id === me.user?.id); }));
-  const ownStatus = can(me, "ticket.update_own") && ticket.assigneeId === me.user.id;
+  const iCollaborate = (ticket.collaborators || []).some((c) => c.userId === me.user.id);
+  const ownStatus = can(me, "ticket.update_own") && (ticket.assigneeId === me.user.id || iCollaborate); // assignee and collaborators move the work along
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
   const canEditDetails = triage || requesterCanEdit;
   const canStatus = triage || canRoute || ownStatus || (me.isInternal && requesterCanEdit);
@@ -63,6 +68,11 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const groups = assigneeGroups(teams, ticket.teamId, savedShared);
   const savedAccessIds = groups.map((g) => g.team.id);
   const legacyAssignee = ticket.assignee && ticket.teamId && !isInTeams(teams, savedAccessIds, ticket.assigneeId) ? ticket.assignee : null;
+  // Collaborators: people of ANY of the saved teams (several teams at once), next to the single assignee.
+  const savedCollabIds = (ticket.collaborators || []).map((c) => c.userId);
+  const collabPeople = peopleOfTeams(teams, savedAccessIds).filter((p) => p.id !== ticket.assigneeId).map((p) => ({ id: p.id, name: p.label }));
+  const collabNames = (ticket.collaborators || []).map((c) => c.user?.name || c.user?.email).filter(Boolean);
+  const collabChanged = !sameIds(collabIds, savedCollabIds);
   const sharedNow = selectedTeamIds.filter((id) => id !== ownerTeamId);
   const teamsDirty = ownerTeamId !== (ticket.teamId || "") || !sameIds(sharedNow, savedShared);
   const canSaveTeams = teamsDirty && (ownerTeamId || !sharedNow.length);
@@ -130,11 +140,22 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </select>
         <small className="hint">Choose the destination team, save the routing, then assign to an employee from that team. The list includes only members of the selected team(s); employees can assign to themselves or a teammate.</small>
       </div>
+      <div className="field">
+        <label>Collaborators</label>
+        {ticket.teamId && !teamsDirty ? (
+          <>
+            <PeoplePicker key={`${savedAccessIds.join("|")}#${ticket.assigneeId || ""}#${savedCollabIds.join("|")}`} users={collabPeople} defaultValue={collabIds} onChange={setCollabIds} />
+            <button type="button" className="secondary" disabled={!collabChanged} onClick={() => onUpdate(ticket.id, { collaboratorIds: collabIds.filter((id) => collabPeople.some((p) => p.id === id)) })}>Save collaborators</button>
+          </>
+        ) : <small className="hint">{teamsDirty ? "Click “Save team access” first" : "Select a team first"}</small>}
+        <small className="hint">Add more people to work on this ticket next to the assignee, from any of the selected teams. They are emailed, and can open, comment on and update the ticket.</small>
+      </div>
     </div>
   ) : (
     <div className="win-card">
       <div className="detail"><span>Team</span><b>{ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "Not routed yet"}</b></div>
       <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>
+      <div className="detail"><span>Collaborators</span><b>{collabNames.length ? collabNames.join(", ") : "None"}</b></div>
     </div>
   ));
 
@@ -167,8 +188,6 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       {teamBlock}
       <div className="win-card">
         {!staff && <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>}
-        <div className="detail"><span>Created by</span><b>{ticket.requester?.name || ticket.requester?.email || "—"}</b></div>
-        <div className="detail"><span>Client</span><b>{ticket.organization?.name}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
         <div className="detail"><span>Status</span>
           {canStatus
@@ -183,7 +202,6 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
               : <b>{ticket.progress ? PROGRESS_LABEL[ticket.progress] : "Not started"}</b>}
           </div>
         )}
-        <div className="detail"><span>Opened</span><b>{formatDate(ticket.createdAt)}</b></div>
         <div className="detail"><span>{ticket.closedAt ? "Closed in" : "Open for"}</span><b>{dayLabel(daysPassed(ticket))}</b></div>
         <div className="detail"><span>Priority</span>
           {triage
@@ -219,10 +237,9 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </div>
       ) : (
         <div>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}><h2><Linkify text={ticket.title} /></h2>{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</div>
+          <div className="win-title-row"><h2><Linkify text={ticket.title} /></h2><span className="win-title-actions"><CopyLinkButton ticket={ticket} label />{canEditDetails && <button className="secondary" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}</span></div>
           <div className="win-meta">
-            <span><small>Raised by</small><b>{ticket.requester?.name || ticket.requester?.email || "-"}</b></span>
-            <span><small>Created</small><b>{formatDate(ticket.createdAt)}</b></span>
+            <span><small>Raised by</small><b className="who">{ticket.requester && <Avatar name={ticket.requester.name || ticket.requester.email} />}<span>{ticket.requester?.name || ticket.requester?.email || "—"}</span></b><em>{formatDate(ticket.createdAt)}</em></span>
             {ticket.organization?.name && <span><small>Client</small><b>{ticket.organization.name}</b></span>}
             <span><small>Last update</small><b>{formatDate(ticket.updatedAt)}</b></span>
           </div>

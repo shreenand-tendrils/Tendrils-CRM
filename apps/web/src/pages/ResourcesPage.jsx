@@ -8,15 +8,19 @@ import NotesPage from "./NotesPage";
 export default function ResourcesPage({ me, notify, onOpenTicket }) {
   const [tab, setTab] = useState("documents");
   const tabs = [
-    { id: "documents", label: "Documents", icon: Files },
+    { id: "documents", label: "Documents", hint: "Shared files for the workspace", icon: Files },
     ...(me?.isInternal ? [
-      { id: "reminders", label: "Reminders", icon: Flag },
-      { id: "notes", label: "My notes", icon: Lock },
+      { id: "reminders", label: "Reminders", hint: "Flags and reminders only you can see", icon: Flag },
+      { id: "notes", label: "My notes", hint: "Private notes, visible only to you", icon: Lock },
     ] : []),
   ];
+  const current = tabs.find((t) => t.id === tab) || tabs[0];
   return <section className="resources-hub">
-    <div className="tabs" role="tablist" aria-label="Workspace resources">
-      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "tab on" : "tab"} onClick={() => setTab(id)}><Icon size={15} /> {label}</button>)}
+    <div className="res-head">
+      <div className="seg seg-lg" role="tablist" aria-label="Workspace resources">
+        {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={`seg-btn${tab === id ? " on" : ""}`} onClick={() => setTab(id)}><Icon size={16} /> {label}</button>)}
+      </div>
+      <span className="res-sub">{current.hint}</span>
     </div>
     {tab === "documents" && <DocumentsPage me={me} notify={notify} />}
     {tab === "reminders" && me?.isInternal && <RemindersPage notify={notify} onOpenTicket={onOpenTicket} />}

@@ -14,6 +14,7 @@ const configs = {
     ["teamId", "Team (choose first)", "teams", false, (me) => me.isInternal],
     ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
     ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
+    ["collaboratorIds", "Collaborators (optional — anyone from the selected team(s))", "teamPeople", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
     ["teamIds", "Owning team (required)", "requestTeams", false, (me) => !me.isInternal],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },

@@ -8,7 +8,7 @@ export async function notifyPeople({ userIds, actorId, type = 'SYSTEM', title, b
   if (!ids.length) return;
   const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
   for (const u of users) {
-    await notifyUser({ userId: u.id, type, title, body, href });
+    try { await notifyUser({ userId: u.id, type, title, body, href }); } catch (e) { console.error('[notify] in-app/WhatsApp failed for', u.id, e.message); } // one failure must not stop the others' emails
     if (email && u.email) fireAndLog(sendNotificationEmail({ to: u.email, name: u.name, subject: title, message: body, href }));
   }
 }

@@ -81,7 +81,6 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <div className="detail"><span>Work team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
         {reviewers.length > 0 && <div className="detail"><span>Review team</span><b>{reviewers.join(", ")}</b></div>}
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
-        {task.creator && <div className="detail"><span>Created by</span><b>{task.creator.name || task.creator.email}</b></div>}
       </div>
       {can(me, "task.assign") && !task.autoCreated && (
         <div className="win-card" style={{ padding: 12, gap: 8 }}>

@@ -51,21 +51,21 @@ export default function NotesPage({ notify }) {
           <div className="field"><label htmlFor="n-date">Date</label><input id="n-date" type="date" value={form.date} max={localToday()} onChange={set("date")} required /></div>
           <div className="field"><label htmlFor="n-title">Title (optional)</label><input id="n-title" value={form.title} onChange={set("title")} maxLength={120} /></div>
           <div className="field"><label htmlFor="n-body">Note <i>*</i></label><textarea id="n-body" value={form.body} onChange={set("body")} required rows={8} maxLength={10000} placeholder="What you did, what you learned, reminders for yourself…" /></div>
-          <div className="row" style={{ gap: 8 }}>
+          <div className="row">
             <button className="primary" disabled={saving}>{saving ? "Saving…" : form.id ? "Save changes" : "Save note"}</button>
-            {form.id && <button type="button" className="secondary" onClick={() => setForm(blank())}>Cancel</button>}
+            {form.id && <button type="button" className="btn-soft" onClick={() => setForm(blank())}>Cancel</button>}
           </div>
         </form>
       </Panel>
       <Panel title="My notes" sub={`${notes.length} note${notes.length === 1 ? "" : "s"}${q ? " found" : ""}`}>
         <div className="field"><input aria-label="Search your notes" placeholder="Search your notes" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {notes.map((n) => (
-          <div className="update-row" key={n.id}>
+          <div className="note-card" key={n.id}>
             <b>{new Date(n.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{n.title ? ` — ${n.title}` : ""}</b>
             <p style={{ whiteSpace: "pre-wrap" }}><Linkify text={n.body} /></p>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="secondary" onClick={() => setForm({ id: n.id, date: ymd(n.date), title: n.title || "", body: n.body })}><Pencil size={13} /> Edit</button>
-              <button className="secondary" onClick={() => remove(n)}><Trash2 size={13} /> Delete</button>
+            <div className="row">
+              <button type="button" className="btn-soft sm" onClick={() => setForm({ id: n.id, date: ymd(n.date), title: n.title || "", body: n.body })}><Pencil size={13} /> Edit</button>
+              <button type="button" className="btn-soft sm danger" onClick={() => remove(n)}><Trash2 size={13} /> Delete</button>
             </div>
           </div>
         ))}

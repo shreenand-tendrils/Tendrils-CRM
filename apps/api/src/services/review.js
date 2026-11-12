@@ -1,7 +1,7 @@
 import { prisma } from '../db.js';
 import { AppError } from '../errors/AppError.js';
 import { logActivity } from './activity.js';
-import { notifyPeople, findClientUsers } from './notify.service.js';
+import { notifyPeople, findClientUsers, findTeamManagers, findTriagers } from './notify.service.js';
 import { recordTicketEvents } from './ticketHistory.service.js';
 import { collectTicketTasks, syncTaskFromTicket } from './ticketTask.service.js';
 
@@ -164,7 +164,11 @@ export async function reviewTaskAsClient({ ticket, taskId, decision, note, actor
     summary: decision === 'APPROVE' ? `${ticket.key}: client approved “${task.title}”${result.allApproved ? ' (last open task)' : ''}` : `${ticket.key}: client asked for changes on “${task.title}”`,
     metadata: { visibility: ticket.visibility, requesterId: ticket.requesterId },
   });
-  const team = [...new Set([...task.assignees.map((a) => a.userId), task.assigneeId, ticket.assigneeId].filter(Boolean))];
+  let team = [...new Set([...task.assignees.map((a) => a.userId), task.assigneeId, ticket.assigneeId].filter(Boolean))];
+  if (!team.length) { // nobody assigned: the work's team(s) and admins still get the approval / send-back mail
+    const teamIds = [task.teamId, ticket.teamId].filter(Boolean);
+    team = [...new Set([...(await findTeamManagers(teamIds)), ...(await findTriagers())].map((u) => u.id))];
+  }
   await notifyPeople({
     userIds: team, actorId: actor.id, type: 'STATUS_CHANGE', href: `/?task=${task.id}`,
     title: decision === 'APPROVE' ? `Client approved “${task.title}”${result.closed ? ` — ${ticket.key} is closed` : result.allApproved ? ` — all tasks of ${ticket.key} are approved` : ''}` : `Client asked for changes on “${task.title}”`,

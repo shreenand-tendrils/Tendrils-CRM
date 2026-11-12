@@ -1,0 +1,53 @@
+.modal.bc { width: min(760px, 100%); max-height: 94dvh; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.bc-head { display: flex; align-items: center; gap: 14px; padding: 16px 20px; background: linear-gradient(135deg, #5746e8, #7b6cf5); color: #fff; }
+.bc-head > span:nth-child(2) { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.bc-head b { font-size: 18px; }
+.bc-head small { opacity: .9; }
+.bc-ico { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: rgba(255,255,255,.2); flex: none; }
+.bc-x { border: 0; background: rgba(255,255,255,.18); color: #fff; width: 32px; height: 32px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; }
+.bc-body { padding: 16px 20px; overflow: auto; display: grid; gap: 18px; }
+.bc-body h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 15px; }
+.bc-body h4 i { font-style: normal; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #ece9ff; color: #4636d6; font-size: 12px; }
+.bc-aud { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.bc-aud button { display: grid; gap: 3px; justify-items: start; text-align: left; padding: 12px 14px; border: 1.5px solid #e1e4f2; border-radius: 14px; background: #fff; cursor: pointer; color: #3b4258; }
+.bc-aud button svg { color: #5746e8; }
+.bc-aud button small { color: #6b7287; }
+.bc-aud button:hover:not(:disabled) { border-color: #b9b1ff; }
+.bc-aud button.on { border-color: #5746e8; background: #f4f3ff; box-shadow: 0 0 0 3px rgba(87,70,232,.12); }
+.bc-aud button:disabled { opacity: .5; cursor: not-allowed; }
+.bc-box { margin-top: 10px; border: 1px solid #e6e9f4; border-radius: 14px; padding: 10px; display: grid; gap: 8px; }
+.bc-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bc-tools > span { font-weight: 600; flex: 1; }
+.bc-tools input { flex: 1; min-width: 140px; }
+.bc-tools button { border: 0; background: transparent; color: #4636d6; font-weight: 600; cursor: pointer; padding: 4px 6px; }
+.bc-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.bc-teams button { display: grid; text-align: left; padding: 8px 12px; border: 1.5px solid #e1e4f2; border-radius: 12px; background: #fff; cursor: pointer; }
+.bc-teams button small { color: #6b7287; }
+.bc-teams button.on { border-color: #5746e8; background: #f4f3ff; }
+.bc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bc-chips span { display: inline-flex; align-items: center; gap: 4px; background: #ece9ff; color: #4636d6; border-radius: 999px; padding: 3px 6px 3px 12px; font-size: 13px; font-weight: 600; }
+.bc-chips button { border: 0; background: transparent; cursor: pointer; display: grid; place-items: center; color: inherit; }
+.bc-people { max-height: 210px; overflow: auto; display: grid; gap: 2px; }
+.bc-people label { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; cursor: pointer; }
+.bc-people label:hover { background: #f5f6fc; }
+.bc-people label.on { background: #f1efff; }
+.bc-people label span { display: grid; min-width: 0; }
+.bc-people small { color: #6b7287; }
+.bc-count { margin-top: 8px; color: #4636d6; font-weight: 600; font-size: 13.5px; }
+.bc-n { float: right; color: #8a90a6; font-weight: 400; }
+.bc-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.bc-opts label { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1.5px solid #e1e4f2; border-radius: 14px; cursor: pointer; }
+.bc-opts label span { display: grid; }
+.bc-opts label small { color: #6b7287; }
+.bc-opts label.on { border-color: #5746e8; background: #f4f3ff; }
+.bc-opts label.on.warn { border-color: #e0912b; background: #fff7e8; }
+.bc-preview { margin-top: 12px; display: grid; gap: 6px; }
+.bc-preview > small { color: #6b7287; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.bc-preview > div { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #f7f8fc; border: 1px dashed #cfd3ea; }
+.bc-preview svg { color: #5746e8; margin-top: 2px; flex: none; }
+.bc-preview span { display: grid; gap: 2px; min-width: 0; }
+.bc-preview em { font-style: normal; color: #6b7287; overflow-wrap: anywhere; }
+.bc-err { color: #c0392b; margin: 0; }
+.bc-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid #e6e9f4; background: #fff; }
+.bc-foot .primary { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .bc-aud, .bc-opts { grid-template-columns: minmax(0, 1fr); } }

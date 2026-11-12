@@ -23,6 +23,8 @@ export const PERMISSIONS = {
   'project.request': 'Request a project from chosen teams (clients)',
   'user.list': 'See the staff directory',
   'chat.use': 'Use team chat',
+  'broadcast.send': 'Ping teams or people with a message (in-app + email)',
+  'broadcast.all': 'Send an announcement to everyone',
   'update.post': 'Post daily updates',
   'admin.view': 'Open the admin console',
   'member.manage': 'Invite people and change roles',
@@ -32,7 +34,7 @@ export const PERMISSIONS = {
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.route', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'update.post'];
+const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.route', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'broadcast.send', 'update.post'];
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),

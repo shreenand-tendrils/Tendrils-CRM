@@ -41,6 +41,33 @@ export function planAssignee({ old, data, accessIds, membersByTeam, routingTouch
   return { assigneeId: null, autoUnassigned: true, error: null };
 }
 
+/**
+ * Decide the collaborator list after a ticket update. Collaborators are picked from the members of ALL the ticket's
+ * teams (owner + shared), irrespective of which of those teams each person is in. The assignee is never also a collaborator.
+ * - `current`   : collaborator ids now on the ticket
+ * - `requested` : collaboratorIds from the request (undefined = untouched)
+ * - `accessIds` : owner + shared team ids AFTER the update
+ * - `assigneeId`: assignee AFTER the update
+ * Returns { ids, added, removed, autoRemoved (ids dropped because they left the teams), error }.
+ */
+export function planCollaborators({ current = [], requested, accessIds = [], membersByTeam, assigneeId = null, routingTouched = false }) {
+  const explicit = requested !== undefined;
+  const base = explicit ? [...new Set(requested)] : [...current];
+  const done = (ids, autoRemoved = []) => {
+    const next = ids.filter((id) => id !== assigneeId);
+    return { ids: next, added: next.filter((id) => !current.includes(id)), removed: current.filter((id) => !next.includes(id)), autoRemoved, error: null };
+  };
+  if (!explicit && !routingTouched) return done(base); // nothing about teams or collaborators changed: only keep the assignee out of the list
+  if (!base.length) return done([]);
+  if (!accessIds.length) {
+    if (explicit) return { ids: current, added: [], removed: [], autoRemoved: [], error: { status: 409, code: 'TICKET_NOT_ROUTED', message: 'Pick a team first, then choose collaborators from the ticket’s teams.' } };
+    return done([], base); // teams were removed: nobody can stay
+  }
+  const outside = base.filter((id) => !isMemberOfAnyTeam(id, accessIds, membersByTeam));
+  if (outside.length && explicit) return { ids: current, added: [], removed: [], autoRemoved: [], error: { status: 400, code: 'COLLABORATOR_NOT_IN_TEAM', message: 'Collaborators must be members of the ticket’s team(s).' } };
+  return done(base.filter((id) => !outside.includes(id)), outside);
+}
+
 /** Ids from `ids` that are NOT members of any of `teamIds` (empty array = everyone fits). Used for tasks. */
 export function assigneesOutsideTeams(ids = [], teamIds = [], membersByTeam) {
   return ids.filter((id) => !isMemberOfAnyTeam(id, teamIds, membersByTeam));

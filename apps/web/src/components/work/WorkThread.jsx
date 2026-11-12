@@ -6,7 +6,7 @@ import { describeEvent, actorLabel } from "../../lib/ticketHistory";
 import { buildTree, mergeTimeline, taskPeople, taskTeams } from "../../lib/workThread";
 import "../../styles/thread.css";
 
-const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", STATUS: "status", TASK_REVIEW: "status" };
+const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", COLLABORATOR: "assign", STATUS: "status", TASK_REVIEW: "status" };
 
 function TaskNode({ node, focusTaskId, onOpenTask }) {
   const t = node.task;
@@ -60,7 +60,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
   const rootBody = ticket && (
     <>
       <span className="thread-title">{ticket.key} · {ticket.title} {ticket.status && <StatusBadge value={ticket.status} />}{currentTicket && <span className="here">You are here</span>}</span>
-      <small>{[ticket.organization?.name, ticket.requester && `created by ${ticket.requester.name || ticket.requester.email}`, ticket.createdAt && new Date(ticket.createdAt).toLocaleDateString()].filter(Boolean).join(" · ") || "Client request"}</small>
+      <small>{[ticket.organization?.name, ticket.createdAt && new Date(ticket.createdAt).toLocaleDateString()].filter(Boolean).join(" · ") || "Client request"}</small>
     </>
   );
 
@@ -68,7 +68,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
     <div className="thread" aria-label="Work route">
       {ticket && (
         <div className="thread-summary">
-          <div><small>Created by</small><b>{who(ticket.requester) || "—"}</b><em>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : ""}</em></div>
+          <div><small>Collaborators</small><b>{(ticket.collaborators || []).map((c) => who(c.user)).filter(Boolean).join(", ") || "None"}</b></div>
           <div><small>Team</small><b>{ticketTeamLabel(ticket) || "Not routed"}</b></div>
           <div><small>Assignee</small><b>{who(ticket.assignee) || "Unassigned"}</b></div>
           <div><small>Tasks</small><b>{work.length ? `${doneCount} of ${work.length} done` : "None yet"}</b></div>

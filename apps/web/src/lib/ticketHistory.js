@@ -18,6 +18,7 @@ export function describeEvent(e) {
       if (e.toLabel && e.fromLabel) return `moved the ticket from ${e.fromLabel} to ${e.toLabel}`;
       if (e.toLabel) return `routed the ticket to ${e.toLabel}`;
       return `removed the ticket from ${e.fromLabel || "its team"}`;
+    case "COLLABORATOR": return e.toLabel ? `added ${e.toLabel} as a collaborator` : `removed ${e.fromLabel || "a collaborator"} from the collaborators`;
     case "TEAM_ACCESS": return e.toLabel ? `shared the ticket with ${e.toLabel}` : `stopped sharing the ticket with ${e.fromLabel}`;
     case "TITLE": return `renamed the ticket from “${e.fromLabel}” to “${e.toLabel}”`;
     case "DESCRIPTION": return "edited the description";

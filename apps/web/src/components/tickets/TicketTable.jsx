@@ -6,6 +6,20 @@ import EmptyState from "../ui/EmptyState";
 import Avatar from "../ui/Avatar";
 import { ticketTeamLabel } from "../../lib/teams";
 import Linkify from "../ui/Linkify";
+import CopyLinkButton from "./CopyLinkButton";
+import CollaboratorBadge from "./CollaboratorBadge";
+import "../../styles/tickets-list.css";
+
+const DAY = 86400000;
+/** Due date with a clear signal: overdue (red), today / tomorrow (amber). */
+export function DueCell({ ticket }) {
+  if (!ticket.dueDate) return <span className="muted">—</span>;
+  const left = Math.ceil((new Date(ticket.dueDate).setHours(23, 59, 59, 999) - Date.now()) / DAY);
+  const open = ticket.status !== "CLOSED";
+  const cls = !open ? "" : left < 0 ? " late" : left <= 1 ? " soon" : "";
+  const note = !open ? "" : left < 0 ? `${-left}d late` : left === 0 ? "today" : left === 1 ? "tomorrow" : "";
+  return <span className={`due-chip${cls}`}>{formatDate(ticket.dueDate)}{note ? <em>{note}</em> : null}</span>;
+}
 
 export default function TicketTable({ tickets = [], onSelect, showTask, showTeam = showTask }) {
   return (
@@ -16,9 +30,9 @@ export default function TicketTable({ tickets = [], onSelect, showTask, showTeam
           {tickets.map((t) => {
             const task = t.tasks?.find((item) => item.autoCreated) || t.tasks?.[0];
             return (
-              <tr key={t.id} onClick={() => onSelect?.(t)} className="clickable" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect?.(t)}>
+              <tr key={t.id} onClick={() => onSelect?.(t)} className={`clickable prio-${t.priority || "MEDIUM"}`} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onSelect?.(t)}>
                 <td data-label="Request">
-                  <b>{t.key}</b>
+                  <span className="key-row"><b className="key-chip">{t.key}</b><CopyLinkButton ticket={t} /></span>
                   <div><Linkify text={t.title} /></div>
                   {showTask && task && <span className="chip-link" style={{ marginTop: 6 }}><ListChecks size={13} /> Task · {pretty(task.status)}</span>}
                 </td>
@@ -26,10 +40,10 @@ export default function TicketTable({ tickets = [], onSelect, showTask, showTeam
                 <td data-label="Status"><TicketStatusBadge ticket={t} /></td>
                 <td data-label="Priority"><PriorityBadge value={t.priority} /></td>
                 {showTeam && <td data-label="Team">{ticketTeamLabel(t) ? <span className="chip-link">{ticketTeamLabel(t)}</span> : <span className="muted">Not routed</span>}</td>}
-                <td data-label="Assignee">{t.assignee ? <span className="cell-person"><Avatar name={t.assignee.name || t.assignee.email} />{t.assignee.name || t.assignee.email}</span> : <span className="muted">Unassigned</span>}</td>
+                <td data-label="Assignee">{t.assignee ? <span className="cell-person"><Avatar name={t.assignee.name || t.assignee.email} />{t.assignee.name || t.assignee.email}</span> : <span className="muted">Unassigned</span>}<CollaboratorBadge ticket={t} /></td>
                 {showTeam && <td data-label="Created by">{t.requester ? <span className="cell-person"><Avatar name={t.requester.name || t.requester.email} />{t.requester.name || t.requester.email}</span> : <span className="muted">—</span>}</td>}
                 <td data-label="Created">{formatDate(t.createdAt)}</td>
-                <td data-label="Due">{formatDate(t.dueDate)}</td>
+                <td data-label="Due"><DueCell ticket={t} /></td>
                 <td data-label="Days" title={t.closedAt ? "Days it took to close" : "Days since it was opened"}>{dayLabel(daysPassed(t))}{t.closedAt ? " (closed)" : ""}</td>
                 <td data-label="Activity"><span className="table-count"><MessageSquare size={14} />{t._count?.comments || 0} <Paperclip size={14} />{t._count?.attachments || 0}</span></td>
               </tr>

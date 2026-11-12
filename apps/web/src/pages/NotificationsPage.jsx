@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2 } from "lucide-react";
 import Panel from "../components/ui/Panel";
-import { api } from "../api";
+import { api } from "../api";
 import Linkify from "../components/ui/Linkify";
+import ShowMore from "../components/ui/ShowMore";
 
 const PAGE = 10;
 
@@ -26,21 +27,34 @@ export default function NotificationsPage({ data, onRefresh }) {
 
   return (
     <Panel title="Your notifications" sub={`${unread} unread`}>
-      <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
-        <button className={`chip ${tab === "unread" ? "on" : ""}`} onClick={() => { setTab("unread"); setShown(PAGE); }}>Unread ({unread})</button>
-        <button className={`chip ${tab === "all" ? "on" : ""}`} onClick={() => { setTab("all"); setShown(PAGE); }}>All ({items.length})</button>
-        {unread > 0 && <button className="secondary" onClick={() => api.post("/notifications/read-all").then(onRefresh)}>Mark all as read</button>}
-        {items.some((n) => n.readAt) && <button className="secondary" onClick={() => api.delete("/notifications/read").then(onRefresh)}>Clear read</button>}
-      </div>
-      {rows.slice(0, shown).map((n) => (
-        <div className="notification" key={n.id} style={n.unreadIds.length ? undefined : { opacity: 0.65 }}>
-          <Bell />
-          <span><b>{n.title}{n.count > 1 ? ` (x${n.count})` : ""}</b><small><Linkify text={n.body} /> · {new Date(n.createdAt).toLocaleString()}</small></span>
-          {n.unreadIds.length > 0 && <button className="secondary" onClick={() => markRows(n.unreadIds)}>Mark read</button>}
+      <div className="nt-toolbar">
+        <div className="seg" role="tablist" aria-label="Notification filter">
+          <button type="button" role="tab" aria-selected={tab === "unread"} className={`seg-btn${tab === "unread" ? " on" : ""}`} onClick={() => { setTab("unread"); setShown(PAGE); }}>Unread<em>{unread}</em></button>
+          <button type="button" role="tab" aria-selected={tab === "all"} className={`seg-btn${tab === "all" ? " on" : ""}`} onClick={() => { setTab("all"); setShown(PAGE); }}>All<em>{items.length}</em></button>
         </div>
-      ))}
-      {rows.length > shown && <button className="secondary" onClick={() => setShown(shown + PAGE)}>Show {Math.min(PAGE, rows.length - shown)} more</button>}
-      {!rows.length && <p style={{ color: "#888" }}>{tab === "unread" ? "You're all caught up." : "No notifications yet."}</p>}
+        <div className="nt-actions">
+          {unread > 0 && <button type="button" className="btn-soft" onClick={() => api.post("/notifications/read-all").then(onRefresh)}><CheckCheck size={15} /> Mark all as read</button>}
+          {items.some((n) => n.readAt) && <button type="button" className="btn-soft danger" onClick={() => api.delete("/notifications/read").then(onRefresh)}><Trash2 size={15} /> Clear read</button>}
+        </div>
+      </div>
+      <div className="nt-list">
+        {rows.slice(0, shown).map((n) => {
+          const isUnread = n.unreadIds.length > 0;
+          return (
+            <div className={`nt-row ${isUnread ? "unread" : "read"}`} key={n.id}>
+              <span className="nt-icon"><Bell size={18} /></span>
+              <div className="nt-body">
+                <b>{n.title}{n.count > 1 && <em className="nt-count">×{n.count}</em>}</b>
+                <p><Linkify text={n.body} /></p>
+                <small>{new Date(n.createdAt).toLocaleString()}</small>
+              </div>
+              {isUnread && <div className="nt-act"><button type="button" className="btn-soft sm" onClick={() => markRows(n.unreadIds)}><Check size={14} /> Mark read</button></div>}
+            </div>
+          );
+        })}
+      </div>
+      {rows.length > shown && <ShowMore count={Math.min(PAGE, rows.length - shown)} onClick={() => setShown(shown + PAGE)} />}
+      {!rows.length && <p className="nt-empty">{tab === "unread" ? "You're all caught up." : "No notifications yet."}</p>}
     </Panel>
   );
 }

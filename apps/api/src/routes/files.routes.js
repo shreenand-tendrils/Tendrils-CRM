@@ -39,7 +39,7 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
     return res.status(400).json({ error: 'Provide exactly one ticketId, taskId or projectId' });
   }
   const kind = ticketId ? 'ticket' : taskId ? 'task' : 'project';
-  const rec = projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : ticketId ? await prisma.ticket.findUnique({ where: { id: ticketId }, include: { teamAccesses: { select: { teamId: true } } } }) : await prisma.task.findFirst({ where: { id: taskId, ...taskTeamScope(req) }, include: { teamAccesses: { select: { teamId: true } } } });
+  const rec = projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : ticketId ? await prisma.ticket.findUnique({ where: { id: ticketId }, include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }) : await prisma.task.findFirst({ where: { id: taskId, ...taskTeamScope(req) }, include: { teamAccesses: { select: { teamId: true } } } });
   if (!canAccessTarget(req, rec, kind)) {
     await discard(req.file);
     return res.status(404).json({ error: 'Target record not found' });
@@ -57,7 +57,7 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
 });
 
 router.get('/files/:id/download', async (req, res) => {
-  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
+  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) return res.status(404).json({ error: 'File not found' });
   const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) return res.status(404).json({ error: 'File not found' });
@@ -67,7 +67,7 @@ router.get('/files/:id/download', async (req, res) => {
 });
 // Remove a file or a pasted image. It never touches the ticket, its history or its status: the "added a file" history entry stays.
 router.delete('/files/:id', async (req, res) => {
-  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
+  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) throw new AppError('File not found', 404);
   const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) throw new AppError('File not found', 404);

@@ -12,6 +12,8 @@ export function canEditTask(ctx, task) {
   return task.creatorId === me(ctx) || task.assigneeId === me(ctx) || (task.assignees || []).some((a) => (a.userId ?? a.user?.id) === me(ctx));
 }
 
+const isCollaborator = (t, userId) => (t.collaborators || []).some((c) => (c.userId ?? c.user?.id) === userId);
+
 /** Clients can access only client-visible tickets they personally raised. */
 export function canViewTicket(ctx, t) {
   if (ctx.isInternal) {
@@ -23,6 +25,8 @@ export function canViewTicket(ctx, t) {
     if (t.requesterId && t.requesterId === me(ctx)) return true;
     // The current assignee can always open their ticket.
     if (t.assigneeId && t.assigneeId === me(ctx)) return true;
+    // Collaborators can open the ticket they were added to, whatever team they belong to.
+    if (isCollaborator(t, me(ctx))) return true;
     // A triager who routed the ticket to another team keeps access to it.
     if (ctx.can('ticket.triage') && (t.teamAccesses || []).some((a) => a.addedById && a.addedById === me(ctx))) return true;
     // A not-yet-routed ticket is available to authorized triagers only, never to unrelated teams.
@@ -38,7 +42,7 @@ export const clientStatusChangeAllowed = (currentStatus, nextStatus) =>
   (currentStatus === 'REVIEW_TEST' && ['CLOSED', 'OPEN'].includes(nextStatus)) || (currentStatus === 'REVIEW_HELP' && nextStatus === 'OPEN');
 
 export const TICKET_FIELDS = {
-  full: ['title', 'description', 'status', 'progress', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'projectId', 'dueDate'],
+  full: ['title', 'description', 'status', 'progress', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'collaboratorIds', 'projectId', 'dueDate'],
   status: ['status', 'progress'],
   own: ['title', 'description', 'status', 'progress', 'priority', 'dueDate'],
   client: ['title', 'description', 'priority', 'status'], // 'status' is further limited by clientStatusChangeAllowed
@@ -53,7 +57,7 @@ export function ticketEditScope(ctx, t) {
     const belongsToTicketTeam = (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
     if (ctx.can('ticket.route') && belongsToTicketTeam) return 'full';
     if (ctx.can('ticket.update_own') && t.requesterId === me(ctx)) return 'own';
-    if (ctx.can('ticket.update_own') && t.assigneeId === me(ctx)) return 'status';
+    if (ctx.can('ticket.update_own') && (t.assigneeId === me(ctx) || isCollaborator(t, me(ctx)))) return 'status'; // assignee and collaborators move the work along
     return 'none';
   }
   return t.requesterId === me(ctx) ? 'client' : 'none';

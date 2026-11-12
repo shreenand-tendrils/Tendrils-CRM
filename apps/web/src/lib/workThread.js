@@ -31,7 +31,7 @@ export function buildTree(tasks = []) {
   return (kids.get(null) || []).sort(byCreated).map(node);
 }
 
-export const ROUTE_EVENT_TYPES = ["CREATED", "TEAM", "TEAM_ACCESS", "ASSIGNEE", "STATUS", "TASK_REVIEW"];
+export const ROUTE_EVENT_TYPES = ["CREATED", "TEAM", "TEAM_ACCESS", "ASSIGNEE", "COLLABORATOR", "STATUS", "TASK_REVIEW"];
 
 /** Route events (oldest first) with the root tasks placed by the time they were created. */
 export function mergeTimeline(events = [], roots = []) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Flag, Trash2, Check } from "lucide-react";
+import { Flag, Trash2, Check, RotateCcw, Plus } from "lucide-react";
 import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
@@ -21,31 +21,37 @@ export default function RemindersPage({ notify, onOpenTicket }) {
   const remove = (id) => api.delete(`/reminders/${id}`).then(load).catch(() => notify?.("Delete failed", "error"));
   const open = items.filter((r) => !r.doneAt);
   const done = items.filter((r) => r.doneAt);
-  const row = (r) => (
-    <div className="notification" key={r.id}>
-      <Flag size={18} color={r.flagged ? "#e8462f" : "#9aa0b4"} />
-      <span>
-        <b>{r.title}</b>
-        <small>
-          {r.remindAt ? `Due ${new Date(r.remindAt).toLocaleString()}` : "Flagged"}
-          {r.ticket && <> · <a href="#open" onClick={(e) => { e.preventDefault(); onOpenTicket?.(r.ticket); }}>{r.ticket.key}</a></>}
-        </small>
-      </span>
-      {!r.doneAt && <button className="secondary" onClick={() => patch(r.id, { done: true })} aria-label="Mark done"><Check size={14} /></button>}
-      {r.doneAt && <button className="secondary" onClick={() => patch(r.id, { done: false })}>Reopen</button>}
-      <button className="secondary" onClick={() => remove(r.id)} aria-label="Delete"><Trash2 size={14} /></button>
-    </div>
-  );
+  const row = (r) => {
+    const overdue = !r.doneAt && r.remindAt && new Date(r.remindAt) < new Date();
+    return (
+      <div className={`rem-row${overdue ? " overdue" : ""}${r.doneAt ? " done" : ""}`} key={r.id}>
+        <span className={`rem-flag${r.flagged ? " on" : ""}`}><Flag size={17} /></span>
+        <div className="rem-body">
+          <b>{r.title}</b>
+          <small>
+            {r.remindAt ? `Due ${new Date(r.remindAt).toLocaleString()}` : "Flagged"}
+            {overdue && <i className="rem-tag">Overdue</i>}
+            {r.ticket && <> · <a href="#open" onClick={(e) => { e.preventDefault(); onOpenTicket?.(r.ticket); }}>{r.ticket.key}</a></>}
+          </small>
+        </div>
+        <div className="rem-actions">
+          {!r.doneAt && <button type="button" className="btn-soft sm ok" onClick={() => patch(r.id, { done: true })} aria-label="Mark done"><Check size={15} /> Done</button>}
+          {r.doneAt && <button type="button" className="btn-soft sm" onClick={() => patch(r.id, { done: false })}><RotateCcw size={14} /> Reopen</button>}
+          <button type="button" className="btn-soft sm icon danger" onClick={() => remove(r.id)} aria-label="Delete" title="Delete"><Trash2 size={15} /></button>
+        </div>
+      </div>
+    );
+  };
   return (
     <Panel title="Flags & reminders" sub={`${open.length} open · only you can see these`}>
-      <form className="row" onSubmit={add} style={{ flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+      <form className="rem-form" onSubmit={add}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Remind me to…" maxLength={200} aria-label="Reminder text" />
         <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Reminder time" />
-        <button className="primary" disabled={!title.trim() || !when}>Add reminder</button>
+        <button className="primary" disabled={!title.trim() || !when}><Plus size={16} /> Add reminder</button>
       </form>
       {!items.length && <EmptyState title="Nothing flagged yet" text="Flag a ticket or set a reminder from the ticket panel." />}
-      {open.map(row)}
-      {done.length > 0 && <><h4 style={{ marginTop: 16 }}>Done</h4>{done.map(row)}</>}
+      {open.length > 0 && <div className="rem-section"><h4>Open · {open.length}</h4>{open.map(row)}</div>}
+      {done.length > 0 && <div className="rem-section"><h4>Done · {done.length}</h4>{done.map(row)}</div>}
     </Panel>
   );
 }

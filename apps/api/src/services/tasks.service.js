@@ -143,7 +143,7 @@ export async function createTask(ctx, input) {
   });
   for (const userId of ids) await notifyAssignment({ userId, actor: ctx.currentUser, title: task.title, kind: 'task', href: link(task) });
   if (task.ticketId) await recordTicketEvents(prisma, task.ticketId, ctx.currentUser.id, [{ type: 'TASK', toValue: task.id, toLabel: task.title, clientVisible: false }]);
-  const foreign = [...new Set([task.teamId, ...teamIds].filter((id) => id && !ownTeamIds.includes(id)))];
+  const foreign = [...new Set([task.teamId, ...teamIds].filter(Boolean))];
   if (foreign.length) { // every member of each other team hears about it, even when someone is already assigned
     await notifyTeams({ teamIds: foreign, actorId: me, exclude: ids, title: `New task shared with your team: ${task.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} shared the task "${task.title}" with your team.${ids.length ? '' : '\nNobody is assigned yet - open it and assign someone from your team.'}`, href: link(task) });
   }

@@ -137,3 +137,13 @@ export async function syncTicketFromTask(db, task, { actor } = {}) {
   await recordTicketEvents(null, updated.id, actor?.id, [{ type: 'STATUS', fromValue: statusKey(ticket.status, ticket.progress), toValue: statusKey('REVIEW_TEST', 'RESOLVED'), note: 'All linked work completed; submitted for client review', clientVisible: true }]);
   return updated;
 }
+
+/** Collaborators work on the ticket's own task next to the assignee: add the new ones to it, drop the ones removed from the ticket. */
+export async function syncCollaboratorsToTask(db, ticketId, { removed = [], keepUserId = null } = {}) {
+  const task = await db.task.findFirst({ where: { ticketId, autoCreated: true }, select: { id: true } });
+  if (!task) return;
+  const collaborators = await db.ticketCollaborator.findMany({ where: { ticketId }, select: { userId: true } });
+  if (collaborators.length) await db.taskAssignee.createMany({ data: collaborators.map((c) => ({ taskId: task.id, userId: c.userId })), skipDuplicates: true });
+  const drop = removed.filter((id) => id && id !== keepUserId);
+  if (drop.length) await db.taskAssignee.deleteMany({ where: { taskId: task.id, userId: { in: drop } } });
+}

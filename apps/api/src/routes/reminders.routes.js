@@ -36,7 +36,7 @@ router.post('/reminders', async (req, res) => {
   if (!data.flagged && !data.remindAt) throw new AppError('Pick a reminder time, or flag it.', 400);
   if (data.remindAt && data.remindAt.getTime() < Date.now() - 60000) throw new AppError('Reminder time must be in the future.', 400);
   if (data.ticketId) {
-    const t = await prisma.ticket.findUnique({ where: { id: data.ticketId }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } } } });
+    const t = await prisma.ticket.findUnique({ where: { id: data.ticketId }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } });
     if (!t || !canViewTicket(req, t)) throw new AppError('Ticket not found', 404);
     if (data.flagged && !data.remindAt) {
       const existing = await prisma.reminder.findFirst({ where: { userId: req.currentUser.id, ticketId: t.id, flagged: true, remindAt: null, doneAt: null }, include });

@@ -12,6 +12,8 @@ import { useDrawers } from "../../hooks/useTicketDrawer";
 
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import BroadcastModal from "../broadcast/BroadcastModal";
+import GuidePage from "../../pages/GuidePage";
 import PageHeader from "./PageHeader";
 import EntityModal from "../forms/EntityModal";
 import TicketDrawer from "../tickets/TicketDrawer";
@@ -49,6 +51,7 @@ const pageMeta = {
   "/teams": ["Teams", "The people and disciplines behind the work."],
   "/activity": ["Activity log", "A traceable timeline of changes across the workspace."],
   "/notifications": ["Notifications", "Assignments, updates and reminders that need your attention."],
+  "/guide": ["Guide", "How to use Tendrils well: every feature, step by step."],
   "/settings": ["Settings", "Your access, WhatsApp, AI assistant (MCP) connections and security."],
 };
 
@@ -88,6 +91,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
 
   const [title, subtitle] = pageMeta[path] || pageMeta["/"];
   const unread = (data.notifications || []).filter((n) => !n.readAt).length;
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   // Realtime: one WebSocket per signed-in session (notifications + chat).
   const meId = me?.user?.id;
@@ -166,7 +170,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
   const update = async (type, id, body) => {
     try {
       const res = await api.patch(`/${type}/${id}`, body);
-      note(res.data?.autoUnassigned ? "Team updated — the previous assignee isn't in this team, so pick a new assignee." : "Updated");
+      note(res.data?.autoUnassigned ? "Team updated — the previous assignee isn't in this team, so pick a new assignee." : res.data?.collaboratorsDropped ? `Updated — ${res.data.collaboratorsDropped} collaborator${res.data.collaboratorsDropped === 1 ? " was" : "s were"} removed because they are not in the selected team(s).` : "Updated");
       await refresh();
       if (type === "tickets" && selected) {
         setSelected((current) => (current ? { ...current, ...body } : current));
@@ -228,7 +232,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
       <div className="scrim" onClick={() => setNavOpen(false)} />
 
       <main>
-        <Topbar title={title} me={me} hasUnread={unread > 0} onMenu={() => setNavOpen(true)} showSearch={path === "/tickets" || path === "/tasks"} />
+        <Topbar title={title} me={me} hasUnread={unread > 0} onBroadcast={can(me, "broadcast.send") ? () => setBroadcastOpen(true) : undefined} onMenu={() => setNavOpen(true)} showSearch={path === "/tickets" || path === "/tasks"} />
 
         <section className={"page" + (path === "/chat" ? " page-chat" : "")}>
           <PageHeader
@@ -256,6 +260,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
             <Route path="/teams" element={guard(can(me, "team.view"), "teams", <TeamsPage data={data} me={me} onRefresh={refresh} notify={note} />)} />
             <Route path="/activity" element={<ActivityPage data={data} />} />
             <Route path="/notifications" element={<NotificationsPage data={data} onRefresh={refresh} />} />
+            <Route path="/guide" element={<GuidePage me={me} />} />
             <Route path="/settings" element={<SettingsPage me={me} />} />
           </Routes>
 
@@ -274,6 +279,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
         </div>
       )}
 
+      {broadcastOpen && <BroadcastModal me={me} data={data} notify={note} onClose={() => setBroadcastOpen(false)} />}
       {modal && <EntityModal key={modal + (modalInit?.ticketId || "") + (modalInit?.parentId || "")} kind={modal} data={data} initial={modalInit} onClose={closeModal} onSubmit={create} saving={saving} />}
 
       <TicketDrawer

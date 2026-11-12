@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee } from '../src/services/ticketRouting.js';
+import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, planCollaborators } from '../src/services/ticketRouting.js';
 import { permissionsFor } from '../src/rbac/permissions.js';
 import { canViewTicket } from '../src/rbac/policies.js';
 import { teamPeople, assigneeGroups, isInTeams, ticketTeamLabel } from '../../web/src/lib/teams.js';
@@ -162,4 +162,49 @@ test('team selection "dirty" check ignores order', () => {
   assert.ok(sameIds(['a', 'b'], ['b', 'a']));
   assert.ok(!sameIds(['a'], ['a', 'b']));
   assert.ok(sameIds([], []));
+});
+
+test('collaborators: any member of any of the ticket teams, across teams', () => {
+  const r = planCollaborators({ current: [], requested: ['rahul', 'vikram', 'aditya'], accessIds: ['dev', 'qa'], membersByTeam: members, assigneeId: 'sneha' });
+  assert.deepEqual(r.ids, ['rahul', 'vikram', 'aditya']);
+  assert.deepEqual(r.added, ['rahul', 'vikram', 'aditya']);
+  assert.equal(r.error, null);
+});
+
+test('collaborators: someone outside the ticket teams is rejected when picked explicitly', () => {
+  const r = planCollaborators({ current: ['rahul'], requested: ['rahul', 'kavya'], accessIds: ['dev', 'qa'], membersByTeam: members });
+  assert.equal(r.error.code, 'COLLABORATOR_NOT_IN_TEAM');
+  assert.deepEqual(r.ids, ['rahul']);
+});
+
+test('collaborators: picking before routing asks for a team first', () => {
+  const r = planCollaborators({ current: [], requested: ['rahul'], accessIds: [], membersByTeam: members });
+  assert.equal(r.error.code, 'TICKET_NOT_ROUTED');
+});
+
+test('collaborators: the assignee is never also a collaborator', () => {
+  const r = planCollaborators({ current: ['rahul'], requested: ['rahul', 'sneha'], accessIds: ['dev'], membersByTeam: members, assigneeId: 'rahul' });
+  assert.deepEqual(r.ids, ['sneha']);
+  assert.deepEqual(r.removed, ['rahul']);
+});
+
+test('collaborators: changing the teams drops people who no longer belong, keeps the rest', () => {
+  const r = planCollaborators({ current: ['rahul', 'vikram', 'kavya'], accessIds: ['qa'], membersByTeam: members, routingTouched: true });
+  assert.deepEqual(r.ids, ['vikram']);
+  assert.deepEqual(r.autoRemoved.sort(), ['kavya', 'rahul']);
+  assert.deepEqual(r.removed.sort(), ['kavya', 'rahul']);
+  assert.equal(r.error, null);
+});
+
+test('collaborators: nothing changes when neither teams nor collaborators are touched', () => {
+  const r = planCollaborators({ current: ['rahul', 'kavya'], accessIds: ['qa'], membersByTeam: members });
+  assert.deepEqual(r.ids, ['rahul', 'kavya']);
+  assert.deepEqual(r.removed, []);
+});
+
+test('collaborators can open a ticket from a team they are not in', () => {
+  const ctx = { isInternal: true, currentUser: { id: 'kavya' }, memberships: [{ organization: { type: 'INTERNAL' }, role: 'EMPLOYEE', teamMemberships: [{ teamId: 'seo' }] }], can: () => false };
+  const ticket = { teamId: 'dev', requesterId: 'x', assigneeId: 'rahul', teamAccesses: [{ teamId: 'dev' }], collaborators: [] };
+  assert.equal(canViewTicket(ctx, ticket), false);
+  assert.equal(canViewTicket(ctx, { ...ticket, collaborators: [{ userId: 'kavya' }] }), true);
 });

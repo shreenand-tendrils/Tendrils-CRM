@@ -24,6 +24,7 @@ model User {
   activityLogs ActivityLog[]
   projectMemberships ProjectMember[]
   taskAssignments TaskAssignee[]
+  ticketCollaborations TicketCollaborator[]
   chatMessages ChatMessage[]
   chatReads ChatRead[]
   dailyUpdates DailyUpdate[]
@@ -222,11 +223,25 @@ model Ticket {
   attachments Attachment[]
   tasks Task[]
   teamAccesses TicketTeamAccess[]
+  collaborators TicketCollaborator[]
   events TicketEvent[]
   reminders Reminder[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([organizationId,status,priority])
+}
+// Extra people working on a ticket next to its single assignee. They are picked from the members of the ticket's
+// teams (owner + shared), so the ticket can be worked by people from several teams at once. Additive: the assignee,
+// team routing and every existing rule are unchanged.
+model TicketCollaborator {
+  ticketId String
+  userId String
+  addedById String?
+  createdAt DateTime @default(now())
+  ticket Ticket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@id([ticketId,userId])
+  @@index([userId])
 }
 model Task {
   completedAt DateTime?
@@ -502,7 +517,7 @@ model TicketEvent {
   id String @id @default(cuid())
   ticketId String
   actorId String?
-  type String // CREATED, STATUS, PRIORITY, ASSIGNEE, TEAM, TEAM_ACCESS, TITLE, DESCRIPTION, DUE_DATE, VISIBILITY, PROJECT, COMMENT, ATTACHMENT
+  type String // CREATED, STATUS, PRIORITY, ASSIGNEE, COLLABORATOR, TEAM, TEAM_ACCESS, TITLE, DESCRIPTION, DUE_DATE, VISIBILITY, PROJECT, COMMENT, ATTACHMENT
   fromValue String?
   toValue String?
   fromLabel String?

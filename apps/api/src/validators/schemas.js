@@ -102,6 +102,7 @@ export const ticketCreate = z.object({
   assigneeId: optId,
   teamId: optId,
   teamIds: idList.optional(),
+  collaboratorIds: idList.optional(),
   dueDate: optDueDate,
 });
 
@@ -115,6 +116,7 @@ export const ticketUpdate = z.object({
   assigneeId: nullId,
   teamId: nullId,
   teamIds: idList.optional(),
+  collaboratorIds: idList.optional(),
   projectId: nullId,
   dueDate: nullDate,
 });

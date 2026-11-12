@@ -8,13 +8,13 @@ import { ticketScope, canSeeOrg } from '../rbac/scope.js';
 import { storagePath, discard } from './storage.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { logActivity } from './activity.js';
-import { notifyAssignment } from './assignment.service.js';
+import { notifyAssignment, notifyCollaborators } from './assignment.service.js';
 import { notifyPeople, notifyTeams, findTriagers, findTeamManagers } from './notify.service.js';
-import { assertDueNotPast, assertAssignable, assertProjectInOrg, assertInternalTeam, loadTeamMemberIds } from './guards.js';
-import { syncTaskFromTicket, assertTicketWorkComplete } from './ticketTask.service.js';
+import { assertDueNotPast, assertAssignable, assertAssignees, assertProjectInOrg, assertInternalTeam, loadTeamMemberIds } from './guards.js';
+import { syncTaskFromTicket, syncCollaboratorsToTask, assertTicketWorkComplete } from './ticketTask.service.js';
 import { recordTicketEvents, loadNames } from './ticketHistory.service.js';
 import { diffTicketEvents, clientView } from './ticketEvents.js';
-import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, normalizeTeamPicks } from './ticketRouting.js';
+import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, planCollaborators, normalizeTeamPicks } from './ticketRouting.js';
 import { canDeleteTicket, reviewTaskAsClient } from './review.js';
 import { AppError } from '../errors/AppError.js';
 
@@ -31,15 +31,31 @@ async function employeeIdSet(ids) {
   return new Set(rows.map((r) => r.userId));
 }
 
-async function notifyTicket(ctx, t, { title, body, toRequester = false, requesterIsEmployee = false }) {
+/** Everyone on the team side who must hear about a ticket: the assignee, whoever holds its tasks, the previous assignee, and - when nobody
+ *  is assigned (e.g. after a send-back) - every member of the ticket's team(s) plus admins. Not just admins. */
+async function ticketStaffIds(t, extra = []) {
+  const [tasks, route] = await Promise.all([
+    prisma.task.findMany({ where: { ticketId: t.id, autoCreated: false }, select: { assigneeId: true, assignees: { select: { userId: true } } } }),
+    prisma.ticket.findUnique({ where: { id: t.id }, select: { assigneeId: true, teamId: true, teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }),
+  ]);
+  const ids = new Set([t.assigneeId, route?.assigneeId, ...(route?.collaborators || []).map((c) => c.userId), ...extra, ...tasks.flatMap((k) => [k.assigneeId, ...k.assignees.map((a) => a.userId)])].filter(Boolean));
+  if (!route?.assigneeId) {
+    const teamIds = [route?.teamId, ...(route?.teamAccesses || []).map((a) => a.teamId)].filter(Boolean);
+    for (const u of teamIds.length ? await findTeamManagers(teamIds) : []) ids.add(u.id);
+    for (const u of await findTriagers()) ids.add(u.id);
+  }
+  return [...ids];
+}
+
+async function notifyTicket(ctx, t, { title, body, toRequester = false, requesterIsEmployee = false, extra = [] }) {
   const requesterIsClient = t.requesterId && t.requesterId !== t.assigneeId && (t.visibility === 'CLIENT' || requesterIsEmployee);
-  const staff = t.assigneeId ? [t.assigneeId] : (await findTriagers()).map((u) => u.id);
+  const staff = toRequester ? [] : await ticketStaffIds(t, extra);
   const ids = toRequester ? (requesterIsClient ? [t.requesterId] : []) : staff;
   await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'STATUS_CHANGE', title, body, href: ticketUrl(t) });
 }
 
 async function loadVisibleTicket(ctx, id) {
-  const t = await prisma.ticket.findUnique({ where: { id }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } } } });
+  const t = await prisma.ticket.findUnique({ where: { id }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } });
   if (!t || !canViewTicket(ctx, t)) throw new AppError('Ticket not found', 404); // hide existence
   return t;
 }
@@ -49,6 +65,20 @@ const ticketLog = (ctx, t, action, summary) =>
     actorId: ctx.currentUser.id, organizationId: t.organizationId, entityType: 'ticket', entityId: t.id, action, summary,
     metadata: { visibility: t.visibility, requesterId: t.requesterId },
   });
+
+/** Tell newly added collaborators (in-app + a drafted email with the ticket details and who else is on it). */
+async function mailCollaborators(ctx, t, addedIds, accessTeamIds) {
+  try {
+    const all = (await prisma.ticketCollaborator.findMany({ where: { ticketId: t.id }, select: { userId: true } })).map((c) => c.userId);
+    const names = await loadNames({ userIds: [t.assigneeId, ...all], teamIds: accessTeamIds });
+    const teamNames = accessTeamIds.map((id) => names.teams[id]).filter(Boolean);
+    await notifyCollaborators({
+      userIds: addedIds, actor: ctx.currentUser, ticket: t, href: ticketUrl(t), teamNames,
+      assigneeName: t.assigneeId ? names.users[t.assigneeId] : null,
+      collaboratorNames: all.map((id) => names.users[id]).filter(Boolean),
+    });
+  } catch (e) { console.error(`[collaborators] could not notify for ${t.key}:`, e.message); } // mail must never break the save
+}
 
 export async function listTickets(ctx, query) {
   const q = query.q ? String(query.q) : '';
@@ -64,6 +94,8 @@ export async function listTickets(ctx, query) {
         _count: { select: { comments: true, tasks: true, attachments: { where: { inline: false } } } },
         // Team names are safe client-facing routing metadata: clients need to see which team owns each request.
         teamAccesses: { include: { team: { select: { id: true, name: true, slug: true } } } },
+        // collaborators are internal staff detail: clients never see them
+        ...(ctx.isInternal ? { collaborators: { select: { userId: true, user: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: 'asc' } } } : {}),
         // the linked work item is internal: clients never see it
         ...(ctx.isInternal ? { tasks: { select: { id: true, status: true, autoCreated: true, assigneeId: true, assignees: { select: { userId: true } } } } } : {}),
       },
@@ -90,7 +122,7 @@ async function createWithUniqueKey(data, slug, client = prisma) {
 }
 
 export async function createTicket(ctx, input) {
-  let { teamIds = [], ...data } = input;
+  let { teamIds = [], collaboratorIds = [], ...data } = input;
   if (!canSeeOrg(ctx, data.organizationId)) throw new AppError('Organization access denied', 403);
   if (!ctx.isInternal && data.visibility === 'INTERNAL') throw new AppError('Only staff can create internal-only tickets', 403);
   // Clients choose the initial owning team; that team's employees pick up the OPEN, unassigned ticket.
@@ -108,6 +140,10 @@ export async function createTicket(ctx, input) {
   const crossTeam = ctx.can('ticket.triage') || ctx.can('ticket.route') || ctx.can('work.cross_team');
   if (!crossTeam && data.assigneeId && data.assigneeId !== ctx.currentUser.id) {
     throw new AppError("You don't have permission to assign tickets to others (ticket.triage).", 403);
+  }
+  if (collaboratorIds.length) {
+    if (!ctx.isInternal) throw new AppError('Only staff can add collaborators.', 403);
+    if (!crossTeam) throw new AppError("You don't have permission to add collaborators (ticket.triage).", 403);
   }
   const ownTeamIds = [...new Set(ctx.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
   if (ctx.isInternal && !ctx.can('ticket.triage')) {
@@ -131,26 +167,35 @@ export async function createTicket(ctx, input) {
     const valid = await prisma.team.findMany({ where: { id: { in: accessTeamIds }, isActive: true, organization: { type: 'INTERNAL' } }, select: { id: true } });
     if (valid.length !== accessTeamIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
   }
+  // Collaborators: people from any of the ticket's teams (several teams at once), next to the single assignee.
+  let collabIds = [];
+  if (collaboratorIds.length) {
+    await assertAssignees(collaboratorIds);
+    const plan = planCollaborators({ current: [], requested: collaboratorIds, accessIds: accessTeamIds, membersByTeam: await loadTeamMemberIds(accessTeamIds), assigneeId: data.assigneeId || null });
+    if (plan.error) throw new AppError(plan.error.message, plan.error.status, plan.error.code);
+    collabIds = plan.ids;
+  }
   const org = await prisma.organization.findUnique({ where: { id: data.organizationId } });
   const t = await prisma.$transaction(async (tx) => {
     const created = await createWithUniqueKey({ ...data, requesterId: ctx.currentUser.id }, org.slug, tx);
     const ids = [...new Set([...(data.teamId ? [data.teamId] : []), ...teamIds])];
     if (ids.length) await tx.ticketTeamAccess.createMany({ data: ids.map((teamId) => ({ ticketId: created.id, teamId, accessRole: teamId === data.teamId ? 'OWNER' : 'PARTICIPANT', addedById: ctx.currentUser.id })), skipDuplicates: true });
+    if (collabIds.length) await tx.ticketCollaborator.createMany({ data: collabIds.map((userId) => ({ ticketId: created.id, userId, addedById: ctx.currentUser.id })), skipDuplicates: true });
     return created;
   });
   await ticketLog(ctx, t, 'created', `Created ticket ${t.key}: ${t.title}`);
   {
     const base = { title: t.title, description: t.description, status: t.status, priority: t.priority, dueDate: t.dueDate, visibility: t.visibility, projectId: t.projectId, teamId: null, assigneeId: null };
-    const names = await loadNames({ userIds: [t.assigneeId], teamIds: accessTeamIds });
+    const names = await loadNames({ userIds: [t.assigneeId, ...collabIds], teamIds: accessTeamIds });
     await recordTicketEvents(prisma, t.id, ctx.currentUser.id, [
       { type: 'CREATED', note: t.key, clientVisible: true },
-      ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS'].includes(e.type)),
+      ...diffTicketEvents({ old: base, updated: t, oldTeamIds: [], newTeamIds: accessTeamIds, newCollaboratorIds: collabIds, names }).filter((e) => ['TEAM', 'ASSIGNEE', 'TEAM_ACCESS', 'COLLABORATOR'].includes(e.type)),
     ]);
   }
-  // Staff who route a ticket to another team notify the destination team's employees.
-  if (ctx.isInternal && accessTeamIds.some((id) => !ownTeamIds.includes(id))) {
-    const destinationTeam = await findTeamManagers(accessTeamIds.filter((id) => !ownTeamIds.includes(id)));
-    await notifyPeople({ userIds: destinationTeam.map((u) => u.id), actorId: ctx.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${ctx.currentUser.name || ctx.currentUser.email} sent a ticket to your team: "${t.title}" (${t.key}, priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nAnyone on the team can pick it up - open it and assign it to yourself to start.`, href: ticketUrl(t) });
+  // Every team picked for the ticket (your own team and other teams alike) is emailed; the assignee gets their own assignment mail.
+  if (ctx.isInternal && accessTeamIds.length) {
+    const destinationTeam = await findTeamManagers(accessTeamIds);
+    await notifyPeople({ userIds: destinationTeam.map((u) => u.id).filter((id) => id !== t.assigneeId && !collabIds.includes(id)), actorId: ctx.currentUser.id, type: 'ASSIGNMENT', title: `${t.key} was sent to your team`, body: `${ctx.currentUser.name || ctx.currentUser.email} sent a ticket to your team: "${t.title}" (${t.key}, priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nAnyone on the team can pick it up - open it and assign it to yourself to start.`, href: ticketUrl(t) });
   }
   // A client request stays OPEN and unassigned until an employee of its chosen team picks it up.
   if (!ctx.isInternal) {
@@ -168,12 +213,16 @@ export async function createTicket(ctx, input) {
     }
     await notifyAssignment({ userId: t.assigneeId, actor: ctx.currentUser, title: `${t.key} — ${t.title}`, kind: 'ticket', href: ticketUrl(t) });
   }
+  if (collabIds.length) {
+    if (task) { try { await syncCollaboratorsToTask(prisma, t.id); } catch (e) { console.error(`[ticket→task] could not add collaborators to the task of ${t.key}:`, e.message); } }
+    await mailCollaborators(ctx, t, collabIds, accessTeamIds);
+  }
   return { ...t, task: task && { id: task.id, status: task.status } };
 }
 
 export async function patchTicket(ctx, id, input) {
   const old = await loadVisibleTicket(ctx, id);
-  const { teamIds, ...data } = input;
+  const { teamIds, collaboratorIds, ...data } = input;
   const scope = ticketEditScope(ctx, old);
   const forbidden = Object.keys(data).filter((k) => !TICKET_FIELDS[scope].includes(k));
   if (scope === 'none' || forbidden.length) {
@@ -198,6 +247,7 @@ export async function patchTicket(ctx, id, input) {
   const existingParticipants = (old.teamAccesses || []).filter((a) => a.teamId !== old.teamId).map((a) => a.teamId);
   const nextAccessIds = accessTeamIdsFor(nextOwnerTeamId, teamIds !== undefined ? teamIds : existingParticipants);
   if (teamIds && !ctx.can('ticket.triage') && !ctx.can('ticket.route')) throw new AppError('Only team members routing this ticket or an admin can change participating teams.', 403);
+  if (collaboratorIds !== undefined && scope !== 'full') throw new AppError('Only team members routing this ticket or an admin can change its collaborators.', 403);
   if (nextAccessIds.length) {
     const valid = await prisma.team.findMany({ where: { id: { in: nextAccessIds }, organization: { type: 'INTERNAL' } }, select: { id: true } });
     if (valid.length !== nextAccessIds.length) throw new AppError('One or more participating teams are invalid.', 400, 'INVALID_TEAM');
@@ -210,6 +260,17 @@ export async function patchTicket(ctx, id, input) {
     if (plan.error) throw new AppError(plan.error.message, plan.error.status, plan.error.code);
     if (plan.assigneeId !== undefined) data.assigneeId = plan.assigneeId;
     autoUnassigned = plan.autoUnassigned;
+  }
+  // Collaborators: several people from any of the ticket's teams. Re-checked whenever teams, assignee or the list itself change.
+  const currentCollabIds = (old.collaborators || []).map((c) => c.userId);
+  let collabPlan = null;
+  if (ctx.isInternal && (collaboratorIds !== undefined || routingTouched || data.assigneeId !== undefined) && (currentCollabIds.length || collaboratorIds?.length)) {
+    if (collaboratorIds?.length) await assertAssignees(collaboratorIds);
+    collabPlan = planCollaborators({
+      current: currentCollabIds, requested: collaboratorIds, accessIds: nextAccessIds, routingTouched,
+      membersByTeam: await loadTeamMemberIds(nextAccessIds), assigneeId: data.assigneeId !== undefined ? data.assigneeId : old.assigneeId,
+    });
+    if (collabPlan.error) throw new AppError(collabPlan.error.message, collabPlan.error.status, collabPlan.error.code);
   }
 
   // Keep the lifecycle timestamp authoritative for analytics. Client approval closes
@@ -233,7 +294,12 @@ export async function patchTicket(ctx, id, input) {
         });
       }
     }
+    if (collabPlan && (collabPlan.added.length || collabPlan.removed.length)) {
+      if (collabPlan.removed.length) await tx.ticketCollaborator.deleteMany({ where: { ticketId: old.id, userId: { in: collabPlan.removed } } });
+      if (collabPlan.added.length) await tx.ticketCollaborator.createMany({ data: collabPlan.added.map((userId) => ({ ticketId: old.id, userId, addedById: ctx.currentUser.id })), skipDuplicates: true });
+    }
     await syncTaskFromTicket(tx, updated, { prevAssigneeId: old.assigneeId, changed: [...Object.keys(data), ...(teamIds ? ['teamIds'] : [])], actor: ctx.currentUser });
+    if (collabPlan) await syncCollaboratorsToTask(tx, old.id, { removed: collabPlan.removed, keepUserId: updated.assigneeId }); // collaborators share the ticket's task with the assignee
     return updated;
   });
   if (t.assigneeId && t.assigneeId !== old.assigneeId) {
@@ -242,15 +308,19 @@ export async function patchTicket(ctx, id, input) {
   {
     const oldIds = (old.teamAccesses || []).map((a) => a.teamId);
     const newIds = routingTouched ? nextAccessIds : oldIds;
-    const names = await loadNames({ userIds: [old.assigneeId, t.assigneeId], teamIds: [...oldIds, ...newIds, old.teamId, t.teamId], projectIds: [old.projectId, t.projectId] });
-    const events = diffTicketEvents({ old, updated: t, oldTeamIds: oldIds, newTeamIds: newIds, names });
+    const nextCollabIds = collabPlan ? collabPlan.ids : currentCollabIds;
+    const names = await loadNames({ userIds: [old.assigneeId, t.assigneeId, ...currentCollabIds, ...nextCollabIds], teamIds: [...oldIds, ...newIds, old.teamId, t.teamId], projectIds: [old.projectId, t.projectId] });
+    const events = diffTicketEvents({ old, updated: t, oldTeamIds: oldIds, newTeamIds: newIds, oldCollaboratorIds: currentCollabIds, newCollaboratorIds: nextCollabIds, names });
     if (autoUnassigned) events.forEach((e) => { if (e.type === 'ASSIGNEE') e.note = 'Cleared automatically: not a member of the new team'; });
+    events.forEach((e) => { if (e.type === 'COLLABORATOR' && e.fromValue && collabPlan?.autoRemoved.includes(e.fromValue)) e.note = 'Removed automatically: not a member of the ticket’s team(s) any more'; });
     await recordTicketEvents(prisma, t.id, ctx.currentUser.id, events);
     if (routingTouched) { // teams added to the ticket: every member of the newly added teams is notified by email too
       const addedTeams = [...new Set([t.teamId, ...newIds])].filter((id) => id && !oldIds.includes(id) && id !== old.teamId);
-      await notifyTeams({ teamIds: addedTeams, actorId: ctx.currentUser.id, exclude: [t.assigneeId], title: `${t.key} was sent to your team: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} added your team to ticket ${t.key} ("${t.title}", priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nOpen it to pick it up or assign it to someone on your team.`, href: ticketUrl(t) });
+      await notifyTeams({ teamIds: addedTeams, actorId: ctx.currentUser.id, exclude: [t.assigneeId, ...(collabPlan?.added || [])], title: `${t.key} was sent to your team: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} added your team to ticket ${t.key} ("${t.title}", priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nOpen it to pick it up or assign it to someone on your team.`, href: ticketUrl(t) });
     }
   }
+  if (collabPlan?.added.length) await mailCollaborators(ctx, t, collabPlan.added, nextAccessIds);
+  if (collabPlan?.removed.length) await notifyPeople({ userIds: collabPlan.removed.filter((id) => id !== t.assigneeId), actorId: ctx.currentUser.id, type: 'SYSTEM', title: `You are no longer a collaborator on ${t.key}`, body: `${ctx.currentUser.name || ctx.currentUser.email} removed you as a collaborator on "${t.title}" (${t.key}).`, href: '/tickets', email: false });
   await ticketLog(ctx, t, 'updated', autoUnassigned ? `Updated ticket ${t.key} (team changed, assignee cleared because they are not in the new team)` : `Updated ticket ${t.key}`);
   if (data.status && data.status !== old.status) {
     const requesterReviewing = reqEmp && isRequester && old.status === 'REVIEW_TEST' && ['CLOSED', 'OPEN'].includes(data.status);
@@ -261,10 +331,10 @@ export async function patchTicket(ctx, id, input) {
         body: data.status === 'REVIEW_HELP' ? `The team needs more information to continue on "${t.title}" (${t.key}). Please open the ticket and reply in the comments.` : data.status === 'REVIEW_TEST' ? `The team has finished work on "${t.title}" (${t.key}). Please review it, then approve it to close the ticket or send it back with a comment on what to change.` : `"${t.title}" (${t.key}) is now ${nice(data.status)}.`,
       });
     } else {
-      await notifyTicket(ctx, t, { title: `${t.key}: ${ctx.isInternal ? 'requester' : 'client'} ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${ctx.currentUser.name || ctx.currentUser.email} ${data.status === 'CLOSED' ? 'approved the work on' : 'asked for changes on'} "${t.title}" (${t.key}).${data.status === 'CLOSED' ? ' The ticket is now closed.' : ' Please check the latest comment and continue.'}` });
+      await notifyTicket(ctx, t, { extra: [old.assigneeId], title: `${t.key}: ${ctx.isInternal ? 'requester' : 'client'} ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${ctx.currentUser.name || ctx.currentUser.email} ${data.status === 'CLOSED' ? 'approved the work on' : 'asked for changes on'} "${t.title}" (${t.key}).${data.status === 'CLOSED' ? ' The ticket is now closed.' : ' Please check the latest comment and continue.'}` });
     }
   }
-  return { ...t, autoUnassigned, requesterIsEmployee: reqEmp };
+  return { ...t, autoUnassigned, collaboratorsDropped: collabPlan?.autoRemoved.length || 0, requesterIsEmployee: reqEmp };
 }
 
 // Per-ticket history: who changed what, and when. Clients only get client-visible events (status shown in client wording).
@@ -306,7 +376,7 @@ export async function deleteTicket(ctx, id) {
   ]);
   await Promise.all(files.map((f) => discard(storagePath(f.storageKey))));
   await ticketLog(ctx, t, 'deleted', `Deleted ticket ${t.key}: ${t.title}`);
-  if (t.assigneeId) await notifyPeople({ userIds: [t.assigneeId], actorId: ctx.currentUser.id, type: 'SYSTEM', title: `${t.key} was deleted`, body: `${ctx.currentUser.name || ctx.currentUser.email} deleted it (${t.title}).`, href: '/tickets' });
+  if (t.assigneeId || (t.collaborators || []).length) await notifyPeople({ userIds: [t.assigneeId, ...(t.collaborators || []).map((c) => c.userId)].filter(Boolean), actorId: ctx.currentUser.id, type: 'SYSTEM', title: `${t.key} was deleted`, body: `${ctx.currentUser.name || ctx.currentUser.email} deleted it (${t.title}).`, href: '/tickets' });
   return { detachedTasks: detached };
 }
 
@@ -350,7 +420,7 @@ export async function addTicketComment(ctx, id, input) {
   {
     const internalNote = data.visibility === 'INTERNAL';
     const earlier = await prisma.comment.findMany({ where: { ticketId: t.id, ...(internalNote ? {} : { visibility: { not: 'INTERNAL' } }) }, select: { authorId: true }, distinct: ['authorId'] });
-    let ids = [t.assigneeId, t.requesterId, ...earlier.map((e) => e.authorId)].filter(Boolean);
+    let ids = [t.assigneeId, t.requesterId, ...(t.collaborators || []).map((c) => c.userId), ...earlier.map((e) => e.authorId)].filter(Boolean);
     if (!t.assigneeId) { // nobody owns it yet: the team's people (or admins) hear about it
       const teamIds = [t.teamId, ...(t.teamAccesses || []).map((a) => a.teamId)].filter(Boolean);
       ids.push(...(teamIds.length ? await findTeamManagers(teamIds) : await findTriagers()).map((u) => u.id));

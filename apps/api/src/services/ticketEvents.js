@@ -11,7 +11,7 @@ const dateKey = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
  * Events for a ticket update.
  * names: { users: {id: name}, teams: {id: name}, projects: {id: name} }
  */
-export function diffTicketEvents({ old, updated, oldTeamIds = [], newTeamIds = [], names = {} }) {
+export function diffTicketEvents({ old, updated, oldTeamIds = [], newTeamIds = [], oldCollaboratorIds = [], newCollaboratorIds = [], names = {} }) {
   const out = [];
   const user = (id) => (id ? names.users?.[id] || 'Unknown user' : null);
   const team = (id) => (id ? names.teams?.[id] || 'Unknown team' : null);
@@ -35,6 +35,9 @@ export function diffTicketEvents({ old, updated, oldTeamIds = [], newTeamIds = [
   const after = new Set(newTeamIds.filter((id) => !ownerIds.has(id)));
   for (const id of after) if (!before.has(id)) add('TEAM_ACCESS', null, id, { toLabel: team(id) });
   for (const id of before) if (!after.has(id)) add('TEAM_ACCESS', id, null, { fromLabel: team(id) });
+  // Collaborators (internal detail: never shown to clients).
+  for (const id of newCollaboratorIds) if (!oldCollaboratorIds.includes(id)) add('COLLABORATOR', null, id, { toLabel: user(id) });
+  for (const id of oldCollaboratorIds) if (!newCollaboratorIds.includes(id)) add('COLLABORATOR', id, null, { fromLabel: user(id) });
   return out;
 }
 

@@ -35,6 +35,29 @@ export function sendAssignmentEmail({ to, assigneeName, itemTitle, itemType, hre
   });
 }
 
+/** Someone was added as a collaborator on a ticket (alongside its assignee, possibly from another team). */
+export function sendCollaboratorEmail({ to, name, actorName, ticket, assigneeName, teamNames = [], collaboratorNames = [], href }) {
+  const url = `${webBase()}${href || ''}`;
+  const who = actorName || 'A teammate';
+  const due = ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'No due date';
+  const priority = String(ticket.priority || 'MEDIUM').toLowerCase();
+  const rows = [
+    ['Ticket', `${ticket.key} — ${ticket.title}`],
+    ['Priority', priority.charAt(0).toUpperCase() + priority.slice(1)],
+    ['Due', due],
+    ['Team', teamNames.length ? teamNames.join(' + ') : 'Not routed yet'],
+    ['Assignee', assigneeName || 'Unassigned'],
+    ...(collaboratorNames.length ? [['Also collaborating', collaboratorNames.join(', ')]] : []),
+  ];
+  const note = 'As a collaborator you can open the ticket, comment and update its status alongside the assignee. You will be notified about new comments and status changes.';
+  return sendMail({
+    to,
+    subject: `[Tendrils] You were added as a collaborator on ${ticket.key}: ${ticket.title}`,
+    text: `Hi ${name || 'there'},\n\n${who} added you as a collaborator on ticket ${ticket.key}.\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${note}\n\nOpen the ticket: ${url}\n\n— Tendrils Operations`,
+    html: wrap(`<h3 style="margin:0 0 8px">You were added as a collaborator</h3><p>Hi ${esc(name || 'there')},</p><p><b>${esc(who)}</b> added you as a collaborator on <b>${esc(ticket.key)}</b>.</p><table style="border-collapse:collapse;margin:8px 0">${rows.map(([k, v]) => `<tr><td style="padding:3px 14px 3px 0;color:#666;vertical-align:top">${esc(k)}</td><td style="padding:3px 0"><b>${esc(v)}</b></td></tr>`).join('')}</table><p style="color:#555">${esc(note)}</p>${btn(url, 'Open ticket')}`),
+  });
+}
+
 export function sendDailyUpdateEmail({ to, userName, date, yesterday, today, blockers }) {
   const blk = blockers?.trim() || 'None';
   return sendMail({
