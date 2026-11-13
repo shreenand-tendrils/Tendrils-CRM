@@ -8,6 +8,7 @@ import { assigneeGroups, isInTeams, sameIds, peopleOfTeams } from "../../lib/tea
 import PeoplePicker from "../ui/PeoplePicker";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 import TicketHistory from "./TicketHistory";
+import TicketRoute from "./TicketRoute";
 import TicketReminder from "./TicketReminder";
 import Window from "../ui/Window";
 import PasteTextarea from "../ui/PasteTextarea";
@@ -269,7 +270,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
       {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
 
-      {tab === "history" && <Panel2 title="Full history" sub="Every change, newest first"><TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={rk} filterable={staff} /></Panel2>}
+      {tab === "history" && <Panel2 title="Route & history" sub="Follow the ticket from the day it was raised: who held it, which team, and every change on the way"><TicketRoute ticketId={ticket.id} showRoles={staff} refreshKey={rk} /></Panel2>}
     </Window>
   );
 }
