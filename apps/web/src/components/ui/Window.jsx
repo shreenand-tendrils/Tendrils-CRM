@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import "../../styles/window.css";
-import "../../styles/ticket-window.css";
 
 // Floating window (same look as the "Create" forms): centered, dimmed backdrop, main area + side panel.
 export default function Window({ label, head, headRight, side, onClose, children }) {

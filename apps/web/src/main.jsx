@@ -8,5 +8,6 @@ import './styles.css';
 import './styles/mobile.css';
 import './styles/polish.css';
 import './styles/consistency.css';
+import './styles/ticket-window.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);

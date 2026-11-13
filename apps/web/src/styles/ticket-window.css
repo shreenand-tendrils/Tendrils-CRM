@@ -118,3 +118,86 @@
 .win .win-main > * { flex-shrink: 0; }
 .win-head .copy-link { gap: 7px; padding: 0 14px; border: 1px solid #e0e3f2; border-radius: 12px; background: #fff; font-weight: 600; font-size: 14px; }
 .win .win-side > * { flex-shrink: 0; }
+
+/* ======================= colour: soft tints instead of plain white ======================= */
+.win .win-head { background: linear-gradient(180deg, #f6f4ff, #fbfbff); border-bottom-color: #e2e0f7; }
+.win .win-main { background: #f1f3fb; }
+.win .win-side { background: #e8ecf9; border-left-color: #d9dff3; }
+.win .tw-title { color: #161b33; }
+.tw-meta { color: #4d5877; }
+.tw-tabs { background: #f1f3fb; border-bottom-color: #d9dff3; }
+.tw-tab:hover { background: #e7eaf8; }
+.tw-count { background: #dde2f5; color: #3f4a6b; }
+.tw-tab.on .tw-count { background: #5746e8; color: #fff; }
+.tw-count.alert { background: #ffd978; color: #6b4600; }
+
+.tw-journey { border-color: #d6dcf2; box-shadow: 0 1px 3px rgba(40, 50, 110, .06); }
+.tw-track { background: linear-gradient(90deg, #ece8ff, #e4ecff); border-bottom-color: #d6dcf2; }
+.tw-step { background: #fff; }
+.tw-facts { background: #fff; }
+.tw-fact { border-color: #e6e9f6; }
+.tw-fact:nth-child(odd) { background: #fbfbff; }
+.tw-hold { border-bottom-color: #f0d9a6; }
+
+.tw-panel { padding: 0; gap: 0; border-color: #d6dcf2; box-shadow: 0 1px 3px rgba(40, 50, 110, .06); overflow: hidden; }
+.tw-panel-head { padding: 12px 18px; background: #f4f5ff; border-bottom: 1px solid #e2e6f6; }
+.tw-panel > :not(.tw-panel-head) { margin: 14px 18px 0; }
+.tw-panel > :not(.tw-panel-head):last-child { margin-bottom: 16px; }
+.tw-panel-head h3 { color: #2b2f6b; }
+
+.tw-card { border-color: #d3daf1; box-shadow: 0 1px 3px rgba(40, 50, 110, .06); }
+.tw-card-head { background: #f4f5ff; border-bottom-color: #e2e6f6; }
+.tw-card-head h4 { color: #3b3f8f; }
+.tw-card-head h4 svg { color: #5746e8; }
+.tw-chip { background: #e8ebfa; color: #2a3260; }
+.tw-chip.owner { background: #e2deff; color: #3c2fc2; }
+.tw-note { background: #fff1d1; }
+.win .win-side .rem-mini { background: transparent; }
+
+.win .comment { background: #fff; border-color: #dbe0f3; box-shadow: 0 1px 2px rgba(40, 50, 110, .05); }
+.win .comment.own { background: #efecff; border-color: #cfc8ff; }
+.win .comment.internal { background: #fff6dc; border-color: #f0d995; }
+
+/* ======================= comments & files tab ======================= */
+.win .disc { display: grid; gap: 12px; }
+.disc-switch { justify-self: start; background: #dfe4f6; }
+.disc-switch button em { font-style: normal; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, .7); font-size: 12px; font-weight: 700; color: #3f4a6b; }
+.disc-switch button.on em { background: #5746e8; color: #fff; }
+
+/* composer: compact, sits ABOVE the comments, never overlaps them */
+.win .composer { position: static; box-shadow: 0 1px 3px rgba(40, 50, 110, .07); border: 1px solid #c9d0ee; border-radius: 16px; background: #fff; padding: 10px; gap: 8px; }
+.win .composer:focus-within { border-color: #5746e8; box-shadow: 0 0 0 3px rgba(87, 70, 232, .14); }
+.win .composer textarea { min-height: 64px; max-height: 220px; border: 0; background: #f7f8fe; border-radius: 12px; padding: 10px 12px; box-shadow: none; resize: vertical; }
+.win .composer textarea:focus { outline: none; background: #fff; }
+.win .composer.over { background: #f0edff; border-color: #5746e8; }
+.win .composer-bar { flex-wrap: nowrap; gap: 8px; }
+.win .composer-bar .btn-soft { flex: none; min-height: 36px; }
+.win .composer-bar select { flex: 0 1 170px; min-height: 36px; font-size: 13.5px; }
+.win .composer-hint { flex: 1 1 auto; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win .composer-bar .primary { flex: none; min-height: 36px; padding: 0 16px; }
+
+.disc-thread { display: grid; gap: 10px; }
+.disc-sort { color: #6b7287; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; }
+.disc-empty { margin: 0; padding: 18px; text-align: center; color: #6b7287; font-size: 14px; border: 1px dashed #c9d0ee; border-radius: 14px; background: #f8f9ff; }
+.win .comment-head { margin-bottom: 8px; }
+.win .comment-head b { font-size: 14.5px; }
+
+/* files */
+.win .disc-files { display: grid; gap: 16px; border: 0; background: none; border-radius: 0; overflow: visible; }
+.disc-drop { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 2px dashed #b8c1ea; border-radius: 16px; background: #f6f5ff; color: #4636d6; cursor: pointer; transition: background .12s, border-color .12s; }
+.disc-drop:hover, .disc-drop.over { background: #ebe8ff; border-color: #5746e8; }
+.disc-drop span { display: grid; gap: 2px; }
+.disc-drop b { color: #2b2f6b; font-size: 15px; }
+.disc-drop small { color: #566079; font-size: 13px; }
+.win .disc-group { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid #d6dcf2; border-radius: 16px; background: #fff; box-shadow: 0 1px 3px rgba(40, 50, 110, .05); }
+.win .disc-group h5 { margin: 0 0 2px; display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: #3b3f8f; }
+.win .disc-group h5 em { font-style: normal; padding: 0 8px; border-radius: 999px; background: #e2deff; color: #3c2fc2; font-size: 12px; }
+.win .disc-group .file-row { margin: 0; padding: 9px 12px; background: #fafbff; border-color: #e2e6f6; }
+.win .disc-group .disc-empty { padding: 12px; }
+
+@media (max-width: 720px) {
+  .win .composer-bar { flex-wrap: wrap; }
+  .win .composer-bar select { flex: 1 1 140px; }
+  .win .composer-hint { display: none; }
+  .win .composer-bar .primary { margin-left: auto; }
+}

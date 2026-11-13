@@ -1,5 +1,3 @@
-import "../../styles/ticket-window.css";
-
 /** Underline tab bar used by the ticket and task windows. tabs: [{ id, label, count?, alert?, hidden? }] */
 export function WinTabs({ tabs, value, onChange, label = "Sections" }) {
   return (
