@@ -1,0 +1,108 @@
+import { useEffect, useState } from "react";
+import { ticketTeamLabel } from "../../lib/teams";
+import { api } from "../../api";
+import { StatusBadge } from "../ui/StatusBadge";
+import { describeEvent, actorLabel } from "../../lib/ticketHistory";
+import { buildTree, mergeTimeline, taskPeople, taskTeams } from "../../lib/workThread";
+import "../../styles/thread.css";
+import { fmtDate, fmtDateTime } from "../../lib/dates";
+
+const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", COLLABORATOR: "assign", STATUS: "status", TASK_REVIEW: "status" };
+
+function TaskNode({ node, focusTaskId, onOpenTask }) {
+  const t = node.task;
+  const { owner, shared } = taskTeams(t);
+  const people = taskPeople(t);
+  const focus = t.id === focusTaskId;
+  const body = (
+    <>
+      <span className="thread-title">{t.title} <StatusBadge value={t.status} />{focus && <span className="here">You are here</span>}</span>
+      <small>
+        {t.parentId ? "Subtask" : "Task"}
+        {owner ? ` · ${owner}${shared.length ? ` +${shared.join(", ")}` : ""}` : ""}
+        {` · ${people.length ? people.join(", ") : "Unassigned"}`}
+      </small>
+    </>
+  );
+  return (
+    <div className="task-node">
+      {onOpenTask && !focus
+        ? <button type="button" className="thread-card" onClick={() => onOpenTask(t)} aria-label={`Open task ${t.title}`}>{body}</button>
+        : <div className={"thread-card" + (focus ? " focus" : "")}>{body}</div>}
+      {node.children.length > 0 && (
+        <div className="thread-branch">
+          {node.children.map((c) => <div className="thread-item" key={c.task.id}><TaskNode node={c} focusTaskId={focusTaskId} onOpenTask={onOpenTask} /></div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A git-graph style route: where the work came from, which teams it passed through, who holds it, and the tasks branching off it.
+// Click a task to open it; click the ticket (from a task) to jump back to the ticket.
+export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey, hideEvents = false, bare = false }) {
+  const [events, setEvents] = useState([]);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    if (!ticketId || hideEvents) { setEvents([]); return undefined; } // the History section already lists every event
+    let live = true;
+    api.get(`/tickets/${ticketId}/history`).then((r) => { if (live) setEvents(r.data || []); }).catch(() => { if (live) setEvents([]); });
+    return () => { live = false; };
+  }, [ticketId, refreshKey, hideEvents]);
+
+  const tree = buildTree(tasks.filter((t) => !t.autoCreated)); // the ticket's auto record is plumbing, not work
+  const timeline = mergeTimeline(events, tree);
+  const LIMIT = 8; // long histories stay compact: the latest steps show first, older ones open on demand
+  const visible = showAll ? timeline : timeline.slice(-LIMIT);
+  const hidden = timeline.length - visible.length;
+  const work = tasks.filter((t) => !t.autoCreated);
+  const doneCount = work.filter((t) => t.status === "DONE").length;
+  const who = (u) => u && (u.name || u.email);
+  const rootBody = ticket && (
+    <>
+      <span className="thread-title">{ticket.key} · {ticket.title} {ticket.status && <StatusBadge value={ticket.status} />}{currentTicket && <span className="here">You are here</span>}</span>
+      <small>{[ticket.organization?.name, ticket.createdAt && fmtDate(ticket.createdAt)].filter(Boolean).join(" · ") || "Client request"}</small>
+    </>
+  );
+
+  return (
+    <div className="thread" aria-label="Work route">
+      {ticket && !bare && (
+        <div className="thread-summary">
+          <div><small>Collaborators</small><b>{(ticket.collaborators || []).map((c) => who(c.user)).filter(Boolean).join(", ") || "None"}</b></div>
+          <div><small>Team</small><b>{ticketTeamLabel(ticket) || "Not routed"}</b></div>
+          <div><small>Assignee</small><b>{who(ticket.assignee) || "Unassigned"}</b></div>
+          <div><small>Tasks</small><b>{work.length ? `${doneCount} of ${work.length} done` : "None yet"}</b></div>
+        </div>
+      )}
+      <div className="thread-legend" hidden={bare}>
+        <span><i style={{ background: "#5746e8" }} />Ticket</span><span><i style={{ background: "#0f9d8a" }} />Team</span>
+        <span><i style={{ background: "#e8872f" }} />Assignee</span><span><i style={{ background: "#e8462f", borderRadius: 3 }} />Task</span>
+      </div>
+      {ticket && (
+        <div className="thread-item">
+          <span className="thread-dot root" aria-hidden="true" />
+          {onOpenTicket && !currentTicket
+            ? <button type="button" className="thread-card" onClick={() => onOpenTicket(ticket)} aria-label={`Open ticket ${ticket.key}`}>{rootBody}</button>
+            : <div className={"thread-card" + (currentTicket ? " focus" : "")}>{rootBody}</div>}
+        </div>
+      )}
+      {hidden > 0 && <button type="button" className="secondary thread-more" onClick={() => setShowAll(true)}>Show {hidden} earlier step{hidden === 1 ? "" : "s"}</button>}
+      {visible.map((item) => item.kind === "event" ? (
+        <div className="thread-item" key={item.event.id}>
+          <span className={`thread-dot ${DOT[item.event.type] || ""}`} aria-hidden="true" />
+          <p className="thread-text"><b>{actorLabel(item.event, true)}</b> {describeEvent(item.event)}</p>
+          <small>{fmtDateTime(item.event.createdAt)}</small>
+        </div>
+      ) : (
+        <div className="thread-item" key={item.node.task.id}>
+          <span className="thread-dot task" aria-hidden="true" />
+          <TaskNode node={item.node} focusTaskId={focusTaskId} onOpenTask={onOpenTask} />
+        </div>
+      ))}
+      {showAll && timeline.length > LIMIT && <button type="button" className="secondary thread-more" onClick={() => setShowAll(false)}>Show fewer</button>}
+      {!timeline.length && !ticket && <p className="hint">Nothing to show yet.</p>}
+      {ticket && !bare && !tasks.filter((t) => !t.autoCreated).length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
+    </div>
+  );
+}

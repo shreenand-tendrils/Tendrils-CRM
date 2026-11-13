@@ -1,0 +1,5 @@
+.status.s-open { background: #e7f0ff; color: #2456c9; }
+.status.s-review-test { background: #efe9ff; color: #5b3fd0; }
+.status.s-review-help { background: #fff1d6; color: #a05a00; }
+.status.s-closed { background: #e8ebf2; color: #4a5368; }
+.status .prog { font-weight: 500; opacity: .85; }

@@ -1,0 +1,37 @@
+/* Consistency layer (4.9.23). Loaded LAST so there is exactly one look for each shared control.
+   Replaces three competing .seg definitions, the .tabs/.seg mix, .metric vs .kpi cards and the
+   .secondary vs .btn-soft button sizes. Behaviour of every control is unchanged. */
+
+/* ---- segmented control: one style for `.seg button` and `.seg-btn` ---- */
+.seg { display: inline-flex; gap: 4px; padding: 4px; background: #f1f2f9; border: 0; border-radius: 13px; max-width: 100%; overflow-x: auto; scrollbar-width: none; width: auto; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button, .seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 15px; border: 0; border-radius: 10px; background: transparent; color: #566079; font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background .12s, color .12s; }
+.seg button:hover, .seg-btn:hover { background: transparent; color: #2c3350; }
+.seg button.on, .seg-btn.on { background: #fff; color: #4636d6; box-shadow: 0 1px 3px rgba(30, 36, 80, .14); }
+.seg button:focus-visible, .seg-btn:focus-visible { outline: 3px solid rgba(87, 70, 232, .28); outline-offset: 1px; }
+
+/* ---- buttons: .secondary and .btn-soft share size, radius and hover ---- */
+.primary, .secondary, .btn-soft:not(.sm):not(.icon) { min-height: 40px; border-radius: 12px; font-size: 14px; }
+.btn-soft:not(.sm):not(.icon) { padding: 0 16px; }
+.secondary:hover:not(:disabled) { background: #f4f3ff; border-color: #b9b1ff; color: #4636d6; }
+
+/* ---- stat cards: .metric (old admin cards) now looks like .kpi ---- */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; }
+.metric { border-radius: 16px; border-color: #e6e9f4; padding: 15px 16px; box-shadow: none; }
+.metric strong { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+button.kpi { font: inherit; text-align: left; cursor: pointer; }
+
+/* ---- loading + toolbars + tables ---- */
+.loading-line { display: flex; align-items: center; gap: 9px; padding: 18px 4px; color: #6b7287; font-size: 14px; }
+.page-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.page-tools .grow { flex: 1; min-width: 0; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.table-wrap { width: 100%; overflow-x: auto; }
+.data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table td.overdue { color: #c2304f; font-weight: 700; }
+
+@media (max-width: 720px) {
+  .seg { width: 100%; }
+  .seg button, .seg-btn { flex: 1; padding: 0 10px; }
+  .page-tools > * { width: 100%; }
+}

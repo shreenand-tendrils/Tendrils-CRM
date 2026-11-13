@@ -1,0 +1,124 @@
+/* Ticket window redesign. Everything is scoped to `.win.tv`, so tasks, forms and other windows are untouched.
+   Reading order: what it is (title, state) -> where it is (progress + route) -> what was said (comments / timeline).
+   The side panel is for changing things: status, people, tasks. */
+
+.win.tv { width: min(1240px, 100%); background: var(--color-page); border-radius: 20px; }
+
+/* ---- header: key on the left, actions on the right ---- */
+.win.tv .win-head { padding: 10px 14px 10px 20px; gap: 10px; flex-wrap: nowrap; background: #fff; border-bottom: 1px solid var(--color-line); }
+.win.tv .tv-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.win.tv .tv-head-actions .copy-link.with-label,
+.win.tv .tv-head-actions .tv-edit { height: 36px; min-height: 36px; padding: 0 12px; border-radius: 10px; font-size: 13.5px; }
+.win.tv .win-head .win-close { margin-left: 0; width: 36px; height: 36px; color: var(--color-muted); }
+
+/* ---- layout ---- */
+.win.tv .win-grid { grid-template-columns: minmax(0, 1fr) 372px; }
+.win.tv .win-main { background: #fff; padding: 24px 32px 32px; gap: 20px; }
+.win.tv .win-side { background: var(--color-page); padding: 16px; gap: 12px; border-left: 1px solid var(--color-line); }
+
+/* ---- title block ---- */
+.tv-top { display: grid; gap: 12px; }
+.win.tv .tv-title { margin: 0; font-family: var(--font-display); font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -.015em; color: var(--color-ink); overflow-wrap: anywhere; }
+.tv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tv-due { display: inline-flex; align-items: center; min-height: 26px; padding: 0 11px; border-radius: 999px; background: #eef0f7; color: var(--color-muted); font-size: 12.5px; font-weight: 600; }
+.tv-due.late { background: var(--color-bad-soft); color: var(--color-bad); }
+.tv-meta { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--color-muted); font-size: 13.5px; }
+.tv-meta > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.tv-meta b { color: var(--color-ink); font-weight: 600; }
+.tv-meta .who { display: inline-flex; align-items: center; gap: 6px; }
+.tv-meta .avatar { width: 22px; height: 22px; font-size: 10px; }
+
+/* ---- progress: three stages, current one named ---- */
+.tv-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tv-step { display: grid; gap: 1px; align-content: start; padding-top: 12px; position: relative; color: var(--color-subtle); font-size: 13px; }
+.tv-step::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 5px; border-radius: 99px; background: #e6e8f2; }
+.tv-step.done::before { background: #9d94f7; }
+.tv-step.now::before { background: var(--color-brand); }
+.tv-step.now.help::before { background: #e8a020; }
+.tv-step b { font-weight: 600; }
+.tv-step.done { color: var(--color-muted); }
+.tv-step.now { color: var(--color-ink); }
+.tv-step.now b { font-weight: 700; }
+.tv-step small { color: var(--color-muted); font-size: 12px; }
+
+/* ---- route: who holds it right now (a missing step is flagged in amber) ---- */
+.tv-route { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--color-line); border-radius: 14px; background: #fafbfe; }
+.tv-node { position: relative; padding: 12px 16px 12px 22px; min-width: 0; display: grid; gap: 2px; align-content: start; }
+.tv-node + .tv-node { border-left: 1px solid var(--color-line); }
+.tv-node + .tv-node::before { content: ""; position: absolute; left: -6px; top: 50%; width: 10px; height: 10px; background: #fafbfe; border-top: 1px solid var(--color-line-strong); border-right: 1px solid var(--color-line-strong); transform: translateY(-50%) rotate(45deg); }
+.tv-node small { color: var(--color-muted); font-size: 12px; }
+.tv-node b { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; color: var(--color-ink); }
+.tv-node em { font-style: normal; font-size: 12px; color: var(--color-muted); overflow-wrap: anywhere; }
+.tv-node.todo b { color: var(--color-warn); }
+
+/* ---- description ---- */
+.tv-desc { display: grid; gap: 10px; justify-items: start; font-size: 15px; line-height: 1.6; max-width: 78ch; }
+.tv-desc > * { max-width: 100%; }
+.tv-empty { margin: 0; color: var(--color-subtle); }
+.tv-attach { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px dashed var(--color-line-strong); border-radius: 999px; background: transparent; color: var(--color-muted); font: inherit; font-size: 13px; font-weight: 600; }
+.tv-attach:hover { border-color: var(--color-brand); color: var(--color-brand); background: var(--color-brand-soft); }
+.tv-edit-form { max-width: 78ch; }
+
+/* ---- tabs ---- */
+.tv-tabs { position: sticky; top: -24px; z-index: 3; display: flex; gap: 2px; margin: 4px -32px 0; padding: 0 32px; background: #fff; border-bottom: 1px solid var(--color-line); overflow-x: auto; scrollbar-width: none; }
+.tv-tabs::-webkit-scrollbar { display: none; }
+.tv-tab { flex: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px; padding: 13px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--color-muted); font: inherit; font-size: 14.5px; font-weight: 600; white-space: nowrap; }
+.tv-tab:hover { color: var(--color-ink); }
+.tv-tab[aria-selected="true"] { color: var(--color-brand); border-bottom-color: var(--color-brand); }
+.tv-tab i { font-style: normal; min-width: 20px; padding: 1px 7px; border-radius: 999px; background: #eceef6; color: var(--color-muted); font-size: 12px; text-align: center; }
+.tv-tab[aria-selected="true"] i { background: var(--color-brand-soft); color: var(--color-brand); }
+.tv-tab .tv-files { display: inline-flex; align-items: center; gap: 3px; color: var(--color-subtle); font-size: 12px; font-weight: 600; }
+
+/* ---- conversation + timeline (existing components, calmer) ---- */
+.win.tv .comment { background: #fff; border: 1px solid var(--color-line); border-radius: 14px; padding: 12px 16px; }
+.win.tv .comment.own { background: #f8f7ff; border-color: #dcd7ff; }
+.win.tv .comment.internal { background: #fff9ea; border-color: #f2e0b0; }
+.win.tv .activity { gap: 24px; }
+.win.tv .act-sec { border: 0; padding: 0; background: none; }
+.win.tv .act-h { margin: 0 0 12px; font-family: var(--font-display); font-size: 15px; letter-spacing: 0; text-transform: none; color: var(--color-ink); font-weight: 700; }
+.win.tv .history { gap: 0; }
+.win.tv .history-day { margin: 14px 0 8px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--color-muted); }
+.win.tv .history-item { padding: 0 0 14px 2px; }
+.win.tv .history-item::before { content: ""; position: absolute; left: 6px; top: 16px; bottom: -2px; width: 2px; background: #e6e8f2; }
+.win.tv .history-item:last-child::before { display: none; }
+.win.tv .history-item p { font-size: 14px; }
+
+/* ---- side panel: one calm column of groups ---- */
+.tv-card { display: grid; gap: 0; padding: 14px 16px 12px; background: #fff; border: 1px solid var(--color-line); border-radius: 14px; box-shadow: 0 1px 2px rgba(16, 24, 40, .03); }
+.tv-card > h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 4px; font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--color-ink); }
+.tv-count { font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--color-muted); }
+.tv-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f0f1f7; }
+.tv-row:first-of-type { border-top: 0; }
+.tv-row > label { color: var(--color-muted); font-size: 13px; font-weight: 500; }
+.tv-row > .v { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.tv-row > .v > select, .tv-row > .v > .team-multi { flex: 1 1 100%; width: 100%; min-width: 0; }
+.tv-row > .v > select { min-height: 38px; font-size: 14px; font-weight: 500; }
+.tv-row.stack { grid-template-columns: 1fr; gap: 6px; }
+.tv-row.stack > .v { align-items: stretch; flex-direction: column; font-weight: 500; }
+.tv-late { font-style: normal; font-size: 12px; font-weight: 700; color: var(--color-bad); background: var(--color-bad-soft); padding: 1px 8px; border-radius: 999px; }
+.tv-note { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 6px; font-size: 12.5px; line-height: 1.4; color: var(--color-muted); }
+.tv-note svg { flex: none; margin-top: 2px; }
+.tv-card > .primary, .tv-card > .secondary, .tv-card .v > .primary, .tv-card .v > .secondary { width: 100%; min-height: 36px; margin-top: 6px; font-size: 13.5px; }
+.tv-card .hint { font-size: 12px; }
+.tv-card .progress { margin: 4px 0 10px; }
+.tv-card .linked-rows { max-height: 220px; overflow: auto; margin-bottom: 6px; }
+.tv-card .linked-rows button { padding: 8px 10px; }
+.tv-card .people-picker { max-height: 190px; overflow: auto; }
+.win.tv .win-side .rem-mini { padding: 8px 12px; border-radius: 14px; }
+.tv-delete { justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin: 4px 2px 0; padding: 6px 8px; border: 0; background: none; color: var(--color-muted); font: inherit; font-size: 13px; border-radius: 8px; }
+.tv-delete:hover { color: var(--color-bad); background: var(--color-bad-soft); }
+
+/* ---- tablets and phones ---- */
+@media (max-width: 1100px) { .win.tv .win-grid { grid-template-columns: minmax(0, 1fr) 330px; } .win.tv .win-main { padding: 22px 24px 28px; } .tv-tabs { margin: 4px -24px 0; padding: 0 24px; } }
+@media (max-width: 860px) {
+  .win.tv { border-radius: 20px 20px 0 0; }
+  .win.tv .win-head { padding: 8px 10px 8px 14px; }
+  .win.tv .tv-head-actions .copy-link.with-label span:not(.sr-only) { display: none; }
+  .win.tv .win-main { padding: 18px 16px 22px; }
+  .win.tv .tv-title { font-size: 22px; }
+  .win.tv .win-side { border-left: 0; border-top: 1px solid var(--color-line); padding: 14px 12px 20px; }
+  .tv-node { padding: 10px 10px 10px 16px; }
+  .tv-node b { font-size: 13.5px; }
+  .tv-tabs { top: 0; margin: 4px -16px 0; padding: 0 16px; }
+  .tv-row { grid-template-columns: 84px minmax(0, 1fr); }
+}
