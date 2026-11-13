@@ -19,6 +19,7 @@ import updates from './updates.routes.js';
 import notes from './notes.routes.js';
 import reminders from './reminders.routes.js';
 import admin from './admin.routes.js';
+import reports from './reports.routes.js';
 import members from './members.routes.js';
 import clientPortal from './clientPortal.routes.js';
 import integrations from './integrations.routes.js';
@@ -30,5 +31,5 @@ if (isDevLoginEnabled()) {
   router.use('/dev', dev);
 }
 router.use(requireUser);
-for (const r of [identity, dashboard, workspace, organizations, projects, tickets, tasks, teams, users, notifications, files, documents, chat, updates, notes, reminders, members, clientPortal, integrations, admin, broadcasts]) router.use(r);
+for (const r of [identity, dashboard, workspace, organizations, projects, tickets, tasks, teams, users, notifications, files, documents, chat, updates, notes, reminders, members, clientPortal, integrations, admin, reports, broadcasts]) router.use(r);
 export default router;

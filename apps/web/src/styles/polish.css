@@ -161,3 +161,88 @@
   .rem-body { flex-basis: calc(100% - 50px); }
   .rem-actions { flex-basis: 100%; padding-left: 46px; }
 }
+
+/* ---------- v4.9.22: comments & files, route & history, side panel ---------- */
+.disc { display: flex; flex-direction: column; gap: 14px; }
+.disc-files { border: 1px solid #e6e9f4; border-radius: 14px; background: #fff; overflow: hidden; }
+.disc-files-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 11px 14px; border: 0; background: #fafbff; font: inherit; color: #2c3350; text-align: left; cursor: pointer; }
+.disc-files-head b { font-size: 14px; }
+.disc-counts { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; margin-left: 4px; }
+.disc-counts i { font-style: normal; font-size: 12px; font-weight: 600; color: #4636d6; background: #eef0ff; border-radius: 999px; padding: 1px 9px; }
+.disc-files-head svg.flip { transform: rotate(180deg); }
+.disc-files-body { display: grid; gap: 14px; padding: 12px 14px 14px; border-top: 1px solid #eef0f8; max-height: 340px; overflow: auto; }
+.disc-group h5 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #6b7287; }
+.disc-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.disc-group-head .btn-soft { cursor: pointer; }
+.disc-thread { display: grid; gap: 10px; }
+.file-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 6px; border: 1px solid #e9ecf6; border-radius: 11px; background: #fff; }
+.file-row.compact { padding: 6px 8px; }
+.file-row.busy { opacity: .65; }
+.file-ico { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #efedff; color: #5746e8; }
+.file-meta { flex: 1; min-width: 0; display: grid; }
+.file-meta b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.file-meta small { color: #6b7287; font-size: 12px; }
+.file-err { color: #b3261e; font-style: normal; }
+.cm-files { margin-top: 8px; }
+.cm-del { margin-left: auto; }
+.comment-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 8px; padding: 12px; border: 1px solid #dfe2f2; border-radius: 14px; background: #fff; box-shadow: 0 -8px 18px rgba(30, 36, 80, .06); transition: border-color .12s, background .12s; }
+.composer.over { border-color: #5746e8; background: #f4f3ff; }
+.composer textarea { width: 100%; resize: vertical; }
+.composer-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer-bar .btn-soft { cursor: pointer; }
+.composer-bar select { min-width: 0; flex: 0 1 190px; }
+.composer-hint { flex: 1 1 120px; min-width: 0; }
+
+.activity { display: grid; gap: 16px; }
+.act-sec { border: 1px solid #e6e9f4; border-radius: 14px; padding: 14px; background: #fff; }
+.act-h { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; font-size: 12.5px; letter-spacing: .07em; text-transform: uppercase; color: #566079; }
+
+/* side panel: grouped sections instead of one long column */
+.win-side { display: flex; flex-direction: column; gap: 12px; }
+.side-sec { padding: 12px 14px; border: 1px solid #e6e9f4; border-radius: 14px; background: #fff; }
+.side-sec > h4, .side-det > summary { margin: 0 0 8px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b7287; font-weight: 700; }
+.side-det > summary { margin: 0; cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.side-det > summary::-webkit-details-marker { display: none; }
+.side-det > summary::after { content: "+"; font-size: 16px; line-height: 1; color: #4636d6; }
+.side-det[open] > summary { margin-bottom: 10px; }
+.side-det[open] > summary::after { content: "–"; }
+.win-side .team-block { display: flex; flex-direction: column; gap: 12px; padding: 0; border: 0; background: transparent; }
+.win-side .detail { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #eef0f8; }
+.win-side .side-sec .detail:last-child { border-bottom: 0; }
+.win-side .detail > span { color: #6b7287; font-size: 13px; flex: none; }
+.win-side .detail > b { text-align: right; overflow-wrap: anywhere; font-size: 13.5px; }
+.win-side .detail .table-select { min-width: 0; max-width: 62%; }
+.win-side .hint { font-size: 12px; }
+.side-delete { align-self: flex-start; }
+
+/* flag & remind: one slim bar */
+.rem-mini { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid #e6e9f4; border-radius: 12px; background: #fff; }
+.rem-mini-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rem-mini-bar .hint { margin-left: auto; font-size: 11.5px; }
+.rem-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid #dfe2f2; border-radius: 999px; background: #fff; color: #2c3350; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.rem-chip:hover { border-color: #b9b1ff; }
+.rem-chip.on { background: #fde9e7; border-color: #f0b4ae; color: #b3261e; }
+.rem-chip.open { background: #f4f3ff; border-color: #b9b1ff; color: #4636d6; }
+.rem-mini-form { display: flex; gap: 6px; }
+.rem-mini-form input { flex: 1; min-width: 0; min-height: 34px; font-size: 13px; }
+.rem-mini-line { font-size: 12px; }
+
+/* linked tasks card: smaller */
+.win-side .linked-task { padding: 8px 10px; gap: 8px; }
+.win-side .linked-task > svg { width: 18px; height: 18px; }
+.win-side .linked-task b { font-size: 13.5px; }
+.win-side .linked-task small { font-size: 12px; }
+.win-side .linked-task .primary { min-height: 34px; padding: 0 12px; font-size: 13px; }
+
+@media (max-width: 720px) {
+  .disc-files-body { max-height: 280px; }
+  .composer { padding: 10px; }
+  .composer-bar { display: grid; grid-template-columns: 1fr 1fr; }
+  .composer-bar select { flex: none; width: 100%; }
+  .composer-hint { grid-column: 1 / -1; order: 3; }
+  .composer-bar .primary { grid-column: 1 / -1; }
+  .composer-bar .btn-soft { width: 100%; }
+  .act-sec { padding: 12px; }
+  .win-side .detail .table-select { max-width: 66%; }
+}

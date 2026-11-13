@@ -4,6 +4,7 @@ import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
 import Linkify from "../components/ui/Linkify";
+import { fmtDateWithDay } from "../lib/dates";
 
 const localToday = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in the user's timezone
 const ymd = (v) => String(v).slice(0, 10);
@@ -61,7 +62,7 @@ export default function NotesPage({ notify }) {
         <div className="field"><input aria-label="Search your notes" placeholder="Search your notes" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {notes.map((n) => (
           <div className="note-card" key={n.id}>
-            <b>{new Date(n.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{n.title ? ` — ${n.title}` : ""}</b>
+            <b>{fmtDateWithDay(n.date)}{n.title ? ` — ${n.title}` : ""}</b>
             <p style={{ whiteSpace: "pre-wrap" }}><Linkify text={n.body} /></p>
             <div className="row">
               <button type="button" className="btn-soft sm" onClick={() => setForm({ id: n.id, date: ymd(n.date), title: n.title || "", body: n.body })}><Pencil size={13} /> Edit</button>

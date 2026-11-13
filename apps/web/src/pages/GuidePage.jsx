@@ -49,11 +49,9 @@ const SECTIONS = (me) => [
     body: (<>
       <p>Click a ticket to open its window. The header shows the number, status and priority. Under the title you see who raised it and when, then the description card with a shortcut to its attachments.</p>
       <ul>
-        <li><b>Right panel (always visible):</b> <b>Flag &amp; remind</b> to set a private reminder, <b>Add linked task</b> to branch work off the ticket, then details: created by, client, teams, assignee, priority, due date.</li>
-        <li><b>Comments tab:</b> talk about the ticket. Employees can choose a normal comment (the client sees it) or an <b>Internal note</b> (employees only, shown in amber). Everyone involved gets an email for each comment.</li>
-        <li><b>Route tab:</b> the story of the ticket as a tree: who created it, every status change, assignment, linked task and comment, with a summary strip on top. Older steps fold away under &quot;Show earlier steps&quot;.</li>
-        <li><b>History tab:</b> a plain log of every change.</li>
-        <li><b>Files tab:</b> all attachments. Drag files in or paste screenshots.</li>
+        <li><b>Right panel (always visible):</b> a slim <b>Flag / Remind me</b> bar (private to you), <b>Status</b> (status, progress, priority, due date), <b>Team &amp; routing</b>, <b>People</b> (assignee and collaborators), and the linked <b>Tasks</b>. Delete is at the very bottom.</li>
+        <li><b>Comments &amp; files tab:</b> talk about the ticket and keep its files in one place. The <b>Files</b> box at the top lists the ticket&apos;s own files and, separately, the files people sent inside comments. To comment, type, paste a screenshot, click <b>Attach</b> or drag files in. Employees can choose a normal comment (the client sees it) or an <b>Internal note</b> (employees only, shown in amber).</li>
+        <li><b>Route &amp; history tab (employees):</b> the route (who holds the work, which teams, the tasks branching off) and, below it, the full history of every change with filters for routing, status and comments &amp; files. Clients see a separate History tab.</li>
       </ul>
       <p>You can <b>rename</b> a ticket with the Edit button next to the title if you raised it or work on it. Any link you type in a title, description or comment becomes clickable.</p>
     </>) },
@@ -145,9 +143,19 @@ const SECTIONS = (me) => [
     body: (<>
       <p>Admins can invite people, set roles and team membership, see workload and activity across the team, manage WhatsApp, and message everyone. Revoking a membership removes access immediately. Review the Activity log for a traceable timeline of changes.</p>
     </>) }] : []),
+  ...(can(me, "admin.view") ? [{ id: "reports", title: "Reports (admins)", icon: ShieldCheck, keys: "reports team comparison who opened closed tickets export csv",
+    body: (<>
+      <p>Open <b>Reports</b> in the sidebar (under Admin). Pick a date range at the top right; every number follows it. Dates everywhere are written dd/mm/yy.</p>
+      <ul>
+        <li><b>Overview</b>: opened, closed, close rate, average days to close, open / Review / overdue counts, opened-vs-closed per month, highlights and top-5 lists. Click a count to see those tickets.</li>
+        <li><b>Team comparison</b>: every team side by side (opened, closed, overdue, speed, tickets raised for or received from other teams, tasks). Click a column to sort; the best value is highlighted; click a team to see its tickets.</li>
+        <li><b>People</b>: who raised and who closed the most tickets, plus assigned work, overdue and tasks done. Switch between Staff and Clients.</li>
+        <li><b>Clients</b> and <b>Ticket details</b>: the complete ticket list (client, project, status, team, raised by, assignee, created, due, closed, closed by, days, tasks, comments) with filters. Use the CSV button to download exactly what you see.</li>
+      </ul>
+    </>) }] : []),
   { id: "links", title: "Links, attachments and screenshots", icon: Link2, keys: "link url attachment paste screenshot file upload",
     body: (<>
-      <p>Any web address (starting with http, https or www) is clickable everywhere: titles, descriptions, comments, chat, notes, notifications and emails. Attach files in the create form or the Files tab, or paste a screenshot straight into a description or comment box.</p>
+      <p>Any web address (starting with http, https or www) is clickable everywhere: titles, descriptions, comments, chat, notes, notifications and emails. Attach files in the create form or the Comments &amp; files tab, or paste a screenshot straight into a description or comment box. Files sent in a comment stay with that comment.</p>
     </>) },
   { id: "tips", title: "Working effectively", icon: Lightbulb, keys: "tips best practice habits",
     body: (<ul>

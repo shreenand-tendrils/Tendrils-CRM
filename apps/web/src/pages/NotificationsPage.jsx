@@ -4,6 +4,7 @@ import Panel from "../components/ui/Panel";
 import { api } from "../api";
 import Linkify from "../components/ui/Linkify";
 import ShowMore from "../components/ui/ShowMore";
+import { fmtDateTime } from "../lib/dates";
 
 const PAGE = 10;
 
@@ -46,7 +47,7 @@ export default function NotificationsPage({ data, onRefresh }) {
               <div className="nt-body">
                 <b>{n.title}{n.count > 1 && <em className="nt-count">×{n.count}</em>}</b>
                 <p><Linkify text={n.body} /></p>
-                <small>{new Date(n.createdAt).toLocaleString()}</small>
+                <small>{fmtDateTime(n.createdAt)}</small>
               </div>
               {isUnread && <div className="nt-act"><button type="button" className="btn-soft sm" onClick={() => markRows(n.unreadIds)}><Check size={14} /> Mark read</button></div>}
             </div>

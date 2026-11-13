@@ -33,6 +33,7 @@ import ChatPage from "../../pages/ChatPage";
 import NotesPage from "../../pages/NotesPage";
 import RemindersPage from "../../pages/RemindersPage";
 import AdminPage from "../../pages/AdminPage";
+import ReportsPage from "../../pages/ReportsPage";
 import ResourcesPage from "../../pages/ResourcesPage";
 
 const pageMeta = {
@@ -48,6 +49,7 @@ const pageMeta = {
   "/notes": ["My notes", "Private notes that only you can see. Never emailed or shared."],
   // "/updates": ["Daily update", "Share what you did and what is next. Admins are notified."],
   "/admin": ["Admin console", "Daily updates, workload and activity across the team."],
+  "/admin/reports": ["Reports", "Tickets, teams and people compared: who opens, who closes, and where work waits."],
   "/teams": ["Teams", "The people and disciplines behind the work."],
   "/activity": ["Activity log", "A traceable timeline of changes across the workspace."],
   "/notifications": ["Notifications", "Assignments, updates and reminders that need your attention."],
@@ -255,6 +257,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
             <Route path="/reminders" element={guard(internal, "reminders", <RemindersPage notify={note} onOpenTicket={(t) => { navigate("/tickets"); setSelected(t); }} />)} />
             <Route path="/notes" element={guard(internal, "my notes", <NotesPage notify={note} />)} />
             {/* <Route path="/updates" element={guard(can(me, "update.post"), "daily updates", <UpdatesPage notify={note} onRefresh={refresh} />)} /> */}
+            <Route path="/admin/reports" element={guard(can(me, "admin.view"), "reports", <ReportsPage me={me} notify={note} onOpenTicket={(t) => { const full = (data.tickets || []).find((x) => x.id === t.id); if (full) setSelected(full); else note("That ticket is not loaded yet. Press Refresh and try again.", "error"); }} />)} />
             <Route path="/admin" element={guard(can(me, "admin.view"), "the admin console", <AdminPage me={me} notify={note} orgs={data.organizations || []} teams={data.teams || []} presetOrgId={new URLSearchParams(loc.search).get("org") || ""} />)} />
             <Route path="/clients" element={<ClientsPage data={data} />} />
             <Route path="/teams" element={guard(can(me, "team.view"), "teams", <TeamsPage data={data} me={me} onRefresh={refresh} notify={note} />)} />

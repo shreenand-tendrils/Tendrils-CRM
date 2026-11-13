@@ -3,6 +3,7 @@ import { ClipboardCheck, Mail } from "lucide-react";
 import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
+import { fmtDateWithDay } from "../lib/dates";
 
 const localToday = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in the user's timezone
 const ymd = (v) => String(v).slice(0, 10);
@@ -52,7 +53,7 @@ export default function UpdatesPage({ notify, onRefresh }) {
       <Panel title="Your recent updates" sub="Last 30 days of your own history">
         {history.map((h) => (
           <div className="update-row" key={h.id} onClick={() => setDate(ymd(h.date))}>
-            <b>{new Date(h.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}</b>
+            <b>{fmtDateWithDay(h.date)}</b>
             <p>{h.today}</p>
             {h.blockers && <small className="overdue">Blocker: {h.blockers}</small>}
           </div>

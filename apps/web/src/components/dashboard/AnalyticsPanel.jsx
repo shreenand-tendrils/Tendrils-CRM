@@ -3,27 +3,17 @@ import { Link } from "react-router-dom";
 import { Inbox, CheckCircle2, Timer, AlertTriangle, ListTodo, ListChecks, LifeBuoy, SearchCheck, Lock, FolderOpen } from "lucide-react";
 import { api } from "../../api";
 import { on } from "../../lib/realtime";
+import Kpi from "../ui/Kpi";
 import RangePicker, { presetRange } from "../ui/RangePicker";
 import { STATUSES, STATUS_LABEL } from "../../lib/ticketStatus";
 import "../../styles/status.css";
 import "../../styles/analytics.css";
+import { fmtDate } from "../../lib/dates";
 
-const monthName = (m) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" });
+const monthName = (m) => `${m.slice(5, 7)}/${m.slice(2, 4)}`;
 // Clients read plain wording instead of the staff status names.
 const CLIENT_LABEL = { OPEN: "Open", REVIEW_TEST: "Needs your review", REVIEW_HELP: "We need info from you", CLOSED: "Closed" };
 const STATUS_ICON = { OPEN: FolderOpen, REVIEW_TEST: SearchCheck, REVIEW_HELP: LifeBuoy, CLOSED: Lock };
-
-function Kpi({ icon: Icon, tone = "violet", label, value, hint, to }) {
-  const body = (
-    <>
-      <i className={`kpi-icon ${tone}`}><Icon size={17} /></i>
-      <span className="kpi-label">{label}</span>
-      <b className="kpi-value">{value ?? "—"}</b>
-      <small className="kpi-hint">{hint}</small>
-    </>
-  );
-  return to ? <Link className="kpi" to={to}>{body}</Link> : <div className="kpi">{body}</div>;
-}
 
 // Ticket status cards (click = open that list) + range analytics, all as cards. The range is one small picker.
 export default function AnalyticsPanel({ staff }) {
@@ -60,7 +50,7 @@ export default function AnalyticsPanel({ staff }) {
       </div>
 
       <div className="analytics-head">
-        <div><h3>Activity &amp; workload</h3><p>{scope === "mine" ? "Your assigned and raised work" : "Everything available within your team and workspace access"} · {range.from} to {range.to}</p></div>
+        <div><h3>Activity &amp; workload</h3><p>{scope === "mine" ? "Your assigned and raised work" : "Everything available within your team and workspace access"} · {fmtDate(range.from)} to {fmtDate(range.to)}</p></div>
         <div className="analytics-tools">
           <div className="seg" role="group" aria-label="Whose numbers">
             <button type="button" className={scope === "all" ? "on" : ""} aria-pressed={scope === "all"} onClick={() => setScope("all")}>{staff ? "Everything I can see" : "All my company"}</button>

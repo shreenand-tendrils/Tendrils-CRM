@@ -3,6 +3,7 @@ import { X, Megaphone } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import { api } from "../../api";
 import Linkify from "../ui/Linkify";
+import { fmtDateTime } from "../../lib/dates";
 
 export default function ProjectUpdatesModal({ project, canPost, onClose, notify }) {
   const [items, setItems] = useState(null);
@@ -36,7 +37,7 @@ export default function ProjectUpdatesModal({ project, canPost, onClose, notify 
           {items?.map((u) => (
             <div className="comment" key={u.id}>
               <span className="row-head"><Avatar name={u.author.name || u.author.email} /><b>{u.title}</b></span>
-              <small>{u.author.name || u.author.email} · {new Date(u.createdAt).toLocaleString()}</small>
+              <small>{u.author.name || u.author.email} · {fmtDateTime(u.createdAt)}</small>
               <p style={{ whiteSpace: "pre-wrap" }}><Linkify text={u.body} /></p>
             </div>
           ))}

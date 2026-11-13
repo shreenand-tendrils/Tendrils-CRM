@@ -5,6 +5,7 @@ import { StatusBadge } from "../ui/StatusBadge";
 import { describeEvent, actorLabel } from "../../lib/ticketHistory";
 import { buildTree, mergeTimeline, taskPeople, taskTeams } from "../../lib/workThread";
 import "../../styles/thread.css";
+import { fmtDate, fmtDateTime } from "../../lib/dates";
 
 const DOT = { CREATED: "", TEAM: "team", TEAM_ACCESS: "team", ASSIGNEE: "assign", COLLABORATOR: "assign", STATUS: "status", TASK_REVIEW: "status" };
 
@@ -39,15 +40,15 @@ function TaskNode({ node, focusTaskId, onOpenTask }) {
 
 // A git-graph style route: where the work came from, which teams it passed through, who holds it, and the tasks branching off it.
 // Click a task to open it; click the ticket (from a task) to jump back to the ticket.
-export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey }) {
+export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey, hideEvents = false }) {
   const [events, setEvents] = useState([]);
   const [showAll, setShowAll] = useState(false);
   useEffect(() => {
-    if (!ticketId) { setEvents([]); return undefined; }
+    if (!ticketId || hideEvents) { setEvents([]); return undefined; } // the History section already lists every event
     let live = true;
     api.get(`/tickets/${ticketId}/history`).then((r) => { if (live) setEvents(r.data || []); }).catch(() => { if (live) setEvents([]); });
     return () => { live = false; };
-  }, [ticketId, refreshKey]);
+  }, [ticketId, refreshKey, hideEvents]);
 
   const tree = buildTree(tasks.filter((t) => !t.autoCreated)); // the ticket's auto record is plumbing, not work
   const timeline = mergeTimeline(events, tree);
@@ -60,7 +61,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
   const rootBody = ticket && (
     <>
       <span className="thread-title">{ticket.key} · {ticket.title} {ticket.status && <StatusBadge value={ticket.status} />}{currentTicket && <span className="here">You are here</span>}</span>
-      <small>{[ticket.organization?.name, ticket.createdAt && new Date(ticket.createdAt).toLocaleDateString()].filter(Boolean).join(" · ") || "Client request"}</small>
+      <small>{[ticket.organization?.name, ticket.createdAt && fmtDate(ticket.createdAt)].filter(Boolean).join(" · ") || "Client request"}</small>
     </>
   );
 
@@ -91,7 +92,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
         <div className="thread-item" key={item.event.id}>
           <span className={`thread-dot ${DOT[item.event.type] || ""}`} aria-hidden="true" />
           <p className="thread-text"><b>{actorLabel(item.event, true)}</b> {describeEvent(item.event)}</p>
-          <small>{new Date(item.event.createdAt).toLocaleString()}</small>
+          <small>{fmtDateTime(item.event.createdAt)}</small>
         </div>
       ) : (
         <div className="thread-item" key={item.node.task.id}>

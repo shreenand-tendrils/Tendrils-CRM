@@ -7,5 +7,6 @@ import App from './App.jsx';
 import './styles.css';
 import './styles/mobile.css';
 import './styles/polish.css';
+import './styles/consistency.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);

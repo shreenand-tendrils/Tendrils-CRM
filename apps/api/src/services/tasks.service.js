@@ -13,6 +13,8 @@ import { recordTicketEvents } from './ticketHistory.service.js';
 import { assigneesOutsideTeams } from './ticketRouting.js';
 import { resolveAssignees, taskCommentRecipients, canApproveTask, taskReviewerTeamIds, reviewAuthorityOf, canFinishTask, REVIEW_HINT, recordClientReviewRequest } from './review.js';
 import { AppError } from '../errors/AppError.js';
+import { attachToComment, withFiles } from './commentFiles.js';
+import { discard, storagePath } from './storage.js';
 
 const userSelect = { id: true, name: true, email: true, image: true };
 const include = {
@@ -322,17 +324,19 @@ async function loadTask(ctx, id) {
 
 export async function listTaskComments(ctx, taskId) {
   const t = await loadTask(ctx, taskId);
-  return prisma.comment.findMany({ where: { taskId: t.id }, orderBy: { createdAt: 'asc' }, include: authorSelect, take: 500 });
+  return prisma.comment.findMany({ where: { taskId: t.id }, orderBy: { createdAt: 'asc' }, include: { ...authorSelect, ...withFiles }, take: 500 });
 }
 
 export async function addTaskComment(ctx, taskId, input) {
   const t = await loadTask(ctx, taskId);
-  const { body } = input;
-  const c = await prisma.comment.create({ data: { body, visibility: 'INTERNAL', taskId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
+  const { body, attachmentIds = [] } = input;
+  let c = await prisma.comment.create({ data: { body, visibility: 'INTERNAL', taskId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
+  const linked = await attachToComment(prisma, { commentId: c.id, body, attachmentIds, where: { taskId: t.id }, userId: ctx.currentUser.id });
+  c = linked ? await prisma.comment.findUnique({ where: { id: c.id }, include: { ...authorSelect, ...withFiles } }) : { ...c, attachments: [] };
   await logActivity({ actorId: ctx.currentUser.id, organizationId: t.organizationId, entityType: 'task', entityId: t.id, action: 'commented', summary: `Comment added to task ${t.title}` });
   const earlier = await prisma.comment.findMany({ where: { taskId: t.id }, select: { authorId: true }, distinct: ['authorId'] });
   const toIds = [...new Set([...taskCommentRecipients(t, ctx.currentUser.id), ...earlier.map((e) => e.authorId)])].filter((id) => id !== ctx.currentUser.id);
-  await notifyPeople({ userIds: toIds, actorId: ctx.currentUser.id, type: 'COMMENT', title: `New comment on task: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} commented on the task "${t.title}":\n"${body.slice(0, 200)}"`, href: link(t) });
+  await notifyPeople({ userIds: toIds, actorId: ctx.currentUser.id, type: 'COMMENT', title: `New comment on task: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} commented on the task "${t.title}":\n"${(body || `Sent ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 200)}"`, href: link(t) });
   return c;
 }
 
@@ -341,10 +345,12 @@ export async function deleteTaskComment(ctx, taskId, commentId) {
   const c = await prisma.comment.findFirst({ where: { id: commentId, taskId: t.id } });
   if (!c) throw new AppError('Comment not found', 404);
   if (c.authorId !== ctx.currentUser.id && !ctx.can('task.update_any')) throw new AppError('You can only delete your own comments.', 403);
-  await prisma.comment.delete({ where: { id: c.id } });
+  const files = await prisma.attachment.findMany({ where: { commentId: c.id }, select: { storageKey: true } });
+  await prisma.comment.delete({ where: { id: c.id } }); // its files go with it (database cascade) ...
+  await Promise.all(files.map((f) => discard(storagePath(f.storageKey)))); // ... and so do their bytes on disk
 }
 
 export async function listTaskAttachments(ctx, taskId) {
   const t = await loadTask(ctx, taskId);
-  return prisma.attachment.findMany({ where: { taskId: t.id, inline: false }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } });
+  return prisma.attachment.findMany({ where: { taskId: t.id, inline: false, commentId: null }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } });
 }

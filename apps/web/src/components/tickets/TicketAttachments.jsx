@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Paperclip, Download, Eye } from "lucide-react";
 import { api } from "../../api";
+import { fmtDateTime } from "../../lib/dates";
 
 const size = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
@@ -32,7 +33,7 @@ export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
       {files.map((f) => (
         <div className="comment" key={f.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Paperclip size={14} />
-          <span style={{ flex: 1 }}><b>{f.originalName}</b><small style={{ display: "block" }}>{size(f.size)} · {new Date(f.createdAt).toLocaleString()}</small></span>
+          <span style={{ flex: 1 }}><b>{f.originalName}</b><small style={{ display: "block" }}>{size(f.size)} · {fmtDateTime(f.createdAt)}</small></span>
           {/^(image\/|application\/pdf)/.test(f.mimeType || "") && <button className="secondary" onClick={() => view(f)} aria-label={`View ${f.originalName}`}><Eye size={14} /></button>}
           <button className="secondary" onClick={() => download(f)} aria-label={`Download ${f.originalName}`}><Download size={14} /></button>
         </div>

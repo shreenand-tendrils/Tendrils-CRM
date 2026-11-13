@@ -7,8 +7,9 @@ import { api } from "../api";
 import * as realtime from "../lib/realtime";
 import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
 import Linkify from "../components/ui/Linkify";
+import { fmtTime, fmtDateTime } from "../lib/dates";
 
-const time = (v) => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const time = (v) => fmtTime(v);
 const TYPING_MS = 3500;
 const esc = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -303,7 +304,7 @@ export default function ChatPage({ me, users = [], notify }) {
               {!info && <small className="muted">Loading…</small>}
               {info && [["Read by", info.readBy, "read"], ["Delivered to", info.deliveredTo, "delivered"]].map(([label, list, kind]) => (
                 <div key={label} className="info-group"><small>{label} ({list.length})</small>
-                  {list.map((x) => <div className="person-row" key={x.user.id}><Avatar name={x.user.name || x.user.email} /><span><b>{x.user.name || x.user.email}</b><small>{new Date(x.at).toLocaleString()}</small></span><Ticks status={kind} /></div>)}
+                  {list.map((x) => <div className="person-row" key={x.user.id}><Avatar name={x.user.name || x.user.email} /><span><b>{x.user.name || x.user.email}</b><small>{fmtDateTime(x.at)}</small></span><Ticks status={kind} /></div>)}
                   {!list.length && <small className="muted">Nobody yet.</small>}
                 </div>
               ))}

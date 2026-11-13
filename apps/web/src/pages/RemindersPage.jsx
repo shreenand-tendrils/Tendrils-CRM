@@ -3,6 +3,7 @@ import { Flag, Trash2, Check, RotateCcw, Plus } from "lucide-react";
 import Panel from "../components/ui/Panel";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
+import { fmtDateTime } from "../lib/dates";
 
 export default function RemindersPage({ notify, onOpenTicket }) {
   const [items, setItems] = useState([]);
@@ -29,7 +30,7 @@ export default function RemindersPage({ notify, onOpenTicket }) {
         <div className="rem-body">
           <b>{r.title}</b>
           <small>
-            {r.remindAt ? `Due ${new Date(r.remindAt).toLocaleString()}` : "Flagged"}
+            {r.remindAt ? `Due ${fmtDateTime(r.remindAt)}` : "Flagged"}
             {overdue && <i className="rem-tag">Overdue</i>}
             {r.ticket && <> · <a href="#open" onClick={(e) => { e.preventDefault(); onOpenTicket?.(r.ticket); }}>{r.ticket.key}</a></>}
           </small>

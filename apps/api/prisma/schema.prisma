@@ -315,6 +315,7 @@ model Comment {
   author User @relation(fields:[authorId],references:[id],onDelete:Cascade)
   ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
   task Task? @relation(fields:[taskId],references:[id],onDelete:Cascade)
+  attachments Attachment[]
   createdAt DateTime @default(now())
 }
 model Attachment {
@@ -327,11 +328,14 @@ model Attachment {
   ticketId String?
   taskId String?
   projectId String?
+  commentId String? // set when the file was sent with a comment: kept apart from the ticket/task's own files
   inline Boolean @default(false) // pasted into a description/comment: shown inline, not in the Files list
   ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
   task Task? @relation(fields:[taskId],references:[id],onDelete:Cascade)
   project Project? @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  comment Comment? @relation(fields:[commentId],references:[id],onDelete:Cascade)
   createdAt DateTime @default(now())
+  @@index([commentId])
   @@index([ticketId])
   @@index([taskId])
   @@index([projectId])

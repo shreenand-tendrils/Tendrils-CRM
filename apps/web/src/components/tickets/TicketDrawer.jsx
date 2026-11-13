@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Paperclip, Trash2, UploadCloud, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
+import { Paperclip, Trash2, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge, TicketStatusBadge } from "../ui/StatusBadge";
@@ -8,14 +8,14 @@ import { assigneeGroups, isInTeams, sameIds, peopleOfTeams } from "../../lib/tea
 import PeoplePicker from "../ui/PeoplePicker";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 import TicketHistory from "./TicketHistory";
-import TicketAttachments from "./TicketAttachments";
 import TicketReminder from "./TicketReminder";
 import Window from "../ui/Window";
 import PasteTextarea from "../ui/PasteTextarea";
 import RichText from "../ui/RichText";
 import TicketTasks from "./TicketTasks";
 import { STATUSES, STATUS_LABEL, PROGRESS_FOR, PROGRESS_LABEL, clientStatusText, daysPassed, dayLabel } from "../../lib/ticketStatus";
-import WorkThread from "../work/WorkThread";
+import Discussion from "../work/Discussion";
+import ActivityTab from "../work/ActivityTab";
 import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
 import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
@@ -24,11 +24,9 @@ import CopyLinkButton from "./CopyLinkButton";
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete, onRefresh, notify }) {
-  const [text, setText] = useState("");
-  const [pastePreview, setPastePreview] = useState("");
   const [pasteHint, setPasteHint] = useState("");
-  const [tab, setTab] = useState(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments");
-  const [visibility, setVisibility] = useState("CLIENT");
+  const [tab, setTab] = useState(me?.isInternal ? "activity" : ticket?.tasksInReview > 0 ? "tasks" : "comments");
+  const [disc, setDisc] = useState(null); // live counts reported by the Comments & files tab
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(ticket?.title || "");
   const [editDescription, setEditDescription] = useState(ticket?.description || "");
@@ -38,7 +36,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [collabIds, setCollabIds] = useState([]);
   useEffect(() => { setCollabIds((ticket?.collaborators || []).map((c) => c.userId)); }, [ticket?.id, ticket?.collaborators]);
   useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
-  useEffect(() => { setTab(me?.isInternal ? "route" : ticket?.tasksInReview > 0 ? "tasks" : "comments"); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setTab(me?.isInternal ? "activity" : ticket?.tasksInReview > 0 ? "tasks" : "comments"); setDisc(null); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
@@ -82,13 +80,6 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     await onUpdate(ticket.id, { teamId: ownerTeamId || null, teamIds: ownerTeamId ? sharedNow : [], ...(ticket.assigneeId && !fits ? { assigneeId: null } : {}) });
   };
 
-  const post = async (e) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    await onAddComment(text.trim(), staff ? visibility : "CLIENT");
-    setText(""); setPastePreview("");
-  };
-
   const clientReview = (!staff || peerReview) && ticket.status === "REVIEW_TEST" && (
     <div className="linked-task">
       <ThumbsUp size={22} color="#5746e8" />
@@ -114,6 +105,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
   const teamBlock = staff && (canRoute ? (
     <div className="team-block">
+      <section className="side-sec"><h4>Team &amp; routing</h4>
       <div className="field">
         <label htmlFor="ticket-owner-team">Team</label>
         <select id="ticket-owner-team" value={ownerTeamId} onChange={(e) => setOwnerTeamId(e.target.value)} aria-label="Owning team">
@@ -127,6 +119,8 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         {!ownerTeamId && <small className="hint">Choose the owning team first.</small>}
       </div>
       <button className="primary" disabled={!canSaveTeams} onClick={saveTeams}>Save team access</button>
+      </section>
+      <section className="side-sec"><h4>People</h4>
       <div className="field">
         <label htmlFor="ticket-assignee">Assignee</label>
         <select id="ticket-assignee" value={ticket.assigneeId || ""} disabled={!ticket.teamId || teamsDirty} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee">
@@ -150,9 +144,11 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         ) : <small className="hint">{teamsDirty ? "Click “Save team access” first" : "Select a team first"}</small>}
         <small className="hint">Add more people to work on this ticket next to the assignee, from any of the selected teams. They are emailed, and can open, comment on and update the ticket.</small>
       </div>
+      </section>
     </div>
   ) : (
-    <div className="win-card">
+    <div className="win-card side-sec">
+      <h4>Team &amp; people</h4>
       <div className="detail"><span>Team</span><b>{ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "Not routed yet"}</b></div>
       <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>
       <div className="detail"><span>Collaborators</span><b>{collabNames.length ? collabNames.join(", ") : "None"}</b></div>
@@ -162,6 +158,31 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const side = (
     <>
       {staff && <TicketReminder ticket={ticket} />}
+      <div className="win-card side-sec">
+        <h4>Status</h4>
+        {!staff && <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>}
+        <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
+        <div className="detail"><span>Status</span>
+          {canStatus
+            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || (teamToTeam && isRequester) || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
+            : staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}
+        </div>
+        {staff && reviewBlocked && <p className="hint" role="status"><Info size={13} style={{ verticalAlign: -2 }} /> Review is locked: {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " still needs" : "s still need"} to be marked Done.</p>}
+        {staff && (PROGRESS_FOR[ticket.status] || []).length > 0 && (
+          <div className="detail"><span>Progress</span>
+            {canStatus
+              ? <select className="table-select" value={ticket.progress || ""} onChange={(e) => onUpdate(ticket.id, { progress: e.target.value || null })} aria-label="Progress">{ticket.status === "OPEN" && <option value="">Not started</option>}{PROGRESS_FOR[ticket.status].map((p) => <option key={p} value={p}>{PROGRESS_LABEL[p]}</option>)}</select>
+              : <b>{ticket.progress ? PROGRESS_LABEL[ticket.progress] : "Not started"}</b>}
+          </div>
+        )}
+        <div className="detail"><span>{ticket.closedAt ? "Closed in" : "Open for"}</span><b>{dayLabel(daysPassed(ticket))}</b></div>
+        <div className="detail"><span>Priority</span>
+          {triage
+            ? <select className="table-select" value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })} aria-label="Priority">{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}</select>
+            : <PriorityBadge value={ticket.priority} />}
+        </div>
+      </div>
+      {teamBlock}
       {staff && (
         <div className="linked-task" style={{ flexWrap: "wrap" }}>
           <ListChecks size={22} color="#5746e8" />
@@ -185,32 +206,8 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           )}
         </div>
       )}
-      {teamBlock}
-      <div className="win-card">
-        {!staff && <div className="detail"><span>Assignee</span><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></div>}
-        <div className="detail"><span>Due</span><b>{formatDate(ticket.dueDate)}</b></div>
-        <div className="detail"><span>Status</span>
-          {canStatus
-            ? <select className="table-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || (teamToTeam && isRequester) || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
-            : staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}
-        </div>
-        {staff && reviewBlocked && <p className="hint" role="status"><Info size={13} style={{ verticalAlign: -2 }} /> Review is locked: {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " still needs" : "s still need"} to be marked Done.</p>}
-        {staff && (PROGRESS_FOR[ticket.status] || []).length > 0 && (
-          <div className="detail"><span>Progress</span>
-            {canStatus
-              ? <select className="table-select" value={ticket.progress || ""} onChange={(e) => onUpdate(ticket.id, { progress: e.target.value || null })} aria-label="Progress">{ticket.status === "OPEN" && <option value="">Not started</option>}{PROGRESS_FOR[ticket.status].map((p) => <option key={p} value={p}>{PROGRESS_LABEL[p]}</option>)}</select>
-              : <b>{ticket.progress ? PROGRESS_LABEL[ticket.progress] : "Not started"}</b>}
-          </div>
-        )}
-        <div className="detail"><span>{ticket.closedAt ? "Closed in" : "Open for"}</span><b>{dayLabel(daysPassed(ticket))}</b></div>
-        <div className="detail"><span>Priority</span>
-          {triage
-            ? <select className="table-select" value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })} aria-label="Priority">{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}</select>
-            : <PriorityBadge value={ticket.priority} />}
-        </div>
-      </div>
       {canDelete && onDelete && (
-        <button type="button" className="secondary" style={{ color: "#c0262d", borderColor: "#f0c4c7" }}
+        <button type="button" className="btn-soft sm danger side-delete"
           onClick={() => { if (window.confirm(`Delete ${ticket.key}? Its comments, files and history are removed and this cannot be undone.`)) onDelete(ticket); }}>
           <Trash2 size={14} /> Delete ticket
         </button>
@@ -246,46 +243,21 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <div className="win-desc">
             <small className="win-label">Description</small>
             <RichText text={ticket.description || "No description added."} canDelete={canEditDetails || triage} />
-            {can(me, "file.upload") && <button type="button" className="win-files-chip" onClick={() => setTab("files")}><Paperclip size={13} /> Attachments ({ticket._count?.attachments || 0})</button>}
+            {can(me, "file.upload") && <button type="button" className="win-files-chip" onClick={() => setTab("comments")}><Paperclip size={13} /> Files &amp; comments</button>}
           </div>
         </div>
       )}
 
       <div className="drawer-tabs" role="tablist">
-        {staff && <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>}
-        <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({comments.length})</button>
+        {staff && <button role="tab" aria-selected={tab === "activity"} className={tab === "activity" ? "tab on" : "tab"} onClick={() => setTab("activity")}>Route &amp; history</button>}
+        <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments &amp; files ({(disc?.comments ?? comments.length) + (disc?.files ?? (ticket._count?.attachments || 0))})</button>
         {!staff && <button role="tab" aria-selected={tab === "tasks"} className={tab === "tasks" ? "tab on" : "tab"} onClick={() => setTab("tasks")}>Tasks{ticket.tasksInReview > 0 ? ` (${ticket.tasksInReview} to review)` : ""}</button>}
-        <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>History</button>
-        {can(me, "file.upload") && <button role="tab" aria-selected={tab === "files"} className={tab === "files" ? "tab on" : "tab"} onClick={() => setTab("files")}>Files ({ticket._count?.attachments || 0})</button>}
+        {!staff && <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab on" : "tab"} onClick={() => setTab("history")}>History</button>}
       </div>
-      {staff && tab === "route" && <WorkThread ticket={ticket} ticketId={ticket.id} currentTicket tasks={collectThread(tasks, { ticketId: ticket.id })} onOpenTask={onOpenTask} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}`} />}
+      {staff && tab === "activity" && <ActivityTab ticket={ticket} tasks={collectThread(tasks, { ticketId: ticket.id })} onOpenTask={onOpenTask} showRoles refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}|${(ticket.collaborators || []).length}|${disc?.comments ?? comments.length}|${ticket._count?.attachments || 0}`} />}
       {!staff && tab === "tasks" && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
-      {tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
-      {tab === "comments" && comments.map((c) => (
-        <div className={`comment${c.visibility === "INTERNAL" ? " internal" : ""}${c.authorId === me.user?.id ? " own" : ""}`} key={c.id}>
-          <div className="comment-head">
-            <Avatar name={c.author?.name || c.author?.email} />
-            <b>{c.author?.name || c.author?.email}</b>
-            {c.visibility === "INTERNAL" && <em className="note-pill">Internal note</em>}
-            <small>{new Date(c.createdAt).toLocaleString()}</small>
-          </div>
-          <RichText text={c.body} canDelete={c.authorId === me.user?.id || triage} />
-        </div>
-      ))}
-      {tab === "comments" && <form className="comment-form" onSubmit={post}>
-        <PasteTextarea value={text} onChange={setText} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)} onError={(m) => setPasteHint(m)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) post(e); }} placeholder="Write a comment… (Ctrl+Enter to send, paste an image or PDF to attach)" rows={3} aria-label="Comment" />
-        {pasteHint && <small className="hint">{pasteHint}</small>}
-        <div className="row">
-          {staff && <select value={visibility} onChange={(e) => setVisibility(e.target.value)} aria-label="Comment visibility"><option value="CLIENT">Visible to client</option><option value="INTERNAL">Internal note</option></select>}
-          <button className="primary" disabled={!text.trim()}>Post comment</button>
-        </div>
-      </form>}
-      {tab === "files" && can(me, "file.upload") && (
-        <>
-          <label className="upload"><UploadCloud /><span>Upload an image or document, or paste an image/PDF into the comment box<input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={(e) => onUpload(e, ticket.id)} /></span></label>
-          <TicketAttachments ticketId={ticket.id} refreshKey={ticket._count?.attachments || 0} />
-        </>
-      )}
+      {!staff && tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={false} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${disc?.comments ?? comments.length}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
+      {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
     </Window>
   );
 }

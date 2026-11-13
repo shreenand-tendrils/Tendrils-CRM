@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { Files, Upload, UploadCloud, Download, Search, FileSpreadsheet, FileText, Image as ImageIcon } from 'lucide-react';
+import { fmtDate } from "../lib/dates";
 
 const CATEGORIES = [['GENERAL', 'General'], ['POLICY', 'Policy'], ['REPORT', 'Report'], ['TEMPLATE', 'Template'], ['FINANCE', 'Finance'], ['PROJECT', 'Project']];
 const catLabel = (c) => CATEGORIES.find(([v]) => v === c)?.[1] || String(c || '').toLowerCase().replace(/\b\w/g, (x) => x.toUpperCase());
@@ -74,7 +75,7 @@ export default function DocumentsPage({ me, notify }) {
             <span className="doc-file-icon">{iconFor(d.originalName)}</span>
             <div className="doc-info">
               <b>{d.title}</b>
-              <small>{d.originalName} · {fmt(d.size)} · {d.organization?.name || 'Workspace'} · {d.uploadedBy?.name || d.uploadedBy?.email || 'Member'}{d.createdAt ? ` · ${new Date(d.createdAt).toLocaleDateString()}` : ''}</small>
+              <small>{d.originalName} · {fmt(d.size)} · {d.organization?.name || 'Workspace'} · {d.uploadedBy?.name || d.uploadedBy?.email || 'Member'}{d.createdAt ? ` · ${fmtDate(d.createdAt)}` : ''}</small>
               <span className="doc-tags"><i className="doc-tag">{catLabel(d.category)}</i><i className={`doc-tag ${d.visibility === 'INTERNAL' ? 'internal' : 'client'}`}>{d.visibility === 'INTERNAL' ? 'Internal' : 'Client-visible'}</i></span>
             </div>
             <button type="button" className="btn-soft sm" onClick={() => download(d)} title="Download document" aria-label={`Download ${d.title}`}><Download size={15} /> <span className="doc-dl-label">Download</span></button>

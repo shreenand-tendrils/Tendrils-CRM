@@ -9,6 +9,7 @@ import { storagePath, discard } from './storage.js';
 import { canViewTicket, ticketEditScope, TICKET_FIELDS, clientStatusChangeAllowed } from '../rbac/policies.js';
 import { logActivity } from './activity.js';
 import { notifyAssignment, notifyCollaborators } from './assignment.service.js';
+import { attachToComment, withFiles } from './commentFiles.js';
 import { notifyPeople, notifyTeams, findTriagers, findTeamManagers } from './notify.service.js';
 import { assertDueNotPast, assertAssignable, assertAssignees, assertProjectInOrg, assertInternalTeam, loadTeamMemberIds } from './guards.js';
 import { syncTaskFromTicket, syncCollaboratorsToTask, assertTicketWorkComplete } from './ticketTask.service.js';
@@ -357,7 +358,7 @@ export async function listTicketComments(ctx, id) {
   const t = await loadVisibleTicket(ctx, id);
   return prisma.comment.findMany({
     where: { ticketId: t.id, ...(ctx.can('ticket.view_internal') ? {} : { visibility: 'CLIENT' }) },
-    orderBy: { createdAt: 'asc' }, include: authorSelect,
+    orderBy: { createdAt: 'asc' }, include: { ...authorSelect, ...withFiles },
   });
 }
 
@@ -403,15 +404,18 @@ export async function reviewTicketTask(ctx, ticketId, taskId, input) {
 
 export async function listTicketAttachments(ctx, id) {
   const t = await loadVisibleTicket(ctx, id);
-  return prisma.attachment.findMany({ where: { ticketId: t.id, inline: false }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } });
+  return prisma.attachment.findMany({ where: { ticketId: t.id, inline: false, commentId: null }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true } });
 }
 
 export async function addTicketComment(ctx, id, input) {
   const t = await loadVisibleTicket(ctx, id);
-  const data = input;
+  const { attachmentIds = [], ...data } = input;
   if (data.visibility === 'INTERNAL' && !ctx.can('ticket.comment_internal')) throw new AppError('Internal comment permission required', 403);
-  const c = await prisma.comment.create({ data: { ...data, ticketId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
-  await recordTicketEvents(prisma, t.id, ctx.currentUser.id, [{ type: 'COMMENT', toValue: c.id, note: data.body.slice(0, 140), clientVisible: data.visibility === 'CLIENT' }]);
+  let c = await prisma.comment.create({ data: { ...data, ticketId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
+  const linked = await attachToComment(prisma, { commentId: c.id, body: data.body, attachmentIds, where: { ticketId: t.id }, userId: ctx.currentUser.id });
+  if (linked) c = await prisma.comment.findUnique({ where: { id: c.id }, include: { ...authorSelect, ...withFiles } });
+  else c = { ...c, attachments: [] };
+  await recordTicketEvents(prisma, t.id, ctx.currentUser.id, [{ type: 'COMMENT', toValue: c.id, note: (data.body || `Shared ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 140), clientVisible: data.visibility === 'CLIENT' }]);
   await logActivity({
     actorId: ctx.currentUser.id, organizationId: t.organizationId, entityType: 'ticket', entityId: t.id,
     action: 'commented', summary: `Comment added to ${t.key}`,
@@ -426,7 +430,7 @@ export async function addTicketComment(ctx, id, input) {
       ids.push(...(teamIds.length ? await findTeamManagers(teamIds) : await findTriagers()).map((u) => u.id));
     }
     if (internalNote) { const emp = await employeeIdSet(ids); ids = ids.filter((id) => emp.has(id)); } // internal notes never reach clients
-    await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'COMMENT', title: `${internalNote ? 'New internal note' : 'New comment'} on ${t.key}: ${t.title}`, href: ticketUrl(t), body: `${ctx.currentUser.name || ctx.currentUser.email} ${internalNote ? 'added an internal note on' : 'commented on'} \"${t.title}\" (${t.key}):\n\"${data.body.slice(0, 200)}\"` });
+    await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'COMMENT', title: `${internalNote ? 'New internal note' : 'New comment'} on ${t.key}: ${t.title}`, href: ticketUrl(t), body: `${ctx.currentUser.name || ctx.currentUser.email} ${internalNote ? 'added an internal note on' : 'commented on'} \"${t.title}\" (${t.key}):\n\"${(data.body || `Sent ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 200)}\"` });
   }
   return c;
 }

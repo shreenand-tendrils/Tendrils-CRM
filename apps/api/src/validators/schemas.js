@@ -122,9 +122,10 @@ export const ticketUpdate = z.object({
 });
 
 export const commentCreate = z.object({
-  body: z.string().trim().min(1).max(10000),
+  body: z.string().trim().max(10000).default(''),
   visibility: en(Visibility).default('CLIENT'),
-});
+  attachmentIds: z.array(z.string().min(1).max(64)).max(12).optional(), // files uploaded for this comment (see POST /files with inline=1)
+}).refine((v) => v.body.length > 0 || (v.attachmentIds || []).length > 0, { message: 'Write something or attach a file', path: ['body'] });
 
 export const teamCreate = z.object({
   name: z.string().trim().min(2).max(120),

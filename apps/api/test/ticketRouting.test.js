@@ -208,3 +208,10 @@ test('collaborators can open a ticket from a team they are not in', () => {
   assert.equal(canViewTicket(ctx, ticket), false);
   assert.equal(canViewTicket(ctx, { ...ticket, collaborators: [{ userId: 'kavya' }] }), true);
 });
+
+import { markerIds } from '../src/services/commentFiles.js';
+test('comment files: pasted-image markers in the text are found, plain text is not', () => {
+  assert.deepEqual(markerIds('see this\n[[img:abc-123]]\n[[img:def456]]'), ['abc-123', 'def456']);
+  assert.deepEqual(markerIds('no images [[here]]'), []);
+  assert.deepEqual(markerIds(), []);
+});

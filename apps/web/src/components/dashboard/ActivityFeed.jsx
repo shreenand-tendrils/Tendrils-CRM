@@ -3,6 +3,7 @@ import { Activity } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import EmptyState from "../ui/EmptyState";
 import ShowMore from "../ui/ShowMore";
+import { fmtDateTime } from "../../lib/dates";
 
 /** Compact feed: repeated identical events (same person + same summary) are merged into one row with a count,
  *  and only the latest `limit` rows show until "Show more" is pressed. */
@@ -22,7 +23,7 @@ export default function ActivityFeed({ items = [], limit = 8 }) {
       {rows.slice(0, shown).map((a) => (
         <div className="feed-row" key={a.id}>
           <Avatar name={a.actor?.name || "System"} />
-          <span><b>{a.actor?.name || "A team member"}</b> {a.summary}{a.count > 1 ? ` (x${a.count})` : ""}<small>{new Date(a.createdAt).toLocaleString()}</small></span>
+          <span><b>{a.actor?.name || "A team member"}</b> {a.summary}{a.count > 1 ? ` (x${a.count})` : ""}<small>{fmtDateTime(a.createdAt)}</small></span>
         </div>
       ))}
       {rows.length > shown && <ShowMore count={Math.min(limit, rows.length - shown)} onClick={() => setShown(shown + limit)} />}

@@ -4,13 +4,14 @@ import { api } from "../../api";
 import RichText from "../ui/RichText";
 import PasteTextarea from "../ui/PasteTextarea";
 import Avatar from "../ui/Avatar";
+import { fmtDate, fmtDateTime } from "../../lib/dates";
 
 const ago = (d) => {
   const s = Math.max(1, Math.round((Date.now() - new Date(d)) / 1000));
   if (s < 60) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return fmtDate(d);
 };
 
 // Team talk on a task. Enter = new line, Ctrl/Cmd+Enter = send, paste an image or PDF to attach it.
@@ -44,7 +45,7 @@ export default function TaskComments({ task, me, canComment, onChanged, notify }
           <div className="comment-head">
             <Avatar name={c.author?.name || c.author?.email} />
             <b>{c.author?.name || c.author?.email}</b>
-            <small title={new Date(c.createdAt).toLocaleString()}>{ago(c.createdAt)}</small>
+            <small title={fmtDateTime(c.createdAt)}>{ago(c.createdAt)}</small>
           </div>
           {(c.authorId === me.user.id) && <button type="button" className="secondary" style={{ float: "right" }} onClick={() => remove(c)} aria-label="Delete comment"><Trash2 size={13} /></button>}
           <RichText text={c.body} canDelete={c.authorId === me.user.id} />

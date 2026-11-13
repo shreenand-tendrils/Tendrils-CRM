@@ -1,0 +1,54 @@
+/* Platform-admin Reports */
+.reports { gap: 16px; }
+.reports .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.reports .kpi.kpi-text .kpi-value { font-size: 17px; line-height: 1.25; margin-top: 6px; overflow-wrap: anywhere; }
+
+.hbars { display: flex; flex-direction: column; gap: 9px; margin-top: 12px; }
+.hbar { display: grid; grid-template-columns: 96px 1fr 34px; align-items: center; gap: 10px; font-size: 13px; }
+.hbar-label { color: #4a5368; }
+.hbar-val { text-align: right; font-variant-numeric: tabular-nums; }
+.hbar-track { display: block; height: 10px; border-radius: 99px; background: #f1f2f9; overflow: hidden; }
+.hbar-fill { display: block; height: 100%; border-radius: 99px; min-width: 2px; background: #5746e8; }
+.hbar-fill.violet { background: #5746e8; } .hbar-fill.blue { background: #1f6fd1; } .hbar-fill.green { background: #17a05d; }
+.hbar-fill.amber { background: #e8892b; } .hbar-fill.rose { background: #d64545; } .hbar-fill.grey { background: #b7bccd; }
+
+.team-bars { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.team-bar { display: grid; grid-template-columns: 120px 1fr 70px; align-items: center; gap: 12px; font-size: 13.5px; }
+.team-bar-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-bar-tracks { display: flex; flex-direction: column; gap: 4px; }
+.team-bar .nums { text-align: right; font-variant-numeric: tabular-nums; }
+
+.rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.rank li { display: grid; grid-template-columns: 22px minmax(80px, 1.2fr) 1fr 34px; align-items: center; gap: 10px; font-size: 13.5px; }
+.rank em { font-style: normal; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: #efebff; color: #5746e8; font-size: 12px; font-weight: 700; }
+.rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rank-bar { height: 8px; border-radius: 99px; background: #f1f2f9; overflow: hidden; }
+.rank-bar i { display: block; height: 100%; background: #5746e8; border-radius: 99px; }
+.rank b { text-align: right; font-variant-numeric: tabular-nums; }
+
+.report-table th, .report-table td { white-space: nowrap; }
+.report-table td .clip { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+.report-table td.best { background: #e8f7ee; color: #17784a; font-weight: 700; }
+.report-scroll { max-width: 100%; }
+.report-table tbody td:first-child, .report-table thead th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+.report-table thead th:first-child { background: #f6f7fb; }
+.th-sort { display: inline-flex; align-items: center; gap: 3px; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.th-sort.on { color: #4636d6; }
+.th-sort:focus-visible { outline: 3px solid rgba(87, 70, 232, .28); border-radius: 4px; }
+
+.report-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.report-filters select, .report-filters input { min-height: 38px; font-size: 13.5px; width: auto; }
+.report-filters .search-box { display: flex; align-items: center; gap: 7px; min-width: 220px; flex: 1; padding: 0 10px; border: 1px solid #dfe2f2; border-radius: 11px; background: #fff; color: #8a90a6; }
+.report-filters .search-box input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; padding: 0; box-shadow: none; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 14px; }
+
+@media (max-width: 900px) {
+  .reports .grid-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .hbar { grid-template-columns: 78px 1fr 28px; }
+  .team-bar { grid-template-columns: 84px 1fr 56px; gap: 8px; }
+  .rank li { grid-template-columns: 22px 1fr 30px; }
+  .rank-bar { display: none; }
+  .report-filters select, .report-filters .search-box { width: 100%; flex: 1 1 100%; }
+}

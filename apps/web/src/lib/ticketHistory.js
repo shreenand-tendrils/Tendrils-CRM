@@ -1,8 +1,9 @@
 import { statusKeyLabel } from "./ticketStatus.js";
 import { ROLE_LABELS } from "./rbac.js";
+import { fmtDate } from "./dates.js";
 
 const pretty = (v = "") => String(v).toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
-const day = (v) => (v ? new Date(`${v}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "none");
+const day = (v) => (v ? fmtDate(v) : "none");
 
 /** One plain-language sentence per history event (without the actor's name). */
 export function describeEvent(e) {
@@ -41,11 +42,11 @@ export function actorLabel(e, showRole = true) {
   return showRole && a.role ? `${name} (${ROLE_LABELS[a.role] || pretty(a.role)})` : name;
 }
 
-/** Group newest-first events by calendar day: [{ day: "Oct 20, 2026", events: [...] }] */
+/** Group newest-first events by calendar day: [{ day: "20/10/26", events: [...] }] */
 export function groupByDay(events = []) {
   const groups = [];
   for (const e of events) {
-    const d = new Date(e.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    const d = fmtDate(e.createdAt);
     const last = groups[groups.length - 1];
     if (last?.day === d) last.events.push(e); else groups.push({ day: d, events: [e] });
   }

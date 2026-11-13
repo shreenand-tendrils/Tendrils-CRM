@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronDown } from "lucide-react";
 import "../../styles/analytics.css";
+import { fmtDate } from "../../lib/dates";
 
 const iso = (d) => d.toISOString().slice(0, 10);
 const utc = (y, m, d) => new Date(Date.UTC(y, m, d));
@@ -12,7 +13,7 @@ export const RANGE_PRESETS = [
   { id: "year", label: "This year", get: (n) => [utc(n.getUTCFullYear(), 0, 1), n] },
 ];
 export const presetRange = (id, now = new Date()) => { const [a, b] = RANGE_PRESETS.find((p) => p.id === id).get(now); return { from: iso(a), to: iso(b) }; };
-const short = (s) => new Date(`${s}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+const short = (s) => fmtDate(s);
 
 /** One small pill that opens a compact menu: quick ranges, or pick exact dates. */
 export default function RangePicker({ from, to, onChange }) {

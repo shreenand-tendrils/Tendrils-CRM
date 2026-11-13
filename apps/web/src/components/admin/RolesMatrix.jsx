@@ -1,3 +1,4 @@
+import Loading from "../ui/Loading";
 import { useEffect, useState } from "react";
 import Panel from "../ui/Panel";
 import { api } from "../../api";
@@ -5,7 +6,7 @@ import { api } from "../../api";
 export default function RolesMatrix() {
   const [rbac, setRbac] = useState(null);
   useEffect(() => { api.get("/admin/rbac").then((r) => setRbac(r.data)).catch(() => {}); }, []);
-  if (!rbac) return <small className="muted">Loading…</small>;
+  if (!rbac) return <Loading />;
   return (
     <Panel title="Roles & permissions" sub="The same table the API enforces. Only Platform admins can change who holds which role.">
       <div className="role-scroll table-wrap">

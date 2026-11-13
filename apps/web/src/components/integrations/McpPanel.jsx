@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { KeyRound, Copy, Trash2, Plug } from "lucide-react";
 import Panel from "../ui/Panel";
 import { api } from "../../api";
+import { fmtDate } from "../../lib/dates";
 
 const errText = (e) => e?.response?.data?.error || e?.message || "Something went wrong";
-const when = (d) => (d ? new Date(d).toLocaleDateString() : "never");
+const when = (d) => (d ? fmtDate(d) : "never");
 
 export default function McpPanel() {
   const [data, setData] = useState({ tokens: [], mcpUrl: "" });

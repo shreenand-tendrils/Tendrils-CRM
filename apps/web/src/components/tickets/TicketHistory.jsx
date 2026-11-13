@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { describeEvent, actorLabel, groupByDay } from "../../lib/ticketHistory";
+import { fmtTime } from "../../lib/dates";
 
 // Per-ticket timeline: who changed what, and when. `refreshKey` reloads it when the ticket changes.
-export default function TicketHistory({ ticketId, refreshKey, showRoles }) {
+const ROUTE = ["TEAM", "TEAM_ACCESS", "ASSIGNEE", "COLLABORATOR"];
+const TALK = ["COMMENT", "ATTACHMENT"];
+const FILTERS = [["all", "All"], ["route", "Routing"], ["status", "Status & details"], ["talk", "Comments & files"]];
+const keep = (f, e) => f === "all" || (f === "route" ? ROUTE.includes(e.type) : f === "talk" ? TALK.includes(e.type) : !ROUTE.includes(e.type) && !TALK.includes(e.type));
+
+export default function TicketHistory({ ticketId, refreshKey, showRoles, filterable = false }) {
   const [events, setEvents] = useState(null);
+  const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -19,9 +26,12 @@ export default function TicketHistory({ ticketId, refreshKey, showRoles }) {
   if (!events) return <p className="hint">Loading history…</p>;
   if (!events.length) return <p className="hint">No history yet.</p>;
 
+  const shown = events.filter((e) => keep(filter, e));
   return (
     <div className="history">
-      {groupByDay(events).map((g) => (
+      {filterable && <div className="doc-filters" role="group" aria-label="Filter history" style={{ marginBottom: 10 }}>{FILTERS.map(([id, label]) => <button key={id} type="button" className={`pill${filter === id ? " on" : ""}`} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>}
+      {!shown.length && <p className="hint">Nothing in this view.</p>}
+      {groupByDay(shown).map((g) => (
         <section key={g.day}>
           <small className="history-day">{g.day}</small>
           {g.events.map((e) => (
@@ -30,7 +40,7 @@ export default function TicketHistory({ ticketId, refreshKey, showRoles }) {
               <div>
                 <p><b>{actorLabel(e, showRoles)}</b> {describeEvent(e)}</p>
                 {e.note && e.type !== "CREATED" && <small className="history-note">{e.note}</small>}
-                <small>{new Date(e.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                <small>{fmtTime(e.createdAt)}</small>
               </div>
             </div>
           ))}

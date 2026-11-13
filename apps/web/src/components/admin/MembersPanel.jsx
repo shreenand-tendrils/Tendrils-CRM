@@ -81,7 +81,7 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
         <button className="primary" disabled={busy || !form.organizationId}>{mode === "invite" ? <><Send size={16} /> Send invitation</> : <><UserPlus size={16} /> Add person</>}</button>
       </form>
 
-      <div className="tabs" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}{k === "invites" && invites.length ? ` (${invites.length})` : ""}</button>)}</div>
+      <div className="seg" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}{k === "invites" && invites.length ? ` (${invites.length})` : ""}</button>)}</div>
 
       {tab !== "invites" ? (
         <div className="table-wrap">

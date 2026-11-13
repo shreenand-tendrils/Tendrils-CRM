@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Ticket as TicketIcon, UploadCloud, Paperclip } from "lucide-react";
+import { Ticket as TicketIcon, Paperclip } from "lucide-react";
 import { api } from "../../api";
 import { formatDate } from "../../lib/formatters";
 import PasteTextarea from "../ui/PasteTextarea";
@@ -15,11 +15,11 @@ import { TaskWorkflowBar, SubtaskChecklist } from "./TaskWorkflow";
 import { COLUMNS } from "./TaskBoard";
 import Window from "../ui/Window";
 import WorkThread from "../work/WorkThread";
-import TaskComments from "./TaskComments";
-import TicketAttachments from "../tickets/TicketAttachments";
+import Discussion from "../work/Discussion";
 import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
 import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
+import { fmtDate } from "../../lib/dates";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
 export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
@@ -31,16 +31,9 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const [sharedTeams, setSharedTeams] = useState((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId));
   const [assigneeIds, setAssigneeIds] = useState((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean));
   const [tab, setTab] = useState("comments");
-  useEffect(() => { setTab("comments"); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
+  const [disc, setDisc] = useState(null); // live counts from the Comments & files tab
+  useEffect(() => { setTab("comments"); setDisc(null); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
   if (!task) return null;
-  const upload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData(); fd.append("file", file); fd.append("taskId", task.id);
-    try { await api.post("/files", fd); notify?.("File uploaded"); onRefresh?.(); }
-    catch (err) { notify?.(err.response?.data?.error || "Upload failed", "error"); }
-    finally { e.target.value = ""; }
-  };
   const attach = async (file) => {
     const fd = new FormData(); fd.append("file", file); fd.append("taskId", task.id);
     try { await api.post("/files", fd); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not attach the pasted file", "error"); }
@@ -66,16 +59,19 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
 
   const side = (
     <>
-      <div className="win-card">
+      <div className="win-card side-sec">
+        <h4>Status</h4>
         <div className="detail"><span>Status</span>
           {rights.any && authority !== "TICKET"
             ? <select className="table-select" value={task.status} onChange={(e) => onStatusChange(task, e.target.value)} aria-label="Task status">{choices.map((c) => <option key={c.value} value={c.value} disabled={c.disabled}>{c.label}{c.why ? ` (${c.why})` : ""}</option>)}</select>
             : <StatusBadge value={task.status} />}
         </div>
         <div className="detail"><span>Priority</span><PriorityBadge value={task.priority} /></div>
-        <div className="detail"><span>Opened</span><b>{formatDate(task.createdAt)}</b></div>
         <div className="detail"><span>Due</span><b>{formatDate(task.dueDate)}</b></div>
         <div className="detail"><span>{task.completedAt ? "Done in" : "Open for"}</span><b>{dayLabel(daysPassed(task, "completedAt"))}</b></div>
+      </div>
+      <div className="win-card side-sec">
+        <h4>Team &amp; people</h4>
         <div className="detail"><span>Client</span><b>{task.organization?.name || "—"}</b></div>
         {task.project && <div className="detail"><span>Project</span><b>{task.project.name}</b></div>}
         <div className="detail"><span>Work team</span><b>{owner || "Not set"}{shared.length ? ` (+${shared.join(", ")})` : ""}</b></div>
@@ -83,8 +79,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         <div className="detail"><span>Assignees</span><b>{people.length ? people.join(", ") : "Unassigned"}</b></div>
       </div>
       {can(me, "task.assign") && !task.autoCreated && (
-        <div className="win-card" style={{ padding: 12, gap: 8 }}>
-          <h4>Reassign</h4>
+        <details className="win-card side-sec side-det">
+          <summary>Reassign</summary>
           <div className="field"><label>Team</label>
             <select value={ownerTeam} onChange={(e) => { setOwnerTeam(e.target.value); setAssigneeIds([]); }} aria-label="Owning team"><option value="">No team</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
           </div>
@@ -95,7 +91,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
               : <small className="hint">Choose a team first.</small>}
           </div>
           <button className="primary" disabled={!ownerTeam} onClick={async () => { try { await api.patch(`/tasks/${task.id}`, { teamId: ownerTeam, teamIds: sharedTeams.filter((x) => x !== ownerTeam), assigneeIds }); notify?.("Task reassigned"); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not reassign", "error"); } }}>Save reassignment</button>
-        </div>
+        </details>
       )}
       {task.autoCreated && <p className="hint">This record only mirrors its ticket and is hidden from the board. Open the ticket to see and add its tasks.</p>}
       <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -121,7 +117,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         )}
         <div className="win-meta">
           <span><small>Created by</small><b>{task.creator?.name || task.creator?.email || "-"}</b></span>
-          <span><small>Created</small><b>{new Date(task.createdAt).toLocaleDateString()}</b></span>
+          <span><small>Created</small><b>{fmtDate(task.createdAt)}</b></span>
           {task.team?.name && <span><small>Team</small><b>{task.team.name}</b></span>}
           {task.ticket?.key && <span><small>Ticket</small><b>{task.ticket.key}</b></span>}
         </div>
@@ -131,29 +127,22 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (
-          <div className="win-desc"><small className="win-label">Description</small><RichText text={task.description || "No description added."} canDelete={editable} /><div className="row" style={{ gap: 8 }}>{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}<button type="button" className="win-files-chip" onClick={() => setTab("files")}><Paperclip size={13} /> Attachments ({nFiles})</button></div></div>
+          <div className="win-desc"><small className="win-label">Description</small><RichText text={task.description || "No description added."} canDelete={editable} /><div className="row" style={{ gap: 8 }}>{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}<button type="button" className="win-files-chip" onClick={() => setTab("comments")}><Paperclip size={13} /> Files &amp; comments</button></div></div>
         )}
       </div>
       {parentTask && <p className="hint">Subtask of <button type="button" className="linklike" onClick={() => onOpenTask?.(parentTask)}>{parentTask.title}</button></p>}
       {!task.autoCreated && <TaskWorkflowBar task={task} tasks={tasks} me={me} onStatusChange={onStatusChange} />}
       <SubtaskChecklist task={task} tasks={tasks} me={me} onOpenTask={onOpenTask} onRefresh={onRefresh} notify={notify} />
       <div className="drawer-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments ({nComments})</button>
+        <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments &amp; files ({(disc?.comments ?? nComments) + (disc?.files ?? nFiles)})</button>
         <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>
-        <button role="tab" aria-selected={tab === "files"} className={tab === "files" ? "tab on" : "tab"} onClick={() => setTab("files")}>Files ({nFiles})</button>
       </div>
-      {tab === "comments" && <TaskComments task={task} me={me} canComment={can(me, "ticket.comment_internal")} onChanged={onRefresh} notify={notify} />}
+      {tab === "comments" && <Discussion kind="task" id={task.id} me={me} canUpload={can(me, "file.upload")} canComment={can(me, "ticket.comment_internal")} canModerate={can(me, "task.update_any")} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={task.id} />}
       {tab === "route" && (
         <WorkThread
           ticket={ticket} ticketId={ticketFull ? task.ticketId : null} tasks={thread} focusTaskId={task.id}
           onOpenTask={onOpenTask} onOpenTicket={ticketFull ? onOpenTicket : null} refreshKey={`${task.updatedAt}|${thread.length}`}
         />
-      )}
-      {tab === "files" && (
-        <>
-          {can(me, "file.upload") && <label className="upload"><UploadCloud /><span>Upload an image or document<input type="file" accept="image/*,.pdf,.doc,.docx,.txt" onChange={upload} /></span></label>}
-          <TicketAttachments endpoint={`/tasks/${task.id}/attachments`} refreshKey={nFiles} />
-        </>
       )}
     </Window>
   );

@@ -57,10 +57,11 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
 });
 
 router.get('/files/:id/download', async (req, res) => {
-  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
+  const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { comment: { select: { visibility: true } }, ticket: { include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) return res.status(404).json({ error: 'File not found' });
   const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) return res.status(404).json({ error: 'File not found' });
+  if (a.comment?.visibility === 'INTERNAL' && !req.can('ticket.view_internal')) return res.status(404).json({ error: 'File not found' }); // files in internal notes stay internal
   const file = storagePath(a.storageKey);
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'File bytes not found' });
   res.download(file, a.originalName);

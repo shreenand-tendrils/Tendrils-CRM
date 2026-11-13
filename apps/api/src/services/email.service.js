@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import { prisma } from '../db.js';
+// All dates shown to people are dd/mm/yy (date-only values are UTC midnight, so format them in UTC).
+const ddmmyy = (v) => { const d = new Date(v); if (Number.isNaN(d.getTime())) return '—'; const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCFullYear() % 100)}`; };
 
 let transporter;
 const configured = () => process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
@@ -39,7 +41,7 @@ export function sendAssignmentEmail({ to, assigneeName, itemTitle, itemType, hre
 export function sendCollaboratorEmail({ to, name, actorName, ticket, assigneeName, teamNames = [], collaboratorNames = [], href }) {
   const url = `${webBase()}${href || ''}`;
   const who = actorName || 'A teammate';
-  const due = ticket.dueDate ? new Date(ticket.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : 'No due date';
+  const due = ticket.dueDate ? ddmmyy(ticket.dueDate) : 'No due date';
   const priority = String(ticket.priority || 'MEDIUM').toLowerCase();
   const rows = [
     ['Ticket', `${ticket.key} — ${ticket.title}`],
@@ -81,7 +83,7 @@ export const emailEnabled = configured;
 export function sendInviteEmail({ to, inviterName, orgName, roleLabel, isClient, expiresAt }) {
   const url = webBase();
   const what = isClient ? `follow your projects and raise requests for ${orgName}` : `join the ${orgName} team`;
-  const until = new Date(expiresAt).toDateString();
+  const until = ddmmyy(expiresAt);
   return sendMail({
     raw: true, to, subject: `${inviterName || 'Tendrils'} invited you to ${orgName} on Tendrils`,
     text: `Hi,\n\n${inviterName || 'A Tendrils admin'} invited you to ${what} as ${roleLabel}.\n\nOpen ${url} and choose "Continue with Google" using this email address (${to}). Invitation valid until ${until}.\n\n— Tendrils Operations`,

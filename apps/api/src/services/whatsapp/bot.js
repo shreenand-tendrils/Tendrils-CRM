@@ -9,7 +9,7 @@ import { runAgent, aiConfigured, describePending } from './agent.js';
 import * as cloud from './cloud.js';
 
 const TZ = () => process.env.APP_TIMEZONE || 'Asia/Kolkata';
-const fmtDay = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: TZ() }) : '—');
+const fmtDay = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: TZ() }) : '—');
 const nice = (v) => String(v || '').replaceAll('_', ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 const ICON = { OPEN: '🟢', REVIEW_TEST: '🔎', REVIEW_HELP: '❓', CLOSED: '✅', BACKLOG: '📥', TODO: '⚪', IN_PROGRESS: '🔵', BLOCKED: '⛔', REVIEW: '🔎', DONE: '✅' };
 const PRIO = { URGENT: '🔥', HIGH: '⬆️', MEDIUM: '', LOW: '⬇️' };

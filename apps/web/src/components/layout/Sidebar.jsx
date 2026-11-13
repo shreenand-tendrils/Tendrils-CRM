@@ -25,7 +25,7 @@ export default function Sidebar({ me, unread, chatUnread = 0, collapsed, onToggl
   const item = (n) => {
     const count = badge(n.to);
     return (
-      <NavLink key={n.to} to={n.to} end={n.to === "/"} title={collapsed ? n.label : undefined} onClick={onNavigate}
+      <NavLink key={n.to} to={n.to} end={n.to === "/" || n.to === "/admin"} title={collapsed ? n.label : undefined} onClick={onNavigate}
         className={({ isActive }) => "nav-item" + (isActive ? " active" : "")}>
         <span className="nav-icon"><n.icon size={20} /></span>
         <span className="label">{n.label}</span>
