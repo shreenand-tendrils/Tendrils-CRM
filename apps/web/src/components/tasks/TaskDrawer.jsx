@@ -14,6 +14,7 @@ import { statusChoices, statusRights } from "../../lib/taskReview";
 import { TaskWorkflowBar, SubtaskChecklist } from "./TaskWorkflow";
 import { COLUMNS } from "./TaskBoard";
 import Window from "../ui/Window";
+import { WinTabs } from "../win/WinParts";
 import WorkThread from "../work/WorkThread";
 import Discussion from "../work/Discussion";
 import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
@@ -115,12 +116,11 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
             {editable && !task.autoCreated && <button className="secondary" aria-label="Rename task" onClick={() => { setTitleDraft(task.title); setRenaming(true); }}>Rename</button>}
           </div>
         )}
-        <div className="win-meta">
-          <span><small>Created by</small><b>{task.creator?.name || task.creator?.email || "-"}</b></span>
-          <span><small>Created</small><b>{fmtDate(task.createdAt)}</b></span>
-          {task.team?.name && <span><small>Team</small><b>{task.team.name}</b></span>}
-          {task.ticket?.key && <span><small>Ticket</small><b>{task.ticket.key}</b></span>}
-        </div>
+        <p className="tw-meta" style={{ marginTop: 8 }}>
+          <span>Created by <b>{task.creator?.name || task.creator?.email || "-"}</b> on {fmtDate(task.createdAt)}</span>
+          {task.team?.name && <span className="tw-dotsep">{task.team.name}</span>}
+          {task.ticket?.key && <span className="tw-dotsep">{task.ticket.key}</span>}
+        </p>
         {editing ? (
           <div className="field">
             <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
@@ -133,10 +133,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
       {parentTask && <p className="hint">Subtask of <button type="button" className="linklike" onClick={() => onOpenTask?.(parentTask)}>{parentTask.title}</button></p>}
       {!task.autoCreated && <TaskWorkflowBar task={task} tasks={tasks} me={me} onStatusChange={onStatusChange} />}
       <SubtaskChecklist task={task} tasks={tasks} me={me} onOpenTask={onOpenTask} onRefresh={onRefresh} notify={notify} />
-      <div className="drawer-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === "comments"} className={tab === "comments" ? "tab on" : "tab"} onClick={() => setTab("comments")}>Comments &amp; files ({(disc?.comments ?? nComments) + (disc?.files ?? nFiles)})</button>
-        <button role="tab" aria-selected={tab === "route"} className={tab === "route" ? "tab on" : "tab"} onClick={() => setTab("route")}>Route</button>
-      </div>
+      <WinTabs value={tab} onChange={setTab} label="Task sections" tabs={[{ id: "comments", label: "Comments & files", count: (disc?.comments ?? nComments) + (disc?.files ?? nFiles) }, { id: "route", label: "Route" }]} />
       {tab === "comments" && <Discussion kind="task" id={task.id} me={me} canUpload={can(me, "file.upload")} canComment={can(me, "ticket.comment_internal")} canModerate={can(me, "task.update_any")} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={task.id} />}
       {tab === "route" && (
         <WorkThread

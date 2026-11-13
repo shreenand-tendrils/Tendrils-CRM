@@ -40,7 +40,7 @@ function TaskNode({ node, focusTaskId, onOpenTask }) {
 
 // A git-graph style route: where the work came from, which teams it passed through, who holds it, and the tasks branching off it.
 // Click a task to open it; click the ticket (from a task) to jump back to the ticket.
-export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey, hideEvents = false, bare = false }) {
+export default function WorkThread({ ticket, ticketId, currentTicket = false, tasks = [], focusTaskId, onOpenTask, onOpenTicket, refreshKey, hideEvents = false, hideSummary = false }) {
   const [events, setEvents] = useState([]);
   const [showAll, setShowAll] = useState(false);
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
 
   return (
     <div className="thread" aria-label="Work route">
-      {ticket && !bare && (
+      {ticket && !hideSummary && (
         <div className="thread-summary">
           <div><small>Collaborators</small><b>{(ticket.collaborators || []).map((c) => who(c.user)).filter(Boolean).join(", ") || "None"}</b></div>
           <div><small>Team</small><b>{ticketTeamLabel(ticket) || "Not routed"}</b></div>
@@ -75,10 +75,10 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
           <div><small>Tasks</small><b>{work.length ? `${doneCount} of ${work.length} done` : "None yet"}</b></div>
         </div>
       )}
-      <div className="thread-legend" hidden={bare}>
+      {!hideSummary && <div className="thread-legend">
         <span><i style={{ background: "#5746e8" }} />Ticket</span><span><i style={{ background: "#0f9d8a" }} />Team</span>
         <span><i style={{ background: "#e8872f" }} />Assignee</span><span><i style={{ background: "#e8462f", borderRadius: 3 }} />Task</span>
-      </div>
+      </div>}
       {ticket && (
         <div className="thread-item">
           <span className="thread-dot root" aria-hidden="true" />
@@ -102,7 +102,7 @@ export default function WorkThread({ ticket, ticketId, currentTicket = false, ta
       ))}
       {showAll && timeline.length > LIMIT && <button type="button" className="secondary thread-more" onClick={() => setShowAll(false)}>Show fewer</button>}
       {!timeline.length && !ticket && <p className="hint">Nothing to show yet.</p>}
-      {ticket && !bare && !tasks.filter((t) => !t.autoCreated).length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
+      {ticket && !tasks.filter((t) => !t.autoCreated).length && <p className="hint">No tasks yet. Use “Add linked task” to branch work off this ticket.</p>}
     </div>
   );
 }

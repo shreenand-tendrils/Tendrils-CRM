@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Paperclip, Trash2, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus } from "lucide-react";
+import { Trash2, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus, ArrowRight, Users, GitBranch, Lock, Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge, TicketStatusBadge } from "../ui/StatusBadge";
 import { can, ROLE_LABELS } from "../../lib/rbac";
-import { assigneeGroups, isInTeams, sameIds, peopleOfTeams, ticketTeamLabel } from "../../lib/teams";
+import { assigneeGroups, isInTeams, sameIds, peopleOfTeams } from "../../lib/teams";
 import PeoplePicker from "../ui/PeoplePicker";
 import TeamMultiSelect from "../ui/TeamMultiSelect";
 import TicketHistory from "./TicketHistory";
@@ -20,42 +20,17 @@ import { collectThread, buildTree, taskPeople } from "../../lib/workThread";
 import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
 import CopyLinkButton from "./CopyLinkButton";
-import "../../styles/ticket-view.css";
+import TicketJourney from "./TicketJourney";
+import WorkThread from "../work/WorkThread";
+import { WinTabs, SideCard, Row, Panel2 } from "../win/WinParts";
 
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
-// One labelled line in the side panel: label on the left, value or control on the right.
-const Row = ({ label, htmlFor, children, stack = false }) => (
-  <div className={`tv-row${stack ? " stack" : ""}`}>
-    <label htmlFor={htmlFor}>{label}</label>
-    <div className="v">{children}</div>
-  </div>
-);
-
-// Where the ticket is in its life: Open, then Review (test or help), then Closed.
-function Steps({ ticket, staff }) {
-  const at = ticket.status === "CLOSED" ? 2 : ticket.status === "OPEN" ? 0 : 1;
-  const steps = [
-    { label: "Open", sub: staff ? (ticket.progress && ticket.status === "OPEN" ? PROGRESS_LABEL[ticket.progress] : "") : (at === 0 ? clientStatusText(ticket) : "") },
-    ticket.status === "REVIEW_HELP"
-      ? { label: "Needs info", sub: staff ? "" : clientStatusText(ticket) }
-      : { label: "Review", sub: at === 1 ? (staff ? "Test / resolved" : clientStatusText(ticket)) : "" },
-    { label: "Closed", sub: "" },
-  ];
-  return (
-    <ol className="tv-steps" aria-label="Ticket progress">
-      {steps.map((st, i) => (
-        <li key={st.label} className={`tv-step${i < at ? " done" : i === at ? " now" : ""}${i === at && ticket.status === "REVIEW_HELP" ? " help" : ""}`} aria-current={i === at ? "step" : undefined}>
-          <b>{st.label}</b>{st.sub && <small>{st.sub}</small>}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete, onRefresh, notify }) {
   const [pasteHint, setPasteHint] = useState("");
-  const [tab, setTab] = useState(ticket?.tasksInReview > 0 && !me?.isInternal ? "tasks" : "comments");
+  const [tab, setTab] = useState(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview");
+  const [routeOpen, setRouteOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
   const [disc, setDisc] = useState(null); // live counts reported by the Comments & files tab
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(ticket?.title || "");
@@ -66,7 +41,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [collabIds, setCollabIds] = useState([]);
   useEffect(() => { setCollabIds((ticket?.collaborators || []).map((c) => c.userId)); }, [ticket?.id, ticket?.collaborators]);
   useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
-  useEffect(() => { setTab(ticket?.tasksInReview > 0 && !me?.isInternal ? "tasks" : "comments"); setDisc(null); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setTab(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview"); setDisc(null); setRouteOpen(false); setCollabOpen(false); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
 
   const triage = can(me, "ticket.triage");
@@ -110,214 +85,191 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     await onUpdate(ticket.id, { teamId: ownerTeamId || null, teamIds: ownerTeamId ? sharedNow : [], ...(ticket.assigneeId && !fits ? { assigneeId: null } : {}) });
   };
 
-  const clientReview = (!staff || peerReview) && ticket.status === "REVIEW_TEST" && (
-    <div className="linked-task">
-      <ThumbsUp size={22} color="#5746e8" />
-      <span><b>Ready for your review</b><small>{staff ? "The team finished this ticket. " : ""}Approve it, or send it back with a comment explaining what to change.</small></span>
-      <button className="primary" onClick={() => onUpdate(ticket.id, { status: "CLOSED" })}>Approve</button>
-      <button className="secondary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}><Undo2 size={14} /> Send back</button>
-    </div>
-  );
-  const clientTasks = !staff && ticket.status === "OPEN" && ticket.tasksInReview > 0 && (
-    <div className="linked-task">
-      <ThumbsUp size={22} color="#5746e8" />
-      <span><b>{ticket.tasksInReview} task{ticket.tasksInReview === 1 ? " is" : "s are"} ready for your review</b><small>Approve each one, or ask for changes. When the last task is approved, the ticket closes by itself.</small></span>
-      <button className="primary" onClick={() => setTab("tasks")}>Review now</button>
-    </div>
-  );
-  const clientHelp = !staff && ticket.status === "REVIEW_HELP" && (
-    <div className="linked-task">
-      <Info size={22} color="#a05a00" />
-      <span><b>The team needs more information</b><small>Add your answer in a comment below, then tell the team to continue.</small></span>
-      <button className="primary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}>I have replied, continue</button>
-    </div>
-  );
+  const ownerName = teams.find((t) => t.id === ticket.teamId)?.name || ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "";
+  const sharedNames = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.team?.name || teams.find((t) => t.id === a.teamId)?.name).filter(Boolean);
+  const nComments = (disc?.comments ?? comments.length) + (disc?.files ?? (ticket._count?.attachments || 0));
+  const rk = `${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}|${(ticket.collaborators || []).length}|${nComments}`;
+  const open = ticket.status !== "CLOSED";
 
-  const who = (u) => u && (u.name || u.email);
-  const teamLabel = ticketTeamLabel(ticket);
-  const dueDay = ticket.dueDate ? String(ticket.dueDate).slice(0, 10) : "";
-  const overdue = Boolean(dueDay) && ticket.status !== "CLOSED" && dueDay < new Date().toISOString().slice(0, 10);
-  const allWork = tasks.filter((t) => t.ticketId === ticket.id && !t.autoCreated);
-  const workDone = allWork.filter((t) => t.status === "DONE").length;
-  const commentCount = disc?.comments ?? comments.length;
-  const fileCount = disc?.files ?? (ticket._count?.attachments || 0);
+  // ---- things somebody has to act on (shown above the tabs) ----
+  const banner = (icon, tone, title, text, actions) => (
+    <div className={`tw-banner ${tone}`} role="status">{icon}<span><b>{title}</b>{text && <small>{text}</small>}</span>{actions && <span className="tw-banner-actions">{actions}</span>}</div>
+  );
+  const clientReview = (!staff || peerReview) && ticket.status === "REVIEW_TEST" && banner(<ThumbsUp size={20} />, "action", "Ready for your review", `${staff ? "The team finished this ticket. " : ""}Approve it, or send it back with a comment explaining what to change.`, <>
+    <button className="primary" onClick={() => onUpdate(ticket.id, { status: "CLOSED" })}>Approve</button>
+    <button className="secondary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}><Undo2 size={14} /> Send back</button></>);
+  const clientTasks = !staff && ticket.status === "OPEN" && ticket.tasksInReview > 0 && banner(<ThumbsUp size={20} />, "action", `${ticket.tasksInReview} task${ticket.tasksInReview === 1 ? " is" : "s are"} ready for your review`, "Approve each one, or ask for changes. When the last task is approved, the ticket closes by itself.", <button className="primary" onClick={() => setTab("tasks")}>Review now</button>);
+  const clientHelp = !staff && ticket.status === "REVIEW_HELP" && banner(<Info size={20} />, "warn", "The team needs more information", "Add your answer in Comments & files, then tell the team to continue.", <>
+    <button className="secondary" onClick={() => setTab("comments")}>Write a reply</button>
+    <button className="primary" onClick={() => onUpdate(ticket.id, { status: "OPEN" })}>I have replied, continue</button></>);
+  const nextStep = staff && canRoute && open && (!ticket.teamId
+    ? banner(<ArrowRight size={20} />, "info", "Next step: choose the team", "Pick the team that will handle this ticket in the Team routing card.")
+    : !ticket.assigneeId && ticket.status === "OPEN" ? banner(<ArrowRight size={20} />, "info", `Next step: assign someone from ${ownerName || "the team"}`, "Use the Assignment card. Assigning creates a task for that person.") : null);
 
-  const teamCard = staff && (canRoute ? (
-    <section className="tv-card">
-      <h3>Team &amp; people</h3>
-      <Row label="Team" htmlFor="ticket-owner-team" stack>
-        <select id="ticket-owner-team" value={ownerTeamId} onChange={(e) => setOwnerTeamId(e.target.value)} aria-label="Owning team">
-          <option value="">Not routed — pick a team</option>
-          {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-        </select>
-      </Row>
-      <Row label="Also share with" htmlFor="ticket-shared-teams" stack>
-        <TeamMultiSelect id="ticket-shared-teams" teams={teams} value={selectedTeamIds} onChange={setSelectedTeamIds} lockedId={ownerTeamId} disabled={!ownerTeamId} />
-        {!ownerTeamId && <small className="hint">Choose the owning team first.</small>}
-      </Row>
-      {teamsDirty && <button className="primary" disabled={!canSaveTeams} onClick={saveTeams}>Save team access</button>}
-      <Row label="Assignee" htmlFor="ticket-assignee" stack>
-        <select id="ticket-assignee" value={ticket.assigneeId || ""} disabled={!ticket.teamId || teamsDirty} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee">
-          <option value="">{teamsDirty ? "Save team access first" : ticket.teamId ? "Unassigned" : "Select a team first"}</option>
-          {legacyAssignee && <option value={legacyAssignee.id}>{legacyAssignee.name || legacyAssignee.email} (not in these teams — reassign)</option>}
-          {groups.map((g) => (
-            <optgroup key={g.team.id} label={`${g.team.name}${g.owner ? " (owner team)" : " (shared)"}`}>
-              {g.people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </optgroup>
-          ))}
-        </select>
-        <small className="hint">Pick the team and save first, then assign someone from it.</small>
-      </Row>
-      <Row label="Collaborators" stack>
-        {ticket.teamId && !teamsDirty ? (
-          <>
-            <PeoplePicker key={`${savedAccessIds.join("|")}#${ticket.assigneeId || ""}#${savedCollabIds.join("|")}`} users={collabPeople} defaultValue={collabIds} onChange={setCollabIds} />
-            {collabChanged && <button type="button" className="secondary" onClick={() => onUpdate(ticket.id, { collaboratorIds: collabIds.filter((id) => collabPeople.some((p) => p.id === id)) })}>Save collaborators</button>}
-          </>
-        ) : <small className="hint">{teamsDirty ? "Save team access first" : "Select a team first"}</small>}
-      </Row>
-    </section>
-  ) : (
-    <section className="tv-card">
-      <h3>Team &amp; people</h3>
-      <Row label="Team">{ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "Not routed yet"}</Row>
-      <Row label="Assignee">{who(ticket.assignee) || "Unassigned"}</Row>
-      <Row label="Collaborators">{collabNames.length ? collabNames.join(", ") : "None"}</Row>
-    </section>
-  ));
+  // ---- right-hand side: only controls ----
+  const statusSelect = canStatus
+    ? <select className="tw-select" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || (teamToTeam && isRequester) || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
+    : staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>;
+  const showRouteForm = routeOpen || !ticket.teamId || teamsDirty;
 
   const side = (
     <>
-      {staff && <TicketReminder ticket={ticket} />}
-      <section className="tv-card">
-        <h3>Status</h3>
-        <Row label="Status" htmlFor="ticket-status">
-          {canStatus
-            ? <select id="ticket-status" value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })} aria-label="Status">{STATUSES.filter((st) => !staff || triage || (teamToTeam && isRequester) || st !== "CLOSED").map((st) => { const gated = ["REVIEW_TEST", "CLOSED"].includes(st) && st !== ticket.status && reviewBlocked; return <option key={st} value={st} disabled={gated}>{STATUS_LABEL[st]}{gated ? " (finish linked work first)" : ""}</option>; })}</select>
-            : staff ? <TicketStatusBadge ticket={ticket} /> : clientStatusText(ticket)}
-        </Row>
-        {staff && reviewBlocked && <p className="tv-note" role="status"><Info size={13} /> Review is locked: {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " still needs" : "s still need"} to be marked Done.</p>}
+      <SideCard title={staff ? "Status" : "Details"} icon={ListChecks}>
+        <Row label="Status">{statusSelect}</Row>
         {staff && (PROGRESS_FOR[ticket.status] || []).length > 0 && (
-          <Row label="Progress" htmlFor="ticket-progress">
+          <Row label="Progress">
             {canStatus
-              ? <select id="ticket-progress" value={ticket.progress || ""} onChange={(e) => onUpdate(ticket.id, { progress: e.target.value || null })} aria-label="Progress">{ticket.status === "OPEN" && <option value="">Not started</option>}{PROGRESS_FOR[ticket.status].map((p) => <option key={p} value={p}>{PROGRESS_LABEL[p]}</option>)}</select>
-              : ticket.progress ? PROGRESS_LABEL[ticket.progress] : "Not started"}
+              ? <select className="tw-select" value={ticket.progress || ""} onChange={(e) => onUpdate(ticket.id, { progress: e.target.value || null })} aria-label="Progress">{ticket.status === "OPEN" && <option value="">Not started</option>}{PROGRESS_FOR[ticket.status].map((p) => <option key={p} value={p}>{PROGRESS_LABEL[p]}</option>)}</select>
+              : <b>{ticket.progress ? PROGRESS_LABEL[ticket.progress] : "Not started"}</b>}
           </Row>
         )}
-        <Row label="Priority" htmlFor="ticket-priority">
+        <Row label="Priority">
           {triage
-            ? <select id="ticket-priority" value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })} aria-label="Priority">{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}</select>
+            ? <select className="tw-select" value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })} aria-label="Priority">{PRIORITIES.map((p) => <option key={p} value={p}>{pretty(p)}</option>)}</select>
             : <PriorityBadge value={ticket.priority} />}
         </Row>
-        <Row label="Due">{formatDate(ticket.dueDate)}{overdue && <em className="tv-late">Overdue</em>}</Row>
-        <Row label={ticket.closedAt ? "Closed in" : "Open for"}>{dayLabel(daysPassed(ticket))}</Row>
-        {!staff && <Row label="Assignee">{who(ticket.assignee) || "Unassigned"}</Row>}
-      </section>
-      {teamCard}
-      {staff && (
-        <section className="tv-card">
-          <h3>Linked tasks{linkedRoots.length > 0 && <span className="tv-count">{rootsDone}/{linkedRoots.length} done{inReview > 0 ? `, ${inReview} in review` : ""}</span>}</h3>
-          {linkedRoots.length > 0 && (
+        {staff && reviewBlocked && <p className="tw-note"><Lock size={13} /> Review is locked until {incompleteWorkCount} linked task{incompleteWorkCount === 1 ? " is" : "s are"} marked Done.</p>}
+      </SideCard>
+
+      {staff && canRoute && (
+        <SideCard title="Assignment" icon={Users}>
+          <Row label="Assignee">
+            <select className="tw-select" value={ticket.assigneeId || ""} disabled={!ticket.teamId || teamsDirty} onChange={(e) => onUpdate(ticket.id, { assigneeId: e.target.value || null })} aria-label="Assignee">
+              <option value="">{teamsDirty ? "Save team access first" : ticket.teamId ? "Unassigned" : "Pick a team first"}</option>
+              {legacyAssignee && <option value={legacyAssignee.id}>{legacyAssignee.name || legacyAssignee.email} (not in these teams, reassign)</option>}
+              {groups.map((g) => (
+                <optgroup key={g.team.id} label={`${g.team.name}${g.owner ? " (owner team)" : " (shared)"}`}>
+                  {g.people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </Row>
+          <div className="tw-collab">
+            <div className="tw-collab-head"><span>Collaborators</span>
+              {ticket.teamId && !teamsDirty && <button type="button" className="tw-link" onClick={() => setCollabOpen((o) => !o)}>{collabOpen ? "Close" : collabNames.length ? "Manage" : "Add"}</button>}
+            </div>
+            {!collabOpen && (collabNames.length ? <div className="tw-chips">{collabNames.map((n) => <span key={n} className="tw-chip">{n}</span>)}</div> : <small className="tw-muted">None. Add people from the selected teams.</small>)}
+            {collabOpen && ticket.teamId && !teamsDirty && (
+              <>
+                <PeoplePicker key={`${savedAccessIds.join("|")}#${ticket.assigneeId || ""}#${savedCollabIds.join("|")}`} users={collabPeople} defaultValue={collabIds} onChange={setCollabIds} />
+                <button type="button" className="primary tw-wide" disabled={!collabChanged} onClick={async () => { await onUpdate(ticket.id, { collaboratorIds: collabIds.filter((id) => collabPeople.some((p) => p.id === id)) }); setCollabOpen(false); }}>Save collaborators</button>
+              </>
+            )}
+          </div>
+        </SideCard>
+      )}
+
+      {staff && canRoute && (
+        <SideCard title="Team routing" icon={GitBranch}
+          action={ticket.teamId && !teamsDirty ? <button type="button" className="tw-link" onClick={() => setRouteOpen((o) => !o)}>{routeOpen ? "Close" : "Change"}</button> : null}>
+          {!showRouteForm ? (
+            <div className="tw-chips"><span className="tw-chip owner">{ownerName || "Team"} <i>owner</i></span>{sharedNames.map((n) => <span key={n} className="tw-chip">{n}</span>)}</div>
+          ) : (
             <>
-              <div className="progress" aria-hidden="true"><i style={{ width: `${Math.round((rootsDone / linkedRoots.length) * 100)}%` }} /></div>
-              <div className="linked-rows">
-                {linkedRoots.map((t) => {
-                  const subs = linkedTree.flatMap(function walk(n) { return [n, ...n.children.flatMap(walk)]; }).filter((n) => n.task.parentId === t.id);
-                  return (
-                    <button key={t.id} type="button" onClick={() => onOpenTask?.(t)} aria-label={`Open task ${t.title}`}>
-                      <span><b>{t.title}</b><small style={{ display: "block" }}>{taskPeople(t).join(", ") || "Unassigned"}{subs.length ? `, ${subs.filter((n) => n.task.status === "DONE").length}/${subs.length} subtasks` : ""}</small></span>
-                      <StatusBadge value={t.status} />
-                    </button>
-                  );
-                })}
+              <div className="field">
+                <label htmlFor="ticket-owner-team">Owning team</label>
+                <select id="ticket-owner-team" value={ownerTeamId} onChange={(e) => setOwnerTeamId(e.target.value)} aria-label="Owning team">
+                  <option value="">Not routed: pick a team</option>
+                  {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
               </div>
+              <div className="field">
+                <label htmlFor="ticket-shared-teams">Also share with (optional)</label>
+                <TeamMultiSelect id="ticket-shared-teams" teams={teams} value={selectedTeamIds} onChange={setSelectedTeamIds} lockedId={ownerTeamId} disabled={!ownerTeamId} />
+              </div>
+              <button className="primary tw-wide" disabled={!canSaveTeams} onClick={async () => { await saveTeams(); setRouteOpen(false); }}>Save team access</button>
             </>
           )}
-          {linkedRoots.length === 0 && <p className="tv-note">{ticket.teamId ? "No tasks yet. Branch work off this ticket for your team or another one." : "Route the ticket to a team before adding tasks."}</p>}
-          {can(me, "task.create") && <button className="secondary" disabled={!ticket.teamId} onClick={() => onAddTask?.(ticket)}><Plus size={14} /> Add linked task</button>}
-        </section>
+        </SideCard>
       )}
+
+      {staff && !canRoute && (
+        <SideCard title="Team & people" icon={Users}>
+          <Row label="Team"><b>{ownerName || "Not routed yet"}</b></Row>
+          <Row label="Assignee"><b>{ticket.assignee?.name || ticket.assignee?.email || "Unassigned"}</b></Row>
+          <Row label="Collaborators"><b>{collabNames.length ? collabNames.join(", ") : "None"}</b></Row>
+        </SideCard>
+      )}
+
+      {staff && <SideCard title="Just for you" icon={Bell}><TicketReminder ticket={ticket} /></SideCard>}
+
       {canDelete && onDelete && (
-        <button type="button" className="tv-delete"
-          onClick={() => { if (window.confirm(`Delete ${ticket.key}? Its comments, files and history are removed and this cannot be undone.`)) onDelete(ticket); }}>
-          <Trash2 size={14} /> Delete ticket
+        <button type="button" className="tw-danger" onClick={() => { if (window.confirm(`Delete ${ticket.key}? Its comments, files and history are removed and this cannot be undone.`)) onDelete(ticket); }}>
+          <Trash2 size={14} /> Delete this ticket
         </button>
       )}
     </>
   );
 
-  const head = (
+  const headActions = (
     <>
-      <b className="win-key">{ticket.key}</b>
-      <span className="tv-head-actions">
-        <CopyLinkButton ticket={ticket} label />
-        {canEditDetails && !editing && <button type="button" className="secondary tv-edit" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}
-      </span>
+      <CopyLinkButton ticket={ticket} label />
+      {canEditDetails && !editing && <button type="button" className="secondary tw-edit" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}
     </>
   );
 
-  const tabBtn = (id, label, count, extra) => (
-    <button key={id} role="tab" type="button" aria-selected={tab === id} className="tv-tab" onClick={() => setTab(id)}>
-      {label}{count !== undefined && count !== null && <i>{count}</i>}{extra}
-    </button>
-  );
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "tasks", label: "Tasks", count: staff ? linkedRoots.length : (ticket.tasksInReview > 0 ? `${ticket.tasksInReview} to review` : null), alert: !staff && ticket.tasksInReview > 0 },
+    { id: "comments", label: "Comments & files", count: nComments },
+    { id: "history", label: "History" },
+  ];
 
   return (
-    <Window label={`Ticket ${ticket.key}`} onClose={onClose} side={side} head={head} className="tv">
-      {clientReview}
-      {clientTasks}
-      {clientHelp}
+    <Window
+      label={`Ticket ${ticket.key}`} onClose={onClose} side={staff || canStatus ? side : undefined} headRight={headActions}
+      head={<><b className="win-key">{ticket.key}</b>{staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}<PriorityBadge value={ticket.priority} /></>}
+    >
       {editing ? (
-        <div className="field tv-edit-form">
+        <div className="tw-edit-box field">
           <label htmlFor="ticket-edit-title">Ticket title</label>
           <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
           <label htmlFor="ticket-edit-description">Description</label>
           <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={5} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)} onError={(m) => setPasteHint(m)} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
+          {pasteHint && <small className="hint">{pasteHint}</small>}
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
       ) : (
+        <header className="tw-hero">
+          <h2 className="tw-title"><Linkify text={ticket.title} /></h2>
+          <p className="tw-meta">
+            {ticket.requester && <Avatar name={ticket.requester.name || ticket.requester.email} />}
+            <span>Raised by <b>{ticket.requester?.name || ticket.requester?.email || "someone"}</b> on {formatDate(ticket.createdAt)}</span>
+            {ticket.organization?.name && <span className="tw-dotsep">{ticket.organization.name}</span>}
+            <span className="tw-dotsep">Updated {formatDate(ticket.updatedAt)}</span>
+          </p>
+        </header>
+      )}
+
+      <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} />
+      {clientReview}{clientTasks}{clientHelp}{nextStep}
+
+      <WinTabs tabs={tabs} value={tab} onChange={setTab} label="Ticket sections" />
+
+      {tab === "overview" && (
         <>
-          <div className="tv-top">
-            <h2 className="tv-title"><Linkify text={ticket.title} /></h2>
-            <div className="tv-chips">
-              {staff ? <TicketStatusBadge ticket={ticket} /> : <span className="status s-open">{clientStatusText(ticket)}</span>}
-              <PriorityBadge value={ticket.priority} />
-              <span className={`tv-due${overdue ? " late" : ""}`}>{ticket.dueDate ? `Due ${formatDate(ticket.dueDate)}` : "No due date"}{overdue ? " · overdue" : ""}</span>
-            </div>
-            <div className="tv-meta">
-              <span>Raised by <b className="who">{ticket.requester && <Avatar name={ticket.requester.name || ticket.requester.email} />}{who(ticket.requester) || "—"}</b> on {formatDate(ticket.createdAt)}</span>
-              {ticket.organization?.name && <span>Client <b>{ticket.organization.name}</b></span>}
-              <span>Updated <b>{formatDate(ticket.updatedAt)}</b></span>
-            </div>
-          </div>
-
-          <Steps ticket={ticket} staff={staff} />
-
-          {staff && (
-            <div className="tv-route" aria-label="Where the work is">
-              <div className={`tv-node${teamLabel ? "" : " todo"}`}><small>Team</small><b>{teamLabel || "Not routed"}</b></div>
-              <div className={`tv-node${ticket.assignee ? "" : " todo"}`}><small>Assignee</small><b>{who(ticket.assignee) || "Unassigned"}</b>{collabNames.length > 0 && <em>+ {collabNames.join(", ")}</em>}</div>
-              <div className="tv-node"><small>Tasks</small><b>{allWork.length ? `${workDone} of ${allWork.length} done` : "None yet"}</b></div>
-            </div>
-          )}
-
-          <section className="tv-desc" aria-label="Description">
-            {ticket.description ? <RichText text={ticket.description} canDelete={canEditDetails || triage} /> : <p className="tv-empty">No description added.</p>}
-            {can(me, "file.upload") && <button type="button" className="tv-attach" onClick={() => setTab("comments")}><Paperclip size={14} /> Attach files</button>}
-          </section>
+          <Panel2 title="Description">
+            {ticket.description ? <RichText text={ticket.description} canDelete={canEditDetails || triage} /> : <p className="tw-empty">No description added.{canEditDetails && <> <button type="button" className="tw-link" onClick={() => setEditing(true)}>Add one</button></>}</p>}
+          </Panel2>
+          <Panel2 title="Latest activity" action={<button type="button" className="tw-link" onClick={() => setTab("history")}>See everything</button>}>
+            <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={rk} limit={4} />
+          </Panel2>
         </>
       )}
 
-      <div className="tv-tabs" role="tablist">
-        {tabBtn("comments", "Comments", commentCount, fileCount > 0 && <span className="tv-files"><Paperclip size={12} />{fileCount}</span>)}
-        {staff && tabBtn("activity", "Timeline")}
-        {!staff && tabBtn("tasks", "Tasks", ticket.tasksInReview > 0 ? `${ticket.tasksInReview} to review` : null)}
-        {!staff && tabBtn("history", "History")}
-      </div>
-      {staff && tab === "activity" && <ActivityTab ticket={ticket} tasks={collectThread(tasks, { ticketId: ticket.id })} onOpenTask={onOpenTask} showRoles refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}|${(ticket.collaborators || []).length}|${commentCount}|${ticket._count?.attachments || 0}`} />}
-      {!staff && tab === "tasks" && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
-      {!staff && tab === "history" && <TicketHistory ticketId={ticket.id} showRoles={false} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.assigneeId}|${ticket.teamId}|${commentCount}|${ticket._count?.attachments || 0}|${(ticket.teamAccesses || []).length}`} />}
+      {tab === "tasks" && staff && (
+        <Panel2 title="Linked tasks"
+          sub={linkedRoots.length ? `${rootsDone} of ${linkedRoots.length} done${inReview > 0 ? ` · ${inReview} waiting for review` : ""}` : ticket.teamId ? "Branch work off this ticket, for your team or another one." : "Route the ticket to a team before adding tasks."}
+          action={can(me, "task.create") && <button className="primary" disabled={!ticket.teamId} onClick={() => onAddTask?.(ticket)}><Plus size={14} /> Add linked task</button>}>
+          {linkedRoots.length > 0 && <div className="progress tw-progress" aria-hidden="true"><i style={{ width: `${Math.round((rootsDone / linkedRoots.length) * 100)}%` }} /></div>}
+          <WorkThread ticket={ticket} ticketId={ticket.id} currentTicket tasks={collectThread(tasks, { ticketId: ticket.id })} onOpenTask={onOpenTask} refreshKey={rk} hideEvents hideSummary />
+        </Panel2>
+      )}
+      {tab === "tasks" && !staff && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
+
       {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
+
+      {tab === "history" && <Panel2 title="Full history" sub="Every change, newest first"><TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={rk} filterable={staff} /></Panel2>}
     </Window>
   );
 }

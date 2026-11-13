@@ -9,7 +9,7 @@ const TALK = ["COMMENT", "ATTACHMENT"];
 const FILTERS = [["all", "All"], ["route", "Routing"], ["status", "Status & details"], ["talk", "Comments & files"]];
 const keep = (f, e) => f === "all" || (f === "route" ? ROUTE.includes(e.type) : f === "talk" ? TALK.includes(e.type) : !ROUTE.includes(e.type) && !TALK.includes(e.type));
 
-export default function TicketHistory({ ticketId, refreshKey, showRoles, filterable = false }) {
+export default function TicketHistory({ ticketId, refreshKey, showRoles, filterable = false, limit = 0 }) {
   const [events, setEvents] = useState(null);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
@@ -26,7 +26,8 @@ export default function TicketHistory({ ticketId, refreshKey, showRoles, filtera
   if (!events) return <p className="hint">Loading history…</p>;
   if (!events.length) return <p className="hint">No history yet.</p>;
 
-  const shown = events.filter((e) => keep(filter, e));
+  const filtered = events.filter((e) => keep(filter, e));
+  const shown = limit ? [...filtered].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit) : filtered;
   return (
     <div className="history">
       {filterable && <div className="doc-filters" role="group" aria-label="Filter history" style={{ marginBottom: 10 }}>{FILTERS.map(([id, label]) => <button key={id} type="button" className={`pill${filter === id ? " on" : ""}`} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>}
