@@ -1,1 +1,0 @@
-import {create} from 'zustand';export const useAppStore=create(set=>({search:'',toast:null,setSearch:search=>set({search}),showToast:(message,type='success')=>{set({toast:{message,type}});setTimeout(()=>set({toast:null}),3000)}}));

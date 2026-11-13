@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import "../../styles/window.css";
 
 // Floating window (same look as the "Create" forms): centered, dimmed backdrop, main area + side panel.
-export default function Window({ label, head, side, onClose, children }) {
+export default function Window({ label, head, side, onClose, className = "", children }) {
   const ref = useRef(null);
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -13,7 +13,7 @@ export default function Window({ label, head, side, onClose, children }) {
   }, []);
   return (
     <div className="win-overlay">
-      <section className="win" role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={ref}>
+      <section className={`win ${className}`.trim()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={ref}>
         <header className="win-head">
           {head}
           <button type="button" className="win-close" onClick={onClose} aria-label="Close"><X size={20} /></button>

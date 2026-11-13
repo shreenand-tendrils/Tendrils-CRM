@@ -1,1 +1,0 @@
-import {Activity} from "lucide-react";import Panel from "../components/ui/Panel";import ActivityFeed from "../components/dashboard/ActivityFeed";export default function ActivityPage({data}){return <Panel title="Workspace activity" sub="Important changes captured as they happen."><ActivityFeed items={data.activity||[]}/></Panel>}

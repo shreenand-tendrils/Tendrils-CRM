@@ -1,5 +1,0 @@
-import { fmtDate } from "./dates";
-export const pretty = (value = "") => String(value).toLowerCase().replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
-export const formatDate = (value) => fmtDate(value);
-export const initials = value => (value || "U").split(/[ @._-]/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
-export const isOverdue = task => task.dueDate && new Date(task.dueDate) < new Date() && task.status !== "DONE";
