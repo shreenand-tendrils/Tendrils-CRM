@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Paperclip, Send, Trash2, UploadCloud, MessageSquare, Files } from "lucide-react";
 import { api } from "../../api";
 import { ACCEPT, uploadFile } from "../../lib/files";
-import PasteTextarea, { imageIds } from "../ui/PasteTextarea";
+import PasteTextarea, { imageIds, textOnly, withImages } from "../ui/PasteTextarea";
 import RichText from "../ui/RichText";
 import Avatar from "../ui/Avatar";
 import FileRow from "../ui/FileRow";
@@ -16,7 +16,7 @@ const MAX_DRAFT = 10;
  * - "Files" shows the record's own files and, separately, the files people sent inside comments.
  * - The composer takes text, pasted screenshots, and files from the device (button, drag and drop, or paste).
  */
-export default function Discussion({ kind, id, me, staff = false, canUpload = true, canComment = true, canModerate = false, onChanged, onCount, notify, refreshKey }) {
+export default function Discussion({ kind, id, me, users = [], staff = false, canUpload = true, canComment = true, canModerate = false, onChanged, onCount, notify, refreshKey }) {
   const base = kind === "ticket" ? `/tickets/${id}` : `/tasks/${id}`;
   const target = kind === "ticket" ? { ticketId: id } : { taskId: id };
   const noun = kind === "ticket" ? "ticket" : "task";
@@ -24,7 +24,7 @@ export default function Discussion({ kind, id, me, staff = false, canUpload = tr
   const [files, setFiles] = useState([]);
   const [view, setView] = useState("comments");
   const [text, setText] = useState("");
-  const [chips, setChips] = useState([]); // files chosen for the comment being written
+  const [chips, setChips] = useState([]); // files chosen for the comment being written\n  const [mentionMap, setMentionMap] = useState({});
   const [visibility, setVisibility] = useState("CLIENT");
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -38,7 +38,7 @@ export default function Discussion({ kind, id, me, staff = false, canUpload = tr
     ]);
     setComments(c); setFiles(f);
   }, [base]);
-  useEffect(() => { setComments(null); setChips([]); setText(""); setErr(""); load(); }, [load, refreshKey]);
+  useEffect(() => { setComments(null); setChips([]); setText(""); setMentionMap({}); setErr(""); load(); }, [load, refreshKey]);
 
   const commentFiles = (comments || []).flatMap((c) => (c.attachments || []).map((a) => ({ ...a, by: c.author?.name || c.author?.email, at: c.createdAt })));
   useEffect(() => { if (comments) onCount?.({ comments: comments.length, files: files.length + commentFiles.length }); }, [comments, files.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -71,7 +71,7 @@ export default function Discussion({ kind, id, me, staff = false, canUpload = tr
     if ((!body && !chips.length) || busy || chips.some((c) => c.busy)) return;
     setBusy(true); setErr("");
     try {
-      await api.post(`${base}/comments`, { body, ...(kind === "ticket" ? { visibility: staff ? visibility : "CLIENT" } : {}), attachmentIds: chips.map((c) => c.id) });
+      await api.post(`${base}/comments`, { body, ...(kind === "ticket" ? { visibility: staff ? visibility : "CLIENT", mentionIds: mentionedIds } : {}), attachmentIds: chips.map((c) => c.id) });
       setText(""); setChips([]);
       await load(); onChanged?.();
     } catch (e) { fail(e.response?.data?.error || "Could not post the comment"); }
@@ -98,14 +98,41 @@ export default function Discussion({ kind, id, me, staff = false, canUpload = tr
   const newestFirst = [...comments].reverse();
   const nFiles = files.length + commentFiles.length;
 
+  const plainText = textOnly(text);
+  const mentionQueryMatch = kind === "ticket" ? /(?:^|\s)@([\w.-]*)$/.exec(plainText) : null;
+  const mentionQuery = mentionQueryMatch ? mentionQueryMatch[1].toLowerCase() : null;
+  const displayName = (u) => u.name || u.email || "Teammate";
+  const mentionSuggestions = mentionQuery === null ? [] : users
+    .filter((u) => u.id !== me.user?.id && (displayName(u).toLowerCase().includes(mentionQuery) || (u.email || "").toLowerCase().includes(mentionQuery)))
+    .slice(0, 6);
+  const updateText = (next) => setText(next);
+  const pickMention = (u) => {
+    const token = `@${displayName(u)}`;
+    setMentionMap((cur) => ({ ...cur, [token]: u.id }));
+    setText((cur) => withImages(textOnly(cur).replace(/@([\w.-]*)$/, `${token} `), imageIds(cur)));
+  };
+  const mentionedIds = [...new Set(Object.entries(mentionMap)
+    .filter(([token]) => plainText.includes(token))
+    .map(([, userId]) => userId))];
+
   const composer = canComment ? (
     <div className={`composer${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
       <PasteTextarea
-        value={text} rows={2} onChange={setText} target={target} aria-label="Comment"
+        value={text} rows={2} onChange={updateText} target={target} aria-label="Comment"
         placeholder="Write a comment… paste a screenshot or drop files here"
         onOtherFile={(f) => addDraft([f])} onError={fail}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
       />
+      {mentionSuggestions.length > 0 && (
+        <div className="disc-mention-menu" role="listbox" aria-label="Mention someone">
+          {mentionSuggestions.map((u) => (
+            <button key={u.id} type="button" role="option" onMouseDown={(e) => { e.preventDefault(); pickMention(u); }}>
+              <span className="disc-mention-avatar">{displayName(u).slice(0, 1).toUpperCase()}</span>
+              <span><b>{displayName(u)}</b><small>{u.email}</small></span>
+            </button>
+          ))}
+        </div>
+      )}
       {chips.length > 0 && <div className="composer-chips">{chips.map((c) => <FileRow key={c.id} file={c} compact busy={c.busy} onRemove={dropChip} />)}</div>}
       {err && <small className="hint file-err" role="alert">{err}</small>}
       <div className="composer-bar">

@@ -409,7 +409,7 @@ export async function listTicketAttachments(ctx, id) {
 
 export async function addTicketComment(ctx, id, input) {
   const t = await loadVisibleTicket(ctx, id);
-  const { attachmentIds = [], ...data } = input;
+  const { attachmentIds = [], mentionIds = [], ...data } = input;
   if (data.visibility === 'INTERNAL' && !ctx.can('ticket.comment_internal')) throw new AppError('Internal comment permission required', 403);
   let c = await prisma.comment.create({ data: { ...data, ticketId: t.id, authorId: ctx.currentUser.id }, include: authorSelect });
   const linked = await attachToComment(prisma, { commentId: c.id, body: data.body, attachmentIds, where: { ticketId: t.id }, userId: ctx.currentUser.id });
@@ -430,7 +430,28 @@ export async function addTicketComment(ctx, id, input) {
       ids.push(...(teamIds.length ? await findTeamManagers(teamIds) : await findTriagers()).map((u) => u.id));
     }
     if (internalNote) { const emp = await employeeIdSet(ids); ids = ids.filter((id) => emp.has(id)); } // internal notes never reach clients
-    await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'COMMENT', title: `${internalNote ? 'New internal note' : 'New comment'} on ${t.key}: ${t.title}`, href: ticketUrl(t), body: `${ctx.currentUser.name || ctx.currentUser.email} ${internalNote ? 'added an internal note on' : 'commented on'} \"${t.title}\" (${t.key}):\n\"${(data.body || `Sent ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 200)}\"` });
+    const commentBody = `${ctx.currentUser.name || ctx.currentUser.email} ${internalNote ? 'added an internal note on' : 'commented on'} \"${t.title}\" (${t.key}):\n\"${(data.body || `Sent ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 200)}\"`;
+    // Resolve mentions only to people who already have legitimate access to this ticket.
+    // Existing recipients receive the normal comment email once; only additional mentions get a separate MENTION email.
+    const teamIds = [...new Set([t.teamId, ...(t.teamAccesses || []).map((a) => a.teamId)].filter(Boolean))];
+    const directIds = [t.requesterId, t.assigneeId, ...(t.collaborators || []).map((x) => x.userId)].filter(Boolean);
+    const mentionUsers = mentionIds.length ? await prisma.user.findMany({
+      where: {
+        id: { in: mentionIds },
+        OR: [
+          { id: { in: directIds } },
+          { memberships: { some: { isActive: true, organizationId: t.organizationId } } },
+          { memberships: { some: { isActive: true, role: 'PLATFORM_ADMIN', organization: { type: 'INTERNAL', isActive: true } } } },
+          ...(teamIds.length ? [{ memberships: { some: { isActive: true, organization: { type: 'INTERNAL', isActive: true }, teamMemberships: { some: { teamId: { in: teamIds } } } } } }] : []),
+        ],
+      },
+      select: { id: true },
+    }) : [];
+    let validMentions = mentionUsers.map((u) => u.id).filter((uid) => uid !== ctx.currentUser.id);
+    if (internalNote) { const emp = await employeeIdSet(validMentions); validMentions = validMentions.filter((uid) => emp.has(uid)); }
+    await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'COMMENT', title: `${internalNote ? 'New internal note' : 'New comment'} on ${t.key}: ${t.title}`, href: ticketUrl(t), body: commentBody });
+    const extraMentions = validMentions.filter((uid) => !ids.includes(uid));
+    if (extraMentions.length) await notifyPeople({ userIds: extraMentions, actorId: ctx.currentUser.id, type: 'MENTION', title: `${ctx.currentUser.name || ctx.currentUser.email} mentioned you on ${t.key}`, href: ticketUrl(t), body: commentBody });
   }
   return c;
 }

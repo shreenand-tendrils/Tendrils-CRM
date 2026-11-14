@@ -22,6 +22,7 @@ import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
 import CopyLinkButton from "./CopyLinkButton";
 import TicketJourney from "./TicketJourney";
+import TicketAttachments from "./TicketAttachments";
 import WorkThread from "../work/WorkThread";
 import { WinTabs, SideCard, Row, Panel2 } from "../win/WinParts";
 
@@ -226,7 +227,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <label htmlFor="ticket-edit-title">Ticket title</label>
           <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
           <label htmlFor="ticket-edit-description">Description</label>
-          <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={5} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload({ target: { files: [f], value: "" } }, ticket.id)} onError={(m) => setPasteHint(m)} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
+          <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={5} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload(f, ticket.id)} onError={(m) => setPasteHint(m)} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
           {pasteHint && <small className="hint">{pasteHint}</small>}
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
@@ -251,6 +252,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         <>
           <Panel2 title="Description">
             {ticket.description ? <RichText text={ticket.description} canDelete={canEditDetails || triage} /> : <p className="tw-empty">No description added.{canEditDetails && <> <button type="button" className="tw-link" onClick={() => setEditing(true)}>Add one</button></>}</p>}
+            <TicketAttachments ticketId={ticket.id} refreshKey={ticket._count?.attachments} />
           </Panel2>
           <Panel2 title="Latest activity" action={<button type="button" className="tw-link" onClick={() => setTab("history")}>See everything</button>}>
             <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={rk} limit={4} />
@@ -268,7 +270,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       )}
       {tab === "tasks" && !staff && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
 
-      {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
+      {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} users={users} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
 
       {tab === "history" && <Panel2 title="Route & history" sub="Follow the ticket from the day it was raised: who held it, which team, and every change on the way"><TicketRoute ticketId={ticket.id} showRoles={staff} refreshKey={rk} /></Panel2>}
     </Window>

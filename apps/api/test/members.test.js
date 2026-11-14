@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { acceptInvitesForEmail, canSignIn, assertTeamsFor, grantMembership, isInviteUsable, normalizeEmail } from '../src/services/invitationsCore.js';
 import { checkGrant, clientStatusChangeAllowed, canPostProjectUpdate, ticketEditScope, TICKET_FIELDS } from '../src/rbac/policies.js';
 import { permissionsFor } from '../src/rbac/permissions.js';
-import { memberInvite, invitationCreate, memberTeamsSet, chatMessageCreate, projectUpdateCreate } from '../src/validators/schemas.js';
+import { memberInvite, invitationCreate, memberTeamsSet, chatMessageCreate, commentCreate, projectUpdateCreate } from '../src/validators/schemas.js';
 
 // Tiny in-memory stand-in for Prisma: just the calls the invitation rules make.
 function fakeDb({ orgs, teams = [], invitations = [] }) {
@@ -100,6 +100,7 @@ test('schemas: invite bodies, teams, mentions, project updates', () => {
   assert.ok(!invitationCreate.safeParse({ email: 'a@b.io', organizationId: 'o', role: 'GOD' }).success);
   assert.deepEqual(memberTeamsSet.parse({ teamIds: [] }).teamIds, []);
   assert.deepEqual(chatMessageCreate.parse({ body: 'hi @dev', mentionIds: ['u1'] }).mentionIds, ['u1']);
+  assert.deepEqual(commentCreate.parse({ body: 'Please check this @Dev', mentionIds: ['u1'] }).mentionIds, ['u1']);
   assert.ok(!chatMessageCreate.safeParse({ body: '   ' }).success);
   assert.ok(!projectUpdateCreate.safeParse({ title: 'x', body: 'ok' }).success);
 });

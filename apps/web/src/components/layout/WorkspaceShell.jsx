@@ -195,8 +195,8 @@ export default function WorkspaceShell({ data, refresh, setData }) {
     }
   };
 
-  const upload = async (event, ticketId) => {
-    const file = event.target.files?.[0];
+  const upload = async (source, ticketId) => {
+    const file = typeof File !== "undefined" && source instanceof File ? source : source?.target?.files?.[0];
     if (!file) return;
     const formData = new FormData();
     formData.append("file", file);
@@ -208,7 +208,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
     } catch (err) {
       note(err.response?.data?.error || "Upload failed", "error");
     } finally {
-      event.target.value = "";
+      if (source?.target) source.target.value = "";
     }
   };
 

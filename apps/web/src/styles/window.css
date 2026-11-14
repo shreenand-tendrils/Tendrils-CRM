@@ -52,3 +52,15 @@
 .comment-head small { margin-left: auto; color: #6b7287; }
 .note-pill { font-style: normal; font-size: 11px; font-weight: 700; background: #ffe9ae; color: #7a5200; border-radius: 999px; padding: 1px 9px; }
 .win-main .comment-form { position: sticky; bottom: -24px; background: #fff; padding: 10px 0 4px; border-top: 1px solid #e6e9f4; z-index: 2; }
+
+
+/* Mobile ticket drawer: keep the content column and side details in normal flow.
+   The previous block layout let nested flex children retain desktop widths and caused horizontal clipping. */
+@media (max-width: 860px) {
+  .win-overlay { display: flex; align-items: flex-end; }
+  .win { min-height: 0; max-height: 96dvh; }
+  .win-grid { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+  .win-main, .win-side { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .win-main { flex: 0 0 auto; padding-bottom: 22px; }
+  .win-side { flex: 0 0 auto; }
+}

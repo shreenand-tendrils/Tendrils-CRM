@@ -259,3 +259,43 @@
 .rt-item::before { display: none; }
 .rt-day { position: relative; z-index: 2; }
 @media (max-width: 720px) { .rt-day-wrap::before { left: 15px; } }
+
+
+/* Ticket route on narrow screens: compact controls, readable cards, and no desktop-width overflow. */
+@media (max-width: 720px) {
+  .win .rt { min-width: 0; width: 100%; gap: 10px; }
+  .win .rt-bar { align-items: stretch; flex-direction: column; gap: 8px; }
+  .win .rt-bar > .seg { display: flex; width: 100%; max-width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .win .rt-bar > .seg::-webkit-scrollbar { display: none; }
+  .win .rt-bar > .seg button { flex: 0 0 auto; white-space: nowrap; padding: 7px 10px; font-size: 12px; }
+  .win .rt-order { align-self: flex-end; min-height: 32px; }
+  .win .rt-legend { gap: 6px 10px; font-size: 11.5px; }
+  .win .rt-legend b { margin: 2px 0 0; flex-basis: 100%; }
+  .win .rt-line { min-width: 0; }
+  .win .rt-day-wrap::before { left: 14px; }
+  .win .rt-item { min-width: 0; padding-left: 42px; }
+  .win .rt-node { width: 30px; height: 30px; left: 0; }
+  .win .rt-item.minor .rt-node { left: 7px; width: 15px; height: 15px; }
+  .win .rt-item.minor::before { left: 14px; }
+  .win .rt-card { min-width: 0; padding: 10px 11px; overflow-wrap: anywhere; }
+  .win .rt-card-top { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .win .rt-card-top b { font-size: 14px; }
+  .win .rt-mini { min-width: 0; display: grid; gap: 5px; overflow-wrap: anywhere; }
+  .win .rt-chips { max-width: 100%; flex-wrap: wrap; }
+  .win .rt-note { overflow-wrap: anywhere; }
+  .win .tw-tabs { max-width: calc(100vw - 32px); }
+  .win .disc-switch { max-width: 100%; overflow-x: auto; }
+  .win .composer-bar { align-items: center; }
+  .win .composer-bar .primary { margin-left: auto; }
+}
+
+
+/* @mention picker in the ticket comment composer */
+.win .composer { position: relative; }
+.disc-mention-menu { position: absolute; z-index: 8; left: 10px; bottom: calc(100% - 2px); width: min(340px, calc(100% - 20px)); max-height: 230px; overflow: auto; padding: 5px; border: 1px solid #d7dcef; border-radius: 12px; background: #fff; box-shadow: 0 12px 32px rgba(30, 40, 80, .16); }
+.disc-mention-menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
+.disc-mention-menu button:hover { background: #f1f2fb; }
+.disc-mention-menu button > span:last-child { display: grid; min-width: 0; }
+.disc-mention-menu b { color: #252b45; font-size: 13px; }
+.disc-mention-menu small { color: #737b91; font-size: 11.5px; overflow-wrap: anywhere; }
+.disc-mention-avatar { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 50%; background: #e8e6ff; color: #4636d6; font-size: 12px; font-weight: 700; }
