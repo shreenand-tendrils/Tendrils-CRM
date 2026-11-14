@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Paperclip, Send, Trash2, UploadCloud, MessageSquare, Files } from "lucide-react";
 import { api } from "../../api";
 import { ACCEPT, uploadFile } from "../../lib/files";
@@ -33,6 +34,8 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   const [ownUploading, setOwnUploading] = useState(false);
   const commentPicker = useRef(null);
   const ownPicker = useRef(null);
+  const composerRef = useRef(null);
+  const [mentionPosition, setMentionPosition] = useState(null);
   const fail = (m) => { setErr(m); notify?.(m, "error"); };
 
   const load = useCallback(async () => {
@@ -125,6 +128,18 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   const mentionSuggestions = mentionQuery === null ? [] : users
     .filter((u) => u.id !== me.user?.id && (displayName(u).toLowerCase().includes(mentionQuery) || (u.email || "").toLowerCase().includes(mentionQuery)))
     .slice(0, 6);
+  useEffect(() => {
+    if (!mentionSuggestions.length || !composerRef.current) { setMentionPosition(null); return; }
+    const place = () => {
+      const rect = composerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMentionPosition({ left: Math.max(8, rect.left + 10), top: Math.max(8, rect.top - 238), width: Math.max(180, Math.min(340, rect.width - 20)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [mentionSuggestions.length, text]);
   const updateText = (next) => setText(next);
   const pickMention = (u) => {
     const token = `@${displayName(u)}`;
@@ -136,22 +151,22 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
     .map(([, userId]) => userId))];
 
   const composer = canComment ? (
-    <div className={`composer${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
+    <div ref={composerRef} className={`composer${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
       <PasteTextarea
         value={text} rows={2} onChange={updateText} target={target} aria-label="Comment"
         placeholder="Write a comment… paste a screenshot or drop files here"
         onOtherFile={(f) => addDraft([f])} onError={fail}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
       />
-      {mentionSuggestions.length > 0 && (
-        <div className="disc-mention-menu" role="listbox" aria-label="Mention someone">
+      {mentionSuggestions.length > 0 && mentionPosition && createPortal(
+        <div className="disc-mention-menu disc-mention-menu-portal" role="listbox" aria-label="Mention someone" style={mentionPosition}>
           {mentionSuggestions.map((u) => (
             <button key={u.id} type="button" role="option" onMouseDown={(e) => { e.preventDefault(); pickMention(u); }}>
               <span className="disc-mention-avatar">{displayName(u).slice(0, 1).toUpperCase()}</span>
               <span><b>{displayName(u)}</b><small>{u.email}</small></span>
             </button>
           ))}
-        </div>
+        </div>, document.body
       )}
       {chips.length > 0 && <div className="composer-chips">{chips.map((c) => <FileRow key={c.id} file={c} compact busy={c.busy} onRemove={dropChip} />)}</div>}
       {err && <small className="hint file-err" role="alert">{err}</small>}
