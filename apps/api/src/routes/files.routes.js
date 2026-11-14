@@ -12,11 +12,13 @@ import { AppError } from '../errors/AppError.js';
 
 const router = Router();
 
-const ALLOWED = /^(image\/(jpeg|png|gif|webp)|application\/pdf|text\/(plain|csv)|application\/zip|application\/vnd\.|application\/msword)/i;
+const ALLOWED_MIME = /^(image\/(jpeg|png|gif|webp|avif|bmp|tiff|heic|heif)|application\/pdf|text\/(plain|csv)|application\/(zip|x-zip-compressed)|application\/vnd\.|application\/msword)/i;
+const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.tif', '.tiff', '.heic', '.heif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.txt', '.zip']);
+const allowedUpload = (file) => ALLOWED_MIME.test(file.mimetype || '') || ALLOWED_EXT.has(path.extname(file.originalname || '').toLowerCase());
 const upload = multer({
   storage: multer.diskStorage(diskStorage()),
   limits: { fileSize: env.maxUploadBytes },
-  fileFilter: (_r, f, cb) => (ALLOWED.test(f.mimetype) ? cb(null, true) : cb(new Error('File type not allowed'))),
+  fileFilter: (_r, f, cb) => (allowedUpload(f) ? cb(null, true) : cb(new Error('File type not allowed'))),
 });
 
 // Can this caller see the ticket/task an attachment belongs to?

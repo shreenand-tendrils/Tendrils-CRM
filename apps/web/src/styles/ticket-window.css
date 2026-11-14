@@ -292,7 +292,7 @@
 
 /* @mention picker in the ticket comment composer */
 .win .composer { position: relative; }
-.disc-mention-menu { position: absolute; z-index: 8; left: 10px; bottom: calc(100% - 2px); width: min(340px, calc(100% - 20px)); max-height: 230px; overflow: auto; padding: 5px; border: 1px solid #d7dcef; border-radius: 12px; background: #fff; box-shadow: 0 12px 32px rgba(30, 40, 80, .16); }
+.disc-mention-menu { position: absolute; z-index: 50; left: 10px; bottom: calc(100% - 2px); width: min(340px, calc(100% - 20px)); max-height: 230px; overflow: auto; padding: 5px; border: 1px solid #d7dcef; border-radius: 12px; background: #fff; box-shadow: 0 12px 32px rgba(30, 40, 80, .16); }
 .disc-mention-menu button { display: flex; width: 100%; align-items: center; gap: 9px; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
 .disc-mention-menu button:hover { background: #f1f2fb; }
 .disc-mention-menu button > span:last-child { display: grid; min-width: 0; }

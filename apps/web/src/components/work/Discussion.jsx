@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Paperclip, Send, Trash2, UploadCloud, MessageSquare, Files } from "lucide-react";
 import { api } from "../../api";
 import { ACCEPT, uploadFile } from "../../lib/files";
@@ -30,6 +30,9 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const [err, setErr] = useState("");
+  const [ownUploading, setOwnUploading] = useState(false);
+  const commentPicker = useRef(null);
+  const ownPicker = useRef(null);
   const fail = (m) => { setErr(m); notify?.(m, "error"); };
 
   const load = useCallback(async () => {
@@ -64,7 +67,11 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
     setChips((x) => x.filter((y) => y.id !== c.id));
     try { await api.delete(`/files/${c.id}`); } catch { /* an unsent draft: nothing else to clean up */ }
   };
-  const pick = (e) => { const list = e.target.files; e.target.value = ""; addDraft(list); };
+  const pick = (e) => {
+    const selected = Array.from(e.currentTarget.files || []);
+    e.currentTarget.value = "";
+    if (selected.length) addDraft(selected);
+  };
   const onDrop = (e) => { e.preventDefault(); setDrag(false); if (canComment && e.dataTransfer?.files?.length) addDraft(e.dataTransfer.files); };
 
   const send = async () => {
@@ -85,13 +92,25 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
 
   // ---- the record's own files (not tied to a comment) ----
   const addOwnList = async (list) => {
-    for (const f of Array.from(list || [])) {
-      try { await uploadFile(f, target); notify?.(`${f.name} uploaded`); }
-      catch (er) { fail(er.response?.data?.error || `Could not upload ${f.name}`); }
-    }
-    await load(); onChanged?.();
+    const selected = Array.from(list || []);
+    if (!selected.length) return;
+    setOwnUploading(true); setErr("");
+    let uploaded = 0;
+    try {
+      for (const f of selected) {
+        try { await uploadFile(f, target); uploaded += 1; }
+        catch (er) { fail(er.response?.data?.error || `Could not upload ${f.name}`); }
+      }
+      await load();
+      if (uploaded) notify?.(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded`);
+      onChanged?.();
+    } finally { setOwnUploading(false); }
   };
-  const addOwn = (e) => { const list = e.target.files; e.target.value = ""; addOwnList(list); };
+  const addOwn = (e) => {
+    const selected = Array.from(e.currentTarget.files || []);
+    e.currentTarget.value = "";
+    if (selected.length) addOwnList(selected);
+  };
   const dropOwn = (e) => { e.preventDefault(); setDrag(false); if (canUpload && e.dataTransfer?.files?.length) addOwnList(e.dataTransfer.files); };
 
   if (!comments) return <p className="hint">Loading…</p>;
@@ -137,7 +156,8 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
       {chips.length > 0 && <div className="composer-chips">{chips.map((c) => <FileRow key={c.id} file={c} compact busy={c.busy} onRemove={dropChip} />)}</div>}
       {err && <small className="hint file-err" role="alert">{err}</small>}
       <div className="composer-bar">
-        <label className="btn-soft sm" title="Attach files from your device"><Paperclip size={15} /> Attach<input type="file" multiple accept={ACCEPT} onChange={pick} hidden /></label>
+        <button type="button" className="btn-soft sm" title="Attach files from your device" onClick={() => commentPicker.current?.click()}><Paperclip size={15} /> Attach</button>
+        <input ref={commentPicker} type="file" multiple accept={ACCEPT} onChange={pick} hidden />
         {kind === "ticket" && staff && <select value={visibility} onChange={(e) => setVisibility(e.target.value)} aria-label="Comment visibility"><option value="CLIENT">Visible to client</option><option value="INTERNAL">Internal note</option></select>}
         <small className="hint composer-hint">Ctrl+Enter to send{kind === "task" ? " · only your team sees task comments" : ""}</small>
         <button type="button" className="primary" disabled={busy || chips.some((c) => c.busy) || (!text.trim() && !chips.length)} onClick={send}><Send size={14} /> {busy ? "Sending…" : "Comment"}</button>
@@ -181,11 +201,17 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
       {view === "files" && (
         <div className="disc-files">
           {canUpload && (
-            <label className={`disc-drop${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={dropOwn}>
-              <UploadCloud size={22} />
-              <span><b>Add files to this {noun}</b><small>Click to choose, or drop files here</small></span>
-              <input type="file" multiple accept={ACCEPT} onChange={addOwn} hidden />
-            </label>
+            <>
+              <div className={`disc-drop${drag ? " over" : ""}`} role="button" tabIndex={0}
+                aria-disabled={ownUploading} onClick={() => !ownUploading && ownPicker.current?.click()}
+                onKeyDown={(e) => { if (!ownUploading && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ownPicker.current?.click(); } }}
+                onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={dropOwn}>
+                <UploadCloud size={22} />
+                <span><b>{ownUploading ? "Uploading…" : `Add files to this ${noun}`}</b><small>Click to choose, or drop files here</small></span>
+              </div>
+              <input ref={ownPicker} type="file" multiple accept={ACCEPT} onChange={addOwn} hidden />
+              {err && <small className="hint file-err" role="alert">{err}</small>}
+            </>
           )}
           <section className="disc-group">
             <h5>On the {noun} <em>{files.length}</em></h5>
