@@ -24,7 +24,8 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   const [files, setFiles] = useState([]);
   const [view, setView] = useState("comments");
   const [text, setText] = useState("");
-  const [chips, setChips] = useState([]); // files chosen for the comment being written\n  const [mentionMap, setMentionMap] = useState({});
+  const [chips, setChips] = useState([]); // files chosen for the comment being written
+  const [mentionMap, setMentionMap] = useState({});
   const [visibility, setVisibility] = useState("CLIENT");
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
