@@ -53,8 +53,10 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   // ---- files for the comment being written ----
   const addDraft = async (list) => {
     setErr("");
+    let count = chips.length;
     for (const f of Array.from(list || [])) {
-      if (chips.length >= MAX_DRAFT) { fail(`You can attach up to ${MAX_DRAFT} files to one comment.`); break; }
+      if (count >= MAX_DRAFT) { fail(`You can attach up to ${MAX_DRAFT} files to one comment.`); break; }
+      count += 1;
       const tmp = `tmp-${Date.now()}-${Math.random()}`;
       setChips((c) => [...c, { id: tmp, originalName: f.name, size: f.size, mimeType: f.type, busy: true }]);
       try {
@@ -116,11 +118,6 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   };
   const dropOwn = (e) => { e.preventDefault(); setDrag(false); if (canUpload && e.dataTransfer?.files?.length) addOwnList(e.dataTransfer.files); };
 
-  if (!comments) return <p className="hint">Loading…</p>;
-  const mine = (c) => c.authorId === me.user?.id;
-  const newestFirst = [...comments].reverse();
-  const nFiles = files.length + commentFiles.length;
-
   const plainText = textOnly(text);
   const mentionQueryMatch = kind === "ticket" ? /(?:^|\s)@([\w.-]*)$/.exec(plainText) : null;
   const mentionQuery = mentionQueryMatch ? mentionQueryMatch[1].toLowerCase() : null;
@@ -133,13 +130,13 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
     const place = () => {
       const rect = composerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setMentionPosition({ left: Math.max(8, rect.left + 10), top: Math.max(8, rect.top - 238), width: Math.max(180, Math.min(340, rect.width - 20)) });
+      setMentionPosition({ left: Math.max(8, rect.left + 10), top: rect.top >= 246 ? rect.top - 238 : Math.min(window.innerHeight - 238, rect.bottom + 6), width: Math.max(180, Math.min(340, rect.width - 20)) });
     };
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [mentionSuggestions.length, text]);
+  }, [mentionSuggestions.length, text]); // eslint-disable-line react-hooks/exhaustive-deps
   const updateText = (next) => setText(next);
   const pickMention = (u) => {
     const token = `@${displayName(u)}`;
@@ -149,6 +146,11 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
   const mentionedIds = [...new Set(Object.entries(mentionMap)
     .filter(([token]) => plainText.includes(token))
     .map(([, userId]) => userId))];
+
+  if (!comments) return <p className="hint">Loading…</p>;
+  const mine = (c) => c.authorId === me.user?.id;
+  const newestFirst = [...comments].reverse();
+  const nFiles = files.length + commentFiles.length;
 
   const composer = canComment ? (
     <div ref={composerRef} className={`composer${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>

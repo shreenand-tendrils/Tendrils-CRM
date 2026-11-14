@@ -3,7 +3,7 @@ import { api } from "../api";
 export const fmtSize = (n = 0) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 export const canPreview = (mime = "") => /^(image\/|application\/pdf)/.test(mime);
 // What the server accepts (see files.routes ALLOWED): images, PDF, Office, text/CSV, zip.
-export const ACCEPT = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip";
+export const ACCEPT = "image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip,.heic,.heif";
 
 const fetchBlob = (id) => api.get(`/files/${id}/download`, { responseType: "blob" }).then((r) => r.data);
 
