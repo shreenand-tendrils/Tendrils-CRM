@@ -20,7 +20,8 @@ import Discussion from "../work/Discussion";
 import { collectThread, taskPeople, taskTeams, incompleteSubtaskCount } from "../../lib/workThread";
 import Linkify from "../ui/Linkify";
 import Avatar from "../ui/Avatar";
-import { fmtDate } from "../../lib/dates";
+import { fmtDate, fmtDateTime } from "../../lib/dates";
+import { uploadErrorText } from "../../lib/files";
 
 // Floating task window: description, comments, files and the route (ticket -> teams -> tasks) on the left, details on the right.
 export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose, onStatusChange, onOpenTask, onOpenTicket, onAddSubtask, onRefresh, notify, teams = [] }) {
@@ -33,11 +34,13 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const [assigneeIds, setAssigneeIds] = useState((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean));
   const [tab, setTab] = useState("comments");
   const [disc, setDisc] = useState(null); // live counts from the Comments & files tab
-  useEffect(() => { setTab("comments"); setDisc(null); setEditing(false); setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); }, [task?.id, task?.updatedAt]);
+  // A refresh (updatedAt changes after every save, comment or poll) must never close an edit in progress: only switching task resets the editor.
+  useEffect(() => { setTab("comments"); setDisc(null); setEditing(false); setRenaming(false); }, [task?.id]);
+  useEffect(() => { if (!editing && !renaming) { setOwnerTeam(task?.teamId || ""); setSharedTeams((task?.teamAccesses || []).filter((a) => a.teamId !== task?.teamId && a.accessRole !== "REVIEWER").map((a) => a.teamId)); setAssigneeIds((task?.assignees || []).map((a) => a.user?.id || a.userId).filter(Boolean)); } }, [task?.id, task?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!task) return null;
   const attach = async (file) => {
     const fd = new FormData(); fd.append("file", file); fd.append("taskId", task.id);
-    try { await api.post("/files", fd); onRefresh?.(); } catch (err) { notify?.(err.response?.data?.error || "Could not attach the pasted file", "error"); }
+    try { await api.post("/files", fd); onRefresh?.(); } catch (err) { notify?.(uploadErrorText(err), "error"); }
   };
   const saveDesc = async () => {
     try { await api.patch(`/tasks/${task.id}`, { description: desc }); setEditing(false); notify?.("Description saved"); onRefresh?.(); }
@@ -49,6 +52,8 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
   const { owner, shared, reviewers } = taskTeams(task);
   const people = taskPeople(task);
   const editable = canEditTask(me, task);
+  const isCreator = !!me?.user?.id && (task.creatorId ? task.creatorId === me.user.id || can(me, "task.update_any") : editable); // creator or admin edits name/description; tasks with no recorded creator fall back to normal edit rights
+  const edited = task.descriptionEditedAt ? <small className="hint" title={`Description edited ${fmtDateTime(task.descriptionEditedAt)}`}> (edited {fmtDateTime(task.descriptionEditedAt)})</small> : null;
   const thread = collectThread(tasks, { ticketId: task.ticketId, focusId: task.id });
   const kind = task.autoCreated ? "Ticket record" : task.parentId ? "Subtask" : "Task";
   const pendingSubtasks = incompleteSubtaskCount(task.id, tasks);
@@ -113,7 +118,7 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         ) : (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <h2><Linkify text={task.title} /></h2>
-            {editable && !task.autoCreated && <button className="secondary" aria-label="Rename task" onClick={() => { setTitleDraft(task.title); setRenaming(true); }}>Rename</button>}
+            {isCreator && !task.autoCreated && <button className="secondary" aria-label="Rename task" onClick={() => { setTitleDraft(task.title); setRenaming(true); }}>Rename</button>}
           </div>
         )}
         <p className="tw-meta" style={{ marginTop: 8 }}>
@@ -123,11 +128,11 @@ export default function TaskDrawer({ task, tasks = [], tickets = [], me, onClose
         </p>
         {editing ? (
           <div className="field">
-            <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} aria-label="Task description" placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
+            <PasteTextarea rows={4} value={desc} onChange={setDesc} target={{ taskId: task.id }} onOtherFile={attach} onError={(m) => notify?.(m, "error")} showAttach aria-label="Task description" placeholder="Write the description. Paste a screenshot with Ctrl+V or use Attach file" />
             <div className="row"><button className="primary" onClick={saveDesc}>Save description</button><button className="secondary" onClick={() => setEditing(false)}>Cancel</button></div>
           </div>
         ) : (
-          <div className="win-desc"><small className="win-label">Description</small><RichText text={task.description || "No description added."} canDelete={editable} /><div className="row" style={{ gap: 8 }}>{editable && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}<button type="button" className="win-files-chip" onClick={() => setTab("comments")}><Paperclip size={13} /> Files &amp; comments</button></div></div>
+          <div className="win-desc"><small className="win-label">Description{edited}</small><RichText text={task.description || "No description added."} canDelete={editable} /><div className="row" style={{ gap: 8 }}>{isCreator && <button className="secondary" onClick={() => { setDesc(task.description || ""); setEditing(true); }}>Edit description</button>}<button type="button" className="win-files-chip" onClick={() => setTab("comments")}><Paperclip size={13} /> Files &amp; comments</button></div></div>
         )}
       </div>
       {parentTask && <p className="hint">Subtask of <button type="button" className="linklike" onClick={() => onOpenTask?.(parentTask)}>{parentTask.title}</button></p>}

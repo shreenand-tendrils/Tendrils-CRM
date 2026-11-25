@@ -192,6 +192,13 @@ export async function patchTask(ctx, id, input) {
   const canEdit = canEditTask(ctx, old);
   const onlyStatus = Object.keys(data).length === 1 && data.status !== undefined && !ids && !teamIds;
   if (!canEdit && !(onlyStatus && (reviewerMove || (unassignedMate && statusMove)))) throw new AppError('You can only edit tasks you created or are assigned to.', 403, 'TASK_EDIT_FORBIDDEN');
+  // Name and description: only the person who created the task may edit them (everyone else uses comments).
+  const descChanged = data.description !== undefined && (data.description ?? '') !== (old.description ?? '');
+  const titleChanged = data.title !== undefined && data.title !== old.title;
+  if ((descChanged || titleChanged) && old.creatorId && old.creatorId !== ctx.currentUser.id && !isAdmin) throw new AppError('Only the creator or an admin can edit this task’s name or description.', 403, 'TASK_TEXT_CREATOR_ONLY');
+  if (descChanged) data.descriptionEditedAt = new Date();
+  if (data.description !== undefined && !descChanged) delete data.description;
+  if (data.title !== undefined && !titleChanged) delete data.title;
   if (statusMove && !asDoer && !reviewerMove) {
     throw new AppError(assigneeIdsNow.length ? 'Only the people this task is assigned to can change its status.' : 'You cannot change this task’s status.', 403, 'TASK_STATUS_ASSIGNEE_ONLY');
   }
@@ -286,6 +293,15 @@ export async function patchTask(ctx, id, input) {
     actorId: ctx.currentUser.id, organizationId: task.organizationId, entityType: 'task', entityId: task.id,
     action: 'updated', summary: `Updated task ${task.title}`,
   });
+  if (descChanged || titleChanged) { // everyone on the task hears that the details changed (and who changed them)
+    const asked = await prisma.comment.findMany({ where: { taskId: task.id }, select: { authorId: true }, distinct: ['authorId'] });
+    const who = ctx.currentUser.name || ctx.currentUser.email;
+    await notifyPeople({
+      userIds: [...taskCommentRecipients({ ...old, ...task, assignees: nextIds ? nextIds.map((userId) => ({ userId })) : old.assignees }, ctx.currentUser.id), ...asked.map((e) => e.authorId)],
+      actorId: ctx.currentUser.id, type: 'SYSTEM', title: `Task edited: ${task.title}`, href: link(task),
+      body: `${who} edited the ${descChanged ? 'description' : 'name'} of the task \"${task.title}\".${descChanged ? `\nNew description:\n\"${String(task.description || '(cleared)').replace(/\[\[img:[a-z0-9-]+\]\]/gi, '[image]').slice(0, 300)}\"` : ''}`,
+    });
+  }
   if (teamIds || data.teamId !== undefined) { // teams added later: the new teams' members are told too
     const had = new Set((old.teamAccesses || []).map((a) => a.teamId));
     const added = [...new Set([task.teamId, ...(teamIds || [])])].filter((id) => id && !had.has(id));

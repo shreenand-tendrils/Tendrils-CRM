@@ -5,6 +5,8 @@ import { STAFF_ROLES, MANAGER_ROLES } from './session.js';
 import { assertAssignable } from './guards.js';
 import { notifyUser } from './activity.js';
 import { sendMentionEmail, fireAndLog } from './email.service.js';
+import { loadVisibleTicket } from './tickets.service.js';
+import { createTask } from './tasks.service.js';
 import { canEditMessage, canDeleteMessage, cleanMentions, publicMessage, MAX_PINS, mentionsAll, canMentionAll, classifyReceipts } from './chatLogic.js';
 
 // ctx = { currentUser, memberships, isInternal, isManager }
@@ -21,6 +23,7 @@ export async function loadRoomFor(ctx, roomId) {
   const room = roomId ? await prisma.chatRoom.findUnique({ where: { id: roomId } }) : null;
   if (!room) throw new AppError('Room not found', 404);
   if (room.type === 'DIRECT' && !participants(room).includes(ctx.currentUser.id)) throw new AppError('Room not found', 404);
+  if (room.type === 'TICKET' && !ctx.isManager && !(await roomUserIds(room)).includes(ctx.currentUser.id)) throw new AppError('Room not found', 404);
   if (room.type === 'PROJECT' && !ctx.isManager) {
     const m = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: room.projectId, userId: ctx.currentUser.id } } });
     if (!m) throw new AppError('Room not found', 404);
@@ -30,6 +33,7 @@ export async function loadRoomFor(ctx, roomId) {
 
 export async function roomUserIds(room) {
   if (room.type === 'DIRECT') return participants(room);
+  if (room.type === 'TICKET') return ticketRoomUserIds(room);
   const internal = { isActive: true, organization: { type: 'INTERNAL' } };
   if (room.type === 'GENERAL') return uniq(await prisma.membership.findMany({ where: { ...internal, role: { in: STAFF_ROLES } }, select: { userId: true } }));
   const [members, managers] = await Promise.all([
@@ -37,6 +41,29 @@ export async function roomUserIds(room) {
     prisma.membership.findMany({ where: { ...internal, role: { in: MANAGER_ROLES } }, select: { userId: true } }),
   ]);
   return uniq([...members, ...managers]);
+}
+
+/** The people actually on the ticket: requester, assignee, collaborators plus anyone invited. Staff only. */
+async function ticketCoreUserIds(room) {
+  const [t, members] = await Promise.all([
+    prisma.ticket.findUnique({ where: { id: room.ticketId }, select: { requesterId: true, assigneeId: true, collaborators: { select: { userId: true } } } }),
+    prisma.chatRoomMember.findMany({ where: { roomId: room.id }, select: { userId: true } }),
+  ]);
+  const ids = [...new Set([t?.requesterId, t?.assigneeId, ...(t?.collaborators || []).map((c) => c.userId), ...members.map((m) => m.userId)].filter(Boolean))];
+  if (!ids.length) return [];
+  return uniq(await prisma.membership.findMany({ where: { userId: { in: ids }, isActive: true, organization: { type: 'INTERNAL' } }, select: { userId: true } }));
+}
+/** Platform admins are part of EVERY ticket discussion (they see it, get its messages and can be mentioned). */
+async function platformAdminIds() {
+  return uniq(await prisma.membership.findMany({ where: { role: 'PLATFORM_ADMIN', isActive: true, organization: { type: 'INTERNAL' } }, select: { userId: true } }));
+}
+async function ticketRoomUserIds(room) {
+  const [core, admins] = await Promise.all([ticketCoreUserIds(room), platformAdminIds()]);
+  return [...new Set([...core, ...admins])];
+}
+/** Read/delivered ticks only wait for the people on the ticket, so a silent admin never keeps a message from turning blue. */
+async function receiptUserIds(room) {
+  return room.type === 'TICKET' ? ticketCoreUserIds(room) : roomUserIds(room);
 }
 
 const snippet = (body) => (body.length > 140 ? `${body.slice(0, 137)}…` : body);
@@ -54,7 +81,7 @@ async function notifyMentions({ ctx, room, ids, body, everyone = false }) {
   if (!ids.length) return;
   const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
   const by = ctx.currentUser.name || ctx.currentUser.email;
-  const where = room.type === 'DIRECT' ? 'a direct message' : room.type === 'GENERAL' ? '#General' : room.name;
+  const where = room.type === 'DIRECT' ? 'a direct message' : room.type === 'GENERAL' ? '#General' : room.type === 'TICKET' ? `the discussion on ${room.name.split(' · ')[0]}` : room.name;
   for (const u of users) {
     const href = `/chat?room=${room.id}`;
     await notifyUser({ userId: u.id, type: 'MENTION', title: everyone ? `${by} mentioned everyone in ${where}` : `${by} mentioned you in ${where}`, body: snippet(body), href });
@@ -80,6 +107,7 @@ export async function sendMessage(ctx, roomId, body, mentionIds = [], replyToId 
     update: { lastReadAt: message.createdAt },
     create: { roomId: room.id, userId: me, lastReadAt: message.createdAt },
   });
+  if (room.resolvedAt) { await prisma.chatRoom.update({ where: { id: room.id }, data: { resolvedAt: null } }); emit(userIds, { type: 'chat.room.updated', roomId: room.id }); } // a new message reopens it
   emit(userIds, { type: 'chat.message', message: publicMessage(message) });
   await markDelivered(room, userIds.filter((id) => id !== me), new Date()).catch((e) => console.error('[chat] delivery failed:', e.message));
   await notifyMentions({ ctx, room, ids: mentions, body, everyone }).catch((e) => console.error('[chat] mention failed:', e.message));
@@ -134,7 +162,7 @@ export async function roomMembers(ctx, roomId) {
 /** Everyone else's delivered/read marks: the client turns them into ✓ / ✓✓ / blue ✓✓ on your own messages. */
 export async function getReceipts(ctx, roomId) {
   const room = await loadRoomFor(ctx, roomId);
-  const others = (await roomUserIds(room)).filter((id) => id !== ctx.currentUser.id);
+  const others = (await receiptUserIds(room)).filter((id) => id !== ctx.currentUser.id);
   const [reads, deliveries] = await Promise.all([
     prisma.chatRead.findMany({ where: { roomId: room.id, userId: { in: others } } }),
     prisma.chatDelivery.findMany({ where: { roomId: room.id, userId: { in: others } } }),
@@ -174,6 +202,8 @@ export async function getOrCreateDm(ctx, otherId) {
   }
 }
 
+const ticketRoomAccess = (me, isManager = false) => isManager ? {} : ({ OR: [{ members: { some: { userId: me } } }, { ticket: { requesterId: me } }, { ticket: { assigneeId: me } }, { ticket: { collaborators: { some: { userId: me } } } }] });
+
 export async function listRooms(ctx) {
   if (!ctx.isInternal) throw new AppError('Chat is available to Tendrils staff only', 403);
   const me = ctx.currentUser.id;
@@ -187,8 +217,8 @@ export async function listRooms(ctx) {
 
   const projectAccess = ctx.isManager ? {} : { project: { members: { some: { userId: me } } } };
   const rooms = await prisma.chatRoom.findMany({
-    where: { OR: [{ type: 'GENERAL' }, { type: 'PROJECT', ...projectAccess }, { type: 'DIRECT', OR: [{ directKey: { startsWith: `${me}:` } }, { directKey: { endsWith: `:${me}` } }] }] },
-    include: { project: { select: { id: true, name: true, organization: { select: { name: true } } } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, include: authorSelect } },
+    where: { OR: [{ type: 'GENERAL' }, { type: 'PROJECT', ...projectAccess }, { type: 'TICKET', ...ticketRoomAccess(me, ctx.isManager) }, { type: 'DIRECT', OR: [{ directKey: { startsWith: `${me}:` } }, { directKey: { endsWith: `:${me}` } }] }] },
+    include: { project: { select: { id: true, name: true, organization: { select: { name: true } } } }, ticket: { select: { id: true, key: true, title: true, status: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, include: authorSelect } },
   });
   const reads = new Map((await prisma.chatRead.findMany({ where: { userId: me } })).map((r) => [r.roomId, r.lastReadAt]));
   const dmUserIds = rooms.filter((r) => r.type === 'DIRECT').map((r) => participants(r).find((id) => id !== me));
@@ -200,7 +230,7 @@ export async function listRooms(ctx) {
       const dmUser = r.type === 'DIRECT' ? dmUsers.get(participants(r).find((id) => id !== me)) ?? null : null;
       return {
         ...r,
-        name: dmUser ? dmUser.name || dmUser.email : r.name,
+        name: dmUser ? dmUser.name || dmUser.email : r.type === 'TICKET' && r.ticket ? `${r.ticket.key} · ${r.ticket.title}` : r.name,
         dmUser,
         lastMessage: messages[0] ? publicMessage(messages[0]) : null,
         unread: await prisma.chatMessage.count({ where: { roomId: r.id, authorId: { not: me }, createdAt: { gt: since(r.id) } } }),
@@ -224,7 +254,7 @@ async function listRoomsLite(ctx) {
   const me = ctx.currentUser.id;
   const projectAccess = ctx.isManager ? {} : { project: { members: { some: { userId: me } } } };
   return prisma.chatRoom.findMany({
-    where: { OR: [{ type: 'GENERAL' }, { type: 'PROJECT', ...projectAccess }, { type: 'DIRECT', OR: [{ directKey: { startsWith: `${me}:` } }, { directKey: { endsWith: `:${me}` } }] }] },
+    where: { OR: [{ type: 'GENERAL' }, { type: 'PROJECT', ...projectAccess }, { type: 'TICKET', ...ticketRoomAccess(me, ctx.isManager) }, { type: 'DIRECT', OR: [{ directKey: { startsWith: `${me}:` } }, { directKey: { endsWith: `:${me}` } }] }] },
   });
 }
 
@@ -232,11 +262,94 @@ async function listRoomsLite(ctx) {
 export async function messageInfo(ctx, messageId) {
   const { msg, room } = await loadMessageFor(ctx, messageId);
   if (msg.authorId !== ctx.currentUser.id) throw new AppError('Only the sender can see message info.', 403, 'INFO_SENDER_ONLY');
-  const others = (await roomUserIds(room)).filter((id) => id !== ctx.currentUser.id);
+  const others = (await receiptUserIds(room)).filter((id) => id !== ctx.currentUser.id);
   const [reads, deliveries, people] = await Promise.all([
     prisma.chatRead.findMany({ where: { roomId: room.id, userId: { in: others } } }),
     prisma.chatDelivery.findMany({ where: { roomId: room.id, userId: { in: others } } }),
     prisma.user.findMany({ where: { id: { in: others } }, select: { id: true, name: true, email: true, image: true } }),
   ]);
   return classifyReceipts(msg, people, new Map(reads.map((r) => [r.userId, r.lastReadAt])), new Map(deliveries.map((d) => [d.userId, d.deliveredAt])));
+}
+
+// ---------- ticket discussion rooms ----------
+
+/** The live discussion for one ticket: created the first time someone opens it. The opener is added so it shows in their chat list. */
+export async function openTicketRoom(ctx, ticketId) {
+  if (!ctx.isInternal) throw new AppError('Chat is available to Tendrils staff only', 403);
+  const t = await loadVisibleTicket(ctx, ticketId); // 404 when this person cannot see the ticket
+  let room = await prisma.chatRoom.findUnique({ where: { ticketId: t.id } });
+  if (!room) {
+    try { room = await prisma.chatRoom.create({ data: { name: `${t.key} · ${t.title}`, type: 'TICKET', ticketId: t.id } }); }
+    catch (e) { if (e.code === 'P2002') room = await prisma.chatRoom.findUnique({ where: { ticketId: t.id } }); else throw e; }
+  }
+  const me = ctx.currentUser.id;
+  await prisma.chatRoomMember.upsert({ where: { roomId_userId: { roomId: room.id, userId: me } }, update: {}, create: { roomId: room.id, userId: me, addedById: me } });
+  return room;
+}
+
+/** Light summary for the ticket window: unread count, pinned decisions, resolved state. */
+export async function ticketDiscussionSummary(ctx, ticketId) {
+  if (!ctx.isInternal) throw new AppError('Chat is available to Tendrils staff only', 403);
+  const t = await loadVisibleTicket(ctx, ticketId);
+  const room = await prisma.chatRoom.findUnique({ where: { ticketId: t.id } });
+  if (!room) return { roomId: null, messages: 0, unread: 0, pinned: [], resolvedAt: null, members: 0 };
+  const me = ctx.currentUser.id;
+  const read = await prisma.chatRead.findUnique({ where: { roomId_userId: { roomId: room.id, userId: me } } });
+  const [messages, unread, pinned, members] = await Promise.all([
+    prisma.chatMessage.count({ where: { roomId: room.id, deletedAt: null } }),
+    prisma.chatMessage.count({ where: { roomId: room.id, authorId: { not: me }, deletedAt: null, createdAt: { gt: read?.lastReadAt ?? new Date(0) } } }),
+    prisma.chatMessage.findMany({ where: { roomId: room.id, pinnedAt: { not: null }, deletedAt: null }, orderBy: { pinnedAt: 'desc' }, take: 3, include: messageInclude }),
+    roomUserIds(room).then((ids) => ids.length),
+  ]);
+  return { roomId: room.id, messages, unread, pinned: pinned.map(publicMessage), resolvedAt: room.resolvedAt, members };
+}
+
+/** Bring people (or whole teams) into a ticket discussion. They get a notification and the room appears in their chat. */
+export async function inviteToRoom(ctx, roomId, { userIds = [], teamIds = [] } = {}) {
+  const room = await loadRoomFor(ctx, roomId);
+  if (room.type !== 'TICKET') throw new AppError('You can only invite people to a ticket discussion.', 400, 'INVITE_TICKET_ONLY');
+  let ids = [...new Set(userIds.map(String))];
+  if (teamIds.length) {
+    const rows = await prisma.teamMember.findMany({ where: { teamId: { in: teamIds.map(String) }, membership: { isActive: true, organization: { type: 'INTERNAL' } } }, select: { membership: { select: { userId: true } } } });
+    ids.push(...rows.map((r) => r.membership.userId));
+  }
+  const already = new Set(await roomUserIds(room));
+  const valid = uniq(await prisma.membership.findMany({ where: { userId: { in: [...new Set(ids)] }, isActive: true, organization: { type: 'INTERNAL' } }, select: { userId: true } })).filter((id) => !already.has(id));
+  if (!valid.length) return { added: [] };
+  await prisma.chatRoomMember.createMany({ data: valid.map((userId) => ({ roomId: room.id, userId, addedById: ctx.currentUser.id })), skipDuplicates: true });
+  const by = ctx.currentUser.name || ctx.currentUser.email;
+  const key = room.name.split(' · ')[0];
+  const users = await prisma.user.findMany({ where: { id: { in: valid } }, select: { id: true, name: true, email: true } });
+  for (const u of users) {
+    const href = `/chat?room=${room.id}`;
+    await notifyUser({ userId: u.id, type: 'MENTION', title: `${by} added you to the discussion on ${key}`, body: room.name, href }).catch(() => {});
+    if (!hub.isOnline(u.id) && u.email) fireAndLog(sendMentionEmail({ to: u.email, name: u.name, byName: by, roomName: `the discussion on ${key}`, snippet: room.name, href }));
+  }
+  emit([...already, ...valid], { type: 'chat.room.updated', roomId: room.id });
+  return { added: users.map((u) => ({ id: u.id, name: u.name || u.email })) };
+}
+
+/** Mark a discussion resolved (or reopen it). A new message also reopens it. */
+export async function setRoomResolved(ctx, roomId, resolved) {
+  const room = await loadRoomFor(ctx, roomId);
+  if (room.type !== 'TICKET') throw new AppError('Only ticket discussions can be resolved.', 400, 'RESOLVE_TICKET_ONLY');
+  const updated = await prisma.chatRoom.update({ where: { id: room.id }, data: { resolvedAt: resolved ? new Date() : null } });
+  emit(await roomUserIds(room), { type: 'chat.room.updated', roomId: room.id });
+  return updated;
+}
+
+/** Turn a discussion message into a task on the same ticket. */
+export async function messageToTask(ctx, messageId) {
+  const { msg, room } = await loadMessageFor(ctx, messageId);
+  if (room.type !== 'TICKET') throw new AppError('Tasks can be created from ticket discussions only.', 400, 'TASK_TICKET_ONLY');
+  if (msg.deletedAt) throw new AppError('This message was deleted.', 400);
+  const t = await loadVisibleTicket(ctx, room.ticketId);
+  const firstLine = msg.body.split('\n')[0].trim();
+  const title = (firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine).padEnd(2, '.');
+  const task = await createTask(ctx, {
+    title, description: msg.body, organizationId: t.organizationId, ticketId: t.id, projectId: t.projectId || undefined,
+    priority: 'MEDIUM', status: 'TODO',
+  });
+  await sendMessage(ctx, room.id, `Created task "${task.title}" from this discussion.`, [], msg.id).catch(() => {});
+  return task;
 }

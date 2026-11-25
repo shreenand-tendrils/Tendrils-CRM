@@ -3,7 +3,7 @@ import { Briefcase, Building2 } from "lucide-react";
 /** Shown after sign-in when the same email is both an employee and a client: pick which side to work as. */
 export default function ModeChooser({ me }) {
   const clientOrgs = (me.memberships || []).filter((m) => m.organization?.type !== "INTERNAL").map((m) => m.organization?.name).filter(Boolean);
-  const pick = (mode) => { localStorage.setItem("tdl_mode", mode); window.location.assign("/"); };
+  const pick = (mode) => { localStorage.setItem("tdl_mode", mode); window.location.assign("/" + window.location.search); }; // keep ?ticket=… so a notification link still opens the ticket after choosing
   const card = { display: "flex", gap: 14, alignItems: "center", textAlign: "left", padding: "16px 18px", borderRadius: 14, border: "1px solid #dfe3f1", background: "#fff", cursor: "pointer", width: "100%" };
   return (
     <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20, background: "#f4f6fb" }}>

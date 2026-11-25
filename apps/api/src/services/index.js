@@ -9,4 +9,4 @@ export * from './invitations.service.js';
 export { recordTicketEvents, loadNames } from './ticketHistory.service.js';
 export { diffTicketEvents, clientView } from './ticketEvents.js';
 export { listTasks, createTask, patchTask, listTaskComments, addTaskComment, deleteTaskComment, listTaskAttachments } from './tasks.service.js';
-export { listTickets, createTicket, patchTicket, getTicketHistory, listTicketComments, deleteTicket, listTicketTasks, reviewTicketTask, listTicketAttachments, addTicketComment } from './tickets.service.js';
+export { listTickets, createTicket, patchTicket, getTicketHistory, listTicketComments, deleteTicket, listTicketTasks, reviewTicketTask, listTicketAttachments, addTicketComment, ticketAccessModes } from './tickets.service.js';

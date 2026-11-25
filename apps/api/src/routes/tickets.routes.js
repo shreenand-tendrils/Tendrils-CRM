@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { requirePermission, ctxOf } from '../middleware/index.js';
-import { listTickets, createTicket, patchTicket, getTicketHistory, listTicketComments, deleteTicket, listTicketTasks, reviewTicketTask, listTicketAttachments, addTicketComment } from '../services/index.js';
+import { listTickets, createTicket, patchTicket, getTicketHistory, listTicketComments, deleteTicket, listTicketTasks, reviewTicketTask, listTicketAttachments, addTicketComment, ticketAccessModes } from '../services/index.js';
 import { parseBody } from '../validators/validate.js';
 import { ticketCreate, ticketUpdate, commentCreate, taskClientReview } from '../validators/schemas.js';
 
 const router = Router();
 
 router.get('/tickets', async (req, res) => res.json(await listTickets(ctxOf(req), req.query)));
+
+// Which side (employee / client) of this login can open the ticket? Used by notification links for people who are both.
+router.get('/tickets/:id/access', async (req, res) => res.json(await ticketAccessModes(ctxOf(req), req.params.id)));
 
 router.post('/tickets', requirePermission('ticket.create'), async (req, res) => {
   const created = await createTicket(ctxOf(req), parseBody(ticketCreate, req.body));

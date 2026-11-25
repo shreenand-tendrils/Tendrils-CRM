@@ -206,6 +206,7 @@ model Ticket {
   projectId String?
   title String
   description String? @db.Text
+  descriptionEditedAt DateTime?
   status TicketStatus @default(OPEN)
   progress TicketProgress?
   closedAt DateTime?
@@ -224,6 +225,7 @@ model Ticket {
   tasks Task[]
   teamAccesses TicketTeamAccess[]
   collaborators TicketCollaborator[]
+  chatRoom ChatRoom?
   events TicketEvent[]
   reminders Reminder[]
   createdAt DateTime @default(now())
@@ -254,6 +256,7 @@ model Task {
   parentId String?
   title String
   description String? @db.Text
+  descriptionEditedAt DateTime?
   status TaskStatus @default(TODO)
   priority Priority @default(MEDIUM)
   assigneeId String?
@@ -373,6 +376,7 @@ enum RoomType {
   GENERAL
   PROJECT
   DIRECT
+  TICKET
 }
 model ProjectMember {
   projectId String
@@ -399,12 +403,25 @@ model ChatRoom {
   type RoomType @default(PROJECT)
   projectId String? @unique
   directKey String? @unique
+  ticketId String? @unique
+  resolvedAt DateTime?
+  ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
+  members ChatRoomMember[]
   project Project? @relation(fields:[projectId],references:[id],onDelete:Cascade)
   messages ChatMessage[]
   reads ChatRead[]
   deliveries ChatDelivery[]
   createdAt DateTime @default(now())
   @@index([type])
+}
+model ChatRoomMember {
+  roomId String
+  userId String
+  addedById String?
+  createdAt DateTime @default(now())
+  room ChatRoom @relation(fields:[roomId],references:[id],onDelete:Cascade)
+  @@id([roomId,userId])
+  @@index([userId])
 }
 model ChatMessage {
   id String @id @default(cuid())

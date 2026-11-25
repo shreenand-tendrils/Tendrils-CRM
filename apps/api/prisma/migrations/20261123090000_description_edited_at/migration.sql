@@ -1,0 +1,2 @@
+ALTER TABLE "Task" ADD COLUMN IF NOT EXISTS "descriptionEditedAt" TIMESTAMP(3);
+ALTER TABLE "Ticket" ADD COLUMN IF NOT EXISTS "descriptionEditedAt" TIMESTAMP(3);

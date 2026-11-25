@@ -68,15 +68,21 @@ router.get('/files/:id/download', async (req, res) => {
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'File bytes not found' });
   res.download(file, a.originalName);
 });
-// Remove a file or a pasted image. It never touches the ticket, its history or its status: the "added a file" history entry stays.
+// Delete a file or a pasted screenshot for good: the database row AND the stored file on the server.
+// Allowed for: the person who uploaded it, the person who created the ticket, and platform admins. It never touches the
+// ticket's status; for a ticket's own files a "removed <file>" entry is added to the history (the "attached" entry stays).
+const isPlatformAdminReq = (req) => (req.memberships || []).some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN');
 router.delete('/files/:id', async (req, res) => {
   const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) throw new AppError('File not found', 404);
   const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) throw new AppError('File not found', 404);
-  if (a.uploadedById !== req.currentUser.id && !(req.isInternal && req.can('ticket.triage'))) throw new AppError('You can only remove files you added.', 403);
+  const me = req.currentUser.id;
+  const mayDelete = a.uploadedById === me || (a.ticket && a.ticket.requesterId === me) || isPlatformAdminReq(req);
+  if (!mayDelete) throw new AppError('Only the person who created the ticket, the person who uploaded the file, or a platform admin can delete it.', 403);
   await prisma.attachment.delete({ where: { id: a.id } });
-  await discard(storagePath(a.storageKey));
+  await discard(storagePath(a.storageKey)); // the bytes on the server disk go too
+  if (a.ticketId && !a.inline) await recordTicketEvents(prisma, a.ticketId, me, [{ type: 'ATTACHMENT_REMOVED', fromValue: a.id, fromLabel: a.originalName, clientVisible: a.ticket?.visibility === 'CLIENT' }]);
   res.json({ ok: true });
 });
 

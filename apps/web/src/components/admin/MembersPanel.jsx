@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { UserPlus, Send, RefreshCw, Ban, Users, X } from "lucide-react";
+import { UserPlus, Send, RefreshCw, Ban, Users, X, Pencil } from "lucide-react";
 import Panel from "../ui/Panel";
 import Avatar from "../ui/Avatar";
 import { api } from "../../api";
@@ -41,6 +41,7 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
   useEffect(() => { load(); }, [load]);
 
   const grantAdmin = can(me, "member.grant_admin");
+  const rename = async (m) => { const next = window.prompt(`Rename ${m.user.name || m.user.email}`, m.user.name || ""); if (next === null) return; const name = next.trim(); if (name.length < 2 || name.length > 120) { notify("Name must be between 2 and 120 characters.", "error"); return; } try { await api.patch(`/admin/users/${m.userId}/name`, { name }); notify("Display name updated"); load(); } catch (e) { err(e); } };
   const rolesFor = (type) => (type === "INTERNAL" ? STAFF_ROLES : CLIENT_ROLES).filter((r) => r !== "PLATFORM_ADMIN" || grantAdmin);
   const orgType = (id) => orgs.find((o) => o.id === id)?.type || "INTERNAL";
   const internalTeams = teams.filter((t) => !t.organization || t.organization.type !== "CLIENT");
@@ -94,7 +95,7 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
                 const locked = self || lockedAdmin;
                 return (
                   <tr key={m.id}>
-                    <td data-label="Person"><span className="cell-person"><Avatar name={m.user.name || m.user.email} /><span><b>{m.user.name || m.user.email}{self ? " (you)" : ""}</b><div>{m.user.email}</div></span></span></td>
+                    <td data-label="Person"><span className="cell-person"><Avatar name={m.user.name || m.user.email} /><span><b>{m.user.name || m.user.email}{self ? " (you)" : ""}</b><div>{m.user.email}</div></span>{grantAdmin && !self && <button type="button" className="icon-btn" title="Rename person" aria-label={`Rename ${m.user.name || m.user.email}`} onClick={() => rename(m)}><Pencil size={14} /></button>}</span></td>
                     <td data-label="Workspace">{m.organization.name}</td>
                     <td data-label="Role">
                       <select className="table-select" value={m.role} disabled={locked} title={self ? "You can't change your own access" : lockedAdmin ? "Only a Platform admin can change a Platform admin" : undefined} onChange={(e) => change(m, { role: e.target.value })} aria-label={`Role for ${m.user.email}`}>

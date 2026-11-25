@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Paperclip, Send, Trash2, UploadCloud, MessageSquare, Files } from "lucide-react";
 import { api } from "../../api";
-import { ACCEPT, uploadFile } from "../../lib/files";
+import { ACCEPT, uploadFile, uploadErrorText } from "../../lib/files";
 import PasteTextarea, { imageIds, textOnly, withImages } from "../ui/PasteTextarea";
 import RichText from "../ui/RichText";
 import Avatar from "../ui/Avatar";
@@ -17,7 +17,7 @@ const MAX_DRAFT = 10;
  * - "Files" shows the record's own files and, separately, the files people sent inside comments.
  * - The composer takes text, pasted screenshots, and files from the device (button, drag and drop, or paste).
  */
-export default function Discussion({ kind, id, me, users = [], staff = false, canUpload = true, canComment = true, canModerate = false, onChanged, onCount, notify, refreshKey }) {
+export default function Discussion({ kind, id, me, users = [], staff = false, canUpload = true, canComment = true, canModerate = false, requesterId = null, onChanged, onCount, notify, refreshKey, focusKey = 0 }) {
   const base = kind === "ticket" ? `/tickets/${id}` : `/tasks/${id}`;
   const target = kind === "ticket" ? { ticketId: id } : { taskId: id };
   const noun = kind === "ticket" ? "ticket" : "task";
@@ -64,7 +64,7 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
         setChips((c) => c.map((x) => (x.id === tmp ? { ...up, busy: false } : x)));
       } catch (e) {
         setChips((c) => c.filter((x) => x.id !== tmp));
-        fail(e.response?.data?.error || `Could not attach ${f.name}`);
+        fail(uploadErrorText(e, f));
       }
     }
   };
@@ -104,7 +104,7 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
     try {
       for (const f of selected) {
         try { await uploadFile(f, target); uploaded += 1; }
-        catch (er) { fail(er.response?.data?.error || `Could not upload ${f.name}`); }
+        catch (er) { fail(uploadErrorText(er, f)); }
       }
       await load();
       if (uploaded) notify?.(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded`);
@@ -147,10 +147,29 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
     .filter(([token]) => plainText.includes(token))
     .map(([, userId]) => userId))];
 
+  useEffect(() => { // the header "Discussion" button asks for the composer
+    if (!focusKey || !comments) return;
+    const ta = composerRef.current?.querySelector("textarea");
+    if (ta) { ta.scrollIntoView({ block: "nearest", behavior: "smooth" }); ta.focus({ preventScroll: true }); }
+  }, [focusKey, !!comments]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!comments) return <p className="hint">Loading…</p>;
   const mine = (c) => c.authorId === me.user?.id;
+  // Who may delete a file or screenshot: whoever uploaded it, the person who created the ticket, a platform admin (the server checks again).
+  const isAdmin = (me.roles || []).includes("PLATFORM_ADMIN");
+  const mayDeleteFile = (f) => f.uploadedById === me.user?.id || (kind === "ticket" && !!requesterId && requesterId === me.user?.id) || isAdmin;
+  const deleteFile = async (f) => { await api.delete(`/files/${f.id}`); await load(); onChanged?.(); };
+  const delProp = (f) => (mayDeleteFile(f) ? { onDelete: deleteFile } : {});
   const newestFirst = [...comments].reverse();
   const nFiles = files.length + commentFiles.length;
+
+  const people = [];
+  for (const c of comments) if (c.author && !people.some((p) => p.id === c.author.id)) people.push(c.author);
+  const strip = people.length > 0 && (
+    <div className="disc-people" aria-label="People in this discussion">
+      <small>{people.length} {people.length === 1 ? "person" : "people"} in this discussion</small>
+      <div className="disc-avatars">{people.slice(0, 8).map((p) => <span key={p.id} title={p.name || p.email}><Avatar name={p.name || p.email} /></span>)}{people.length > 8 && <small>+{people.length - 8}</small>}</div>
+    </div>
+  );
 
   const composer = canComment ? (
     <div ref={composerRef} className={`composer${drag ? " over" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={onDrop}>
@@ -191,6 +210,7 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
 
       {view === "comments" && (
         <>
+          {strip}
           {composer}
           <div className="disc-thread">
             {!comments.length ? <p className="disc-empty">No comments yet. Ask a question or leave an update.</p> : <small className="disc-sort">Newest first</small>}
@@ -206,8 +226,8 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
                     <small title={fmtDateTime(c.createdAt)}>{when(c.createdAt)}</small>
                     {kind === "task" && (mine(c) || canModerate) && <button type="button" className="btn-soft sm icon danger cm-del" onClick={() => removeComment(c)} aria-label="Delete comment" title="Delete comment"><Trash2 size={13} /></button>}
                   </div>
-                  {c.body && <RichText text={c.body} canDelete={mine(c) || canModerate} />}
-                  {extra.length > 0 && <div className="cm-files">{extra.map((a) => <FileRow key={a.id} file={a} compact sub={`${a.mimeType?.split("/")[1]?.toUpperCase() || "FILE"} · sent with this comment`} />)}</div>}
+                  {c.body && <RichText text={c.body} canDelete={mine(c) || canModerate || isAdmin || (kind === "ticket" && !!requesterId && requesterId === me.user?.id)} />}
+                  {extra.length > 0 && <div className="cm-files">{extra.map((a) => <FileRow key={a.id} file={a} compact {...delProp(a)} sub={`${a.mimeType?.split("/")[1]?.toUpperCase() || "FILE"} · sent with this comment`} />)}</div>}
                 </div>
               );
             })}
@@ -232,11 +252,11 @@ export default function Discussion({ kind, id, me, users = [], staff = false, ca
           )}
           <section className="disc-group">
             <h5>On the {noun} <em>{files.length}</em></h5>
-            {files.length ? files.map((f) => <FileRow key={f.id} file={f} sub={`Added ${fmtDate(f.createdAt)}`} />) : <p className="disc-empty">Nothing attached to the {noun} itself yet.</p>}
+            {files.length ? files.map((f) => <FileRow key={f.id} file={f} {...delProp(f)} sub={`Added ${fmtDate(f.createdAt)}`} />) : <p className="disc-empty">Nothing attached to the {noun} itself yet.</p>}
           </section>
           <section className="disc-group">
             <h5>Sent in comments <em>{commentFiles.length}</em></h5>
-            {commentFiles.length ? commentFiles.map((f) => <FileRow key={f.id} file={f} sub={`${f.by || "Someone"} · ${when(f.at)}`} />) : <p className="disc-empty">Files sent with a comment show up here.</p>}
+            {commentFiles.length ? commentFiles.map((f) => <FileRow key={f.id} file={f} {...delProp(f)} sub={`${f.by || "Someone"} · ${when(f.at)}`} />) : <p className="disc-empty">Files sent with a comment show up here.</p>}
           </section>
         </div>
       )}

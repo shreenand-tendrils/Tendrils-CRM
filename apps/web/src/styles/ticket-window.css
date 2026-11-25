@@ -302,3 +302,104 @@
 
 /* Rendered in document.body so the mention picker escapes sticky tabs and clipped ticket panels. */
 .disc-mention-menu-portal { position: fixed !important; z-index: 100000 !important; bottom: auto !important; max-height: min(230px, 42vh); }
+
+/* v4.9.35: header Discussion button and participants strip */
+.win-head .tw-discuss { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px; border-radius: 12px; font-weight: 600; font-size: 14px; }
+.tw-discuss-n { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: #4636d6; color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+.disc-people { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; padding: 8px 10px; border: 1px solid #e0e3f2; border-radius: 12px; background: #fafbff; }
+.disc-avatars { display: flex; align-items: center; gap: 4px; }
+.disc-avatars .avatar { width: 26px; height: 26px; font-size: 11px; }
+@media (max-width: 760px) { .win-head .tw-discuss span:not(.tw-discuss-n) { display: none; } }
+
+/* v4.9.36: live discussion */
+.tw-discuss-n.alert { background: #d92d20; }
+.tw-resolved { margin-left: 2px; padding: 1px 7px; border-radius: 999px; background: #e8f7ee; color: #17784a; font-size: 12px; font-weight: 600; }
+.tw-decisions { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tw-decisions li { padding: 8px 10px; border-left: 3px solid #4636d6; border-radius: 8px; background: #f4f3ff; font-size: 14px; }
+.chat-main header { display: flex; align-items: center; gap: 10px; }
+.chat-main header .room-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.chat-main header .room-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; font-size: 13px; }
+.chat-rooms .room.resolved { opacity: .6; }
+@media (max-width: 760px) { .chat-main header .room-actions button { font-size: 0; gap: 0; } .chat-main header .room-actions svg { font-size: 14px; } }
+
+
+/* ======================= v4.9.40: phone fixes for the ticket window (Overview, Route / History) =======================
+   On phones .win-grid is the scroller (not .win-main), so the desktop sticky offsets and fixed widths clipped content. */
+@media (max-width: 860px) {
+  .win .win-main > * { min-width: 0; max-width: 100%; }
+  .win .win-main { padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }
+  /* tabs: stick flush to the top of the scroller, span the full width, scroll sideways when they don't fit */
+  .tw-tabs { top: 0; max-width: none; }
+  .win .tw-tabs { max-width: none; }
+  /* progress track: stack label under each step circle so nothing is clipped */
+  .tw-track { padding: 14px 10px; }
+  .tw-track li, .tw-track li:last-child { flex: 1 1 0; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+  .tw-track li:not(:last-child)::after { content: ""; position: absolute; top: 13px; left: calc(50% + 20px); right: calc(-50% + 20px); flex: none; width: auto; margin: 0; }
+  .tw-step-text { justify-items: center; }
+  .tw-step-text b { white-space: normal; font-size: 12.5px; }
+  .tw-hold { padding: 10px 14px; }
+  /* facts: two per row instead of one long stack */
+  .tw-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tw-fact { padding: 11px 14px; }
+  .tw-fact:nth-child(odd) { background: #fff; }
+  .tw-meta { font-size: 13px; }
+  .tw-banner > span:not(.tw-banner-actions) { min-width: 0; flex-basis: 100%; }
+}
+@media (max-width: 720px) {
+  /* give panels (Route & history, Description...) more room: smaller side margins */
+  .tw-panel-head { padding: 10px 12px; }
+  .tw-panel > :not(.tw-panel-head) { margin-left: 12px; margin-right: 12px; }
+  .tw-panel > :not(.tw-panel-head):last-child { margin-bottom: 14px; }
+  .tw-panel-head > div { min-width: 0; flex: 1 1 100%; }
+  .tw-panel-head small { overflow-wrap: anywhere; }
+  /* route / history */
+  .win .rt-legend { gap: 4px 10px; font-size: 11px; }
+  .win .rt-bar > .seg { padding-bottom: 2px; }
+  .win .rt-card-top small { white-space: nowrap; }
+  .win .rt-card, .win .rt-mini { max-width: 100%; }
+  .win .rt-chips i { max-width: 100%; overflow-wrap: anywhere; }
+  .win .rt-order { align-self: flex-start; }
+  .win .history-item { min-width: 0; }
+  .win .history-item p { overflow-wrap: anywhere; }
+  .win .disc, .win .disc-thread, .win .comment { min-width: 0; max-width: 100%; }
+  .win .comment { overflow-wrap: anywhere; }
+  .win .win-side .tw-row { grid-template-columns: 84px minmax(0, 1fr); }
+}
+
+/* v4.9.44: creator-owned ticket due date and a focused, full-width ticket conversation. */
+.ticket-due-editor { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border:1px solid #e6e9f4; border-radius:12px; padding:10px 14px; background:#fbfbfe; }
+.ticket-due-editor > div:first-child { display:grid; gap:2px; }
+.ticket-due-editor small { color:#6b7287; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+.ticket-due-editor b { font-size:13px; }
+.ticket-due-editor .tw-link, .ticket-due-controls button { display:inline-flex; align-items:center; gap:5px; }
+.ticket-due-controls { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.ticket-due-controls input { min-height:36px; border:1px solid #dfe2ee; border-radius:9px; padding:5px 9px; }
+@media (prefers-reduced-motion:no-preference) {
+  .win-slide-away { animation: ticket-slide-away .19s cubic-bezier(.4,0,.8,.3) forwards; }
+}
+@keyframes ticket-slide-away { to { opacity:0; transform:translateX(-42px) scale(.985); } }
+
+.chat.ticket-chat-focus { display:block; min-height:calc(100dvh - 150px); height:calc(100dvh - 150px); }
+.chat.ticket-chat-focus .chat-main { display:flex !important; height:100%; border:1px solid #e6e9f4; border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 10px 32px rgba(26,32,55,.06); }
+.chat.ticket-chat-focus .chat-main > header { padding:14px 20px; background:linear-gradient(135deg,#fbfaff,#fff); }
+.chat.ticket-chat-focus .chat-main > header > div b { font-size:17px; }
+.ticket-chat-context { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid #e9eaf2; background:#fafaff; }
+.ticket-chat-icon { display:grid; place-items:center; width:36px; height:36px; flex:none; color:#5746e8; background:#efedff; border-radius:12px; }
+.ticket-chat-context > span:nth-child(2) { display:grid; gap:2px; min-width:0; }
+.ticket-chat-context b { font-size:13px; }
+.ticket-chat-context small { color:#6b7287; font-size:12px; }
+.ticket-chat-people { margin-left:auto; white-space:nowrap; color:#5746e8; background:#efedff; border-radius:999px; padding:5px 10px; font-size:11px; font-weight:700; }
+.chat-search { display:flex; align-items:center; gap:9px; padding:9px 18px; border-bottom:1px solid #e9eaf2; background:#fff; }
+.chat-search input { flex:1; min-width:0; border:0; outline:0; font:inherit; }
+.chat-search small { color:#777d91; white-space:nowrap; }
+.chat.ticket-chat-focus .chat-log { padding:20px clamp(16px,5vw,76px); }
+.chat.ticket-chat-focus .chat-input { margin:0 clamp(12px,3vw,36px) 12px; border:1px solid #e2e4ef; border-radius:14px; padding:7px 8px 7px 14px; box-shadow:0 5px 18px rgba(30,35,60,.06); }
+.chat.ticket-chat-focus .typing { padding-left:clamp(16px,5vw,76px); }
+@media (max-width:760px) {
+  .chat.ticket-chat-focus { height:calc(100dvh - 110px); min-height:calc(100dvh - 110px); }
+  .chat.ticket-chat-focus .chat-main > header { flex-wrap:wrap; padding:10px 12px; }
+  .chat.ticket-chat-focus .chat-main > header .room-actions { width:100%; margin-left:0; }
+  .ticket-chat-context { padding:10px 12px; }
+  .ticket-chat-context small { font-size:11px; }
+  .ticket-chat-people { font-size:10px; }
+}

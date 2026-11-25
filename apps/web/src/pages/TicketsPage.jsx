@@ -19,20 +19,24 @@ export default function TicketsPage({ data, onSelect }) {
   const me = data.me;
   const staff = !!me?.isInternal;
   const [params] = useSearchParams();
-  const [view, setView] = useState(params.get("view") || (params.get("overdue") ? "overdue" : staff ? "mine" : "all")); // employees land on My tickets by default
+  const initView = params.get("view");
+  const REL_KEYS = ["created", "assigned", "collab", "forteam"]; // old "view" links for these now set the Relation dropdown
+  const [view, setView] = useState(["all", "mine", "unrouted"].includes(initView) ? initView : (staff && !REL_KEYS.includes(initView) && initView !== "overdue" ? "mine" : "all")); // employees land on My tickets by default
+  const [rel, setRel] = useState(REL_KEYS.includes(initView) ? initView : ""); // created | assigned | collab | forteam
+  const [clientId, setClientId] = useState("");
   const mineOnly = params.get("mine") === "1"; // all | mine | unrouted | overdue
   const [status, setStatus] = useState(params.get("status") ?? "OPEN"); // Open is the default filter; cards on Overview link here
   const [priority, setPriority] = useState("");
   const [teamId, setTeamId] = useState("");
   const all = data.tickets || [];
-  const [sort, setSort] = useState("default");
+  const [sort, setSort] = useState("newest"); // newest raised first by default (by created date, not last update)
   const [layout, setLayout] = useState(() => { try { return localStorage.getItem("tdl_ticket_layout") || "table"; } catch { return "table"; } });
-  const [quick, setQuick] = useState(""); // overdue | unassigned (from the summary cards)
+  const [quick, setQuick] = useState(params.get("overdue") || initView === "overdue" ? "overdue" : ""); // overdue | unassigned (from the summary cards)
   const [limit, setLimit] = useState(25);
   const [filtersOpen, setFiltersOpen] = useState(false); // phones: status / priority / team live behind one Filters button
   const phone = useMediaQuery("(max-width: 720px)"); // phones always get the card layout (a wide table becomes a very tall stack)
-  const activeFilters = [status, priority, teamId, quick].filter(Boolean).length;
-  const clearFilters = () => { setStatus(""); setPriority(""); setTeamId(""); setQuick(""); setLimit(25); };
+  const activeFilters = [status, priority, teamId, quick, rel, clientId].filter(Boolean).length;
+  const clearFilters = () => { setStatus(""); setPriority(""); setTeamId(""); setQuick(""); setRel(""); setClientId(""); setLimit(25); };
   useEffect(() => { try { localStorage.setItem("tdl_ticket_layout", layout); } catch { /* ignore */ } }, [layout]);
 
   // Teams I belong to: a ticket routed to my team with nobody assigned yet is visible to every member of that team.
@@ -40,23 +44,26 @@ export default function TicketsPage({ data, onSelect }) {
   const isTeamPool = (t) => !t.assigneeId && (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId));
   const isCollaborating = (t) => (t.collaborators || []).some((c) => c.userId === me?.user?.id);
   const isMineTicket = (t) => isTeamPool(t) || t.assigneeId === me?.user?.id || isCollaborating(t) || t.requesterId === me?.user?.id || (t.tasks || []).some((task) => task.assigneeId === me?.user?.id || (task.assignees || []).some((a) => a.userId === me?.user?.id));
+  const relations = staff ? [
+    ["created", "Created by me", (t) => t.requesterId === me?.user?.id],
+    ["assigned", "Assigned to me", (t) => t.assigneeId === me?.user?.id],
+    ["collab", "Collaborating", isCollaborating],
+    ["forteam", "For my team", (t) => myTeamIds.has(t.teamId) || (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId))],
+  ] : [];
   const views = [
     ["all", "All", () => true],
-    ...(staff ? [
-      ["created", "Created by me", (t) => t.requesterId === me?.user?.id],
-      ["assigned", "Assigned to me", (t) => t.assigneeId === me?.user?.id],
-      ["collab", "Collaborating", isCollaborating],
-      ["forteam", "For my team", (t) => myTeamIds.has(t.teamId) || (t.teamAccesses || []).some((a) => myTeamIds.has(a.teamId))],
-    ] : []),
     ...(staff ? [["mine", "My tickets & tasks", isMineTicket]] : []),
     ...(staff && can(me, "ticket.triage") ? [["unrouted", "Unrouted", (t) => !t.teamId && !DONE.includes(t.status)]] : []),
-    ["overdue", "Overdue", (t) => t.dueDate && new Date(t.dueDate) < new Date() && !DONE.includes(t.status)],
   ];
+  const relFn = relations.find(([id]) => id === rel)?.[2] || (() => true);
+  const clients = [...new Map(all.filter((t) => t.organizationId || t.organization?.id).map((t) => [t.organizationId || t.organization?.id, t.organization?.name || "Client"])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const clientCount = (id) => all.filter((t) => (t.organizationId || t.organization?.id) === id).length;
 
   const tickets = useMemo(() => {
     const viewFn = views.find(([id]) => id === view)?.[2] || (() => true);
     const q = (search || "").toLowerCase();
-    return all.filter((t) => viewFn(t)
+    return all.filter((t) => viewFn(t) && relFn(t)
+      && (!clientId || (t.organizationId || t.organization?.id) === clientId)
       && (!mineOnly || isMineTicket(t))
       && (!status || t.status === status)
       && (!priority || t.priority === priority)
@@ -64,14 +71,15 @@ export default function TicketsPage({ data, onSelect }) {
       && (!quick || (quick === "overdue" ? t.dueDate && new Date(t.dueDate) < new Date() && !DONE.includes(t.status) : !t.assigneeId && !DONE.includes(t.status)))
       && (!q || `${t.key} ${t.title} ${t.organization?.name || ""}`.toLowerCase().includes(q)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, view, mineOnly, status, priority, teamId, quick, search, me?.user?.id]);
+  }, [all, view, rel, clientId, mineOnly, status, priority, teamId, quick, search, me?.user?.id]);
 
   const rank = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
   const sorted = useMemo(() => {
     const list = [...tickets];
+    const byCreated = (a, b) => new Date(b.createdAt) - new Date(a.createdAt) || String(b.key).localeCompare(String(a.key), undefined, { numeric: true });
     const by = {
-      newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
-      oldest: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+      newest: byCreated,
+      oldest: (a, b) => -byCreated(a, b),
       updated: (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt),
       due: (a, b) => (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity),
       priority: (a, b) => (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9),
@@ -81,7 +89,7 @@ export default function TicketsPage({ data, onSelect }) {
   const shownTickets = sorted.slice(0, limit);
 
   // Summary cards: what needs attention inside the current view (clicking one narrows the list).
-  const base = all.filter((t) => (views.find(([id]) => id === view)?.[2] || (() => true))(t));
+  const base = all.filter((t) => (views.find(([id]) => id === view)?.[2] || (() => true))(t) && relFn(t) && (!clientId || (t.organizationId || t.organization?.id) === clientId));
   const isOverdue = (t) => t.dueDate && new Date(t.dueDate) < new Date() && !DONE.includes(t.status);
   const stats = [
     ["Open", base.filter((t) => t.status === "OPEN").length, () => { setStatus("OPEN"); setQuick(""); }, status === "OPEN" && !quick],
@@ -106,6 +114,18 @@ export default function TicketsPage({ data, onSelect }) {
             {label}{id !== "all" ? <em>{count(id)}</em> : null}
           </button>
         ))}
+        {relations.length > 0 && (
+          <select className={`table-select tl-rel${rel ? " on" : ""}`} value={rel} onChange={(e) => { setRel(e.target.value); setLimit(25); }} aria-label="Filter by my involvement">
+            <option value="">My involvement</option>
+            {relations.map(([id, label, fn]) => <option key={id} value={id}>{label} ({all.filter(fn).length})</option>)}
+          </select>
+        )}
+        {staff && clients.length > 0 && (
+          <select className={`table-select tl-rel${clientId ? " on" : ""}`} value={clientId} onChange={(e) => { setClientId(e.target.value); setLimit(25); }} aria-label="Filter by client">
+            <option value="">Any client</option>
+            {clients.map(([id, name]) => <option key={id} value={id}>{name} ({clientCount(id)})</option>)}
+          </select>
+        )}
       </div>
       <div id="tl-filters" className={`tl-filters${filtersOpen ? " open" : ""}`}>
         <select className="table-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
@@ -128,7 +148,7 @@ export default function TicketsPage({ data, onSelect }) {
             <SlidersHorizontal size={16} /> Filters{activeFilters > 0 ? <em>{activeFilters}</em> : null}
           </button>
           <select className="table-select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort tickets">
-            <option value="default">Sort: Default</option><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="updated">Recently updated</option><option value="due">Due soonest</option><option value="priority">Highest priority</option>
+            <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="updated">Recently updated</option><option value="due">Due soonest</option><option value="priority">Highest priority</option>
           </select>
           <span className="tl-toggle" role="group" aria-label="Layout">
             <button type="button" className={layout === "table" ? "on" : ""} aria-label="Table view" title="Table view" onClick={() => setLayout("table")}><Rows3 size={16} /></button>

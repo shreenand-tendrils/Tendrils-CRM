@@ -35,6 +35,7 @@ import RemindersPage from "../../pages/RemindersPage";
 import AdminPage from "../../pages/AdminPage";
 import ReportsPage from "../../pages/ReportsPage";
 import ResourcesPage from "../../pages/ResourcesPage";
+import { uploadErrorText } from "../../lib/files";
 
 const pageMeta = {
   "/": ["Overview", "A clear view of client delivery, team ownership and what needs attention."],
@@ -69,16 +70,17 @@ export default function WorkspaceShell({ data, refresh, setData }) {
   const path = loc.pathname;
   const internal = !!me?.isInternal;
 
-  const d = useDrawers({ data, navigate, location: loc });
-  const { modal, modalInit, openModal, closeModal, selected, setSelected, selectedTaskId, setSelectedTaskId, openTask, showTicket, closeAll, comments, loadComments, openTicket, openTaskRecord } = d;
-
-  const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
   const note = useCallback((message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  const d = useDrawers({ data, navigate, location: loc, notify: note });
+  const { modal, modalInit, openModal, closeModal, selected, setSelected, selectedTaskId, setSelectedTaskId, openTask, showTicket, closeAll, comments, loadComments, openTicket, openTaskRecord } = d;
+
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Layout state: desktop sidebar can collapse (remembered); on phones it is a slide-in drawer.
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("tendrils.sidebar") === "collapsed");
@@ -152,7 +154,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
             try {
               if (marker) { const r = await uploadInline(file, { [targetKey]: created.data.id }); desc = desc.replaceAll(`[[img:${marker}]]`, `[[img:${r.id}]]`); relink = true; }
               else { const fd = new FormData(); fd.append("file", file); fd.append(targetKey, created.data.id); await api.post("/files", fd); }
-            } catch (err) { failed.push(`${file.name} (${err.response?.data?.error || "upload failed"})`); }
+            } catch (err) { failed.push(uploadErrorText(err, file)); }
           }
           if (relink) await api.patch(`/${base}/${created.data.id}`, { description: desc }).catch(() => {});
           if (failed.length) attachWarning = `Saved, but ${failed.length} file(s) could not be attached: ${failed.join(", ")}. Open it and use Upload to retry.`;
@@ -206,7 +208,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
       note("File uploaded");
       await refresh();
     } catch (err) {
-      note(err.response?.data?.error || "Upload failed", "error");
+      note(uploadErrorText(err, file), "error");
     } finally {
       if (source?.target) source.target.value = "";
     }

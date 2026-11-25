@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { prisma } from '../db.js';
-// All dates shown to people are dd/mm/yy (date-only values are UTC midnight, so format them in UTC).
-const ddmmyy = (v) => { const d = new Date(v); if (Number.isNaN(d.getTime())) return '—'; const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${p(d.getUTCFullYear() % 100)}`; };
+// All dates shown to people are mm/dd/yy (date-only values are UTC midnight, so format them in UTC).
+const ddmmyy = (v) => { const d = new Date(v); if (Number.isNaN(d.getTime())) return '—'; const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCMonth() + 1)}/${p(d.getUTCDate())}/${p(d.getUTCFullYear() % 100)}`; };
 
 let transporter;
 const configured = () => process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;

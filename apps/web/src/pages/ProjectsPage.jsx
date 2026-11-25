@@ -12,14 +12,15 @@ import { can } from "../lib/rbac";
 import { formatDate, pretty } from "../lib/formatters";
 import { peopleOfTeams } from "../lib/teams";
 import TicketAttachments from "../components/tickets/TicketAttachments";
-import { clipboardFiles } from "../lib/paste";
+import { clipboardFiles } from "../lib/paste";
+import { uploadErrorText } from "../lib/files";
 
 function FilesModal({ project, canUpload, onClose, onChanged, notify }) {
   const [tick, setTick] = useState(0);
   const send = async (file) => {
     const fd = new FormData(); fd.append("file", file); fd.append("projectId", project.id);
     try { await api.post("/files", fd); notify?.("File uploaded"); setTick((n) => n + 1); onChanged?.(); }
-    catch (err) { notify?.(err.response?.data?.error || "Upload failed", "error"); }
+    catch (err) { notify?.(uploadErrorText(err), "error"); }
   };
   return (
     <div className="overlay">

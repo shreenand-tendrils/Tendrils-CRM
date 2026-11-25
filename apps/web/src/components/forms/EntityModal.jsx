@@ -1,4 +1,5 @@
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
+import { api } from "../../api";
 import { X, ShieldCheck, Info, Paperclip } from "lucide-react";
 import PeoplePicker from "../ui/PeoplePicker";
 import { can } from "../../lib/rbac";
@@ -15,7 +16,9 @@ const configs = {
     ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
     ["assigneeId", "Assignee (from the selected team(s))", "teamAssignees", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
     ["collaboratorIds", "Collaborators (optional — anyone from the selected team(s))", "teamPeople", false, (me) => can(me, "ticket.triage") || can(me, "ticket.route") || can(me, "work.cross_team")],
-    ["teamIds", "Owning team (required)", "requestTeams", false, (me) => !me.isInternal],
+    ["teamId", "Owning team (choose first)", "requestTeam", true, (me) => !me.isInternal],
+    ["teamIds", "Also share with other teams", "teamsMulti", false, (me) => !me.isInternal],
+    ["collaboratorIds", "Collaborators (optional — people from the selected team(s))", "clientCollab", false, (me) => !me.isInternal],
     ["priority", "Priority", "priority"], ["visibility", "Visibility", "visibility", false, (me) => me.isInternal], ["dueDate", "Due date", "date"],
   ] },
   task: { title: "Create a task", fields: [
@@ -41,7 +44,7 @@ const configs = {
 const MAX_MB = 15;
 const MAX_BYTES = MAX_MB * 1024 * 1024;
 const ALLOWED_TYPE = /^(image\/(jpeg|png|gif|webp)|application\/pdf|text\/(plain|csv)|application\/zip|application\/vnd\.|application\/msword)/i;
-const SELECTS = ["clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks", "teamAssignees"];
+const SELECTS = ["requestTeam", "clients", "projects", "tickets", "users", "priority", "visibility", "projectStatus", "teams", "parentTasks", "teamAssignees"];
 
 function optionsFor(type, data, orgId, teamIds = []) {
   const inOrg = (o) => !orgId || o.organizationId === orgId || o.organization?.id === orgId;
@@ -50,6 +53,7 @@ function optionsFor(type, data, orgId, teamIds = []) {
     projects: (data.projects || []).filter(inOrg).map((o) => [o.id, o.name]),
     tickets: (data.tickets || []).filter(inOrg).map((o) => [o.id, `${o.key} · ${o.title}`]),
     users: (data.users || []).map((o) => [o.id, o.name || o.email]),
+    requestTeam: (data.requestableTeams || []).map((o) => [o.id, o.name]),
     teamAssignees: peopleOfTeams(data.teams, teamIds).map((p) => [p.id, p.label]),
     teams: (data.teams || []).filter((team) => can(data.me, "ticket.triage") || can(data.me, "ticket.route") || can(data.me, "task.assign") || can(data.me, "work.cross_team") || team.members?.some((m) => m.membership?.user?.id === data.me.user?.id)).map((o) => [o.id, o.name]),
     parentTasks: (data.tasks || []).filter((task) => !task.autoCreated && (!orgId || task.organizationId === orgId)).map((o) => [o.id, o.title]),
@@ -58,6 +62,18 @@ function optionsFor(type, data, orgId, teamIds = []) {
     projectStatus: [["ACTIVE", "Active"], ["PLANNING", "Planning"], ["ON_HOLD", "On hold"], ["COMPLETED", "Completed"]],
   };
   return [["", "— Select —"], ...(map[type] || [])];
+}
+
+/** For clients: names of the people in the teams they picked (no emails), loaded from the client-safe endpoint. */
+function ClientCollaborators({ name, teamIds }) {
+  const [users, setUsers] = useState(null);
+  useEffect(() => {
+    let live = true;
+    api.get("/teams/requestable/people", { params: { teamIds: teamIds.join(",") } }).then((r) => live && setUsers(r.data)).catch(() => live && setUsers([]));
+    return () => { live = false; };
+  }, [teamIds.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (users === null) return <small className="hint">Loading people…</small>;
+  return <PeoplePicker name={name} users={users} />;
 }
 
 export default function EntityModal({ kind, data, onClose, onSubmit, saving, initial = null }) {
@@ -88,13 +104,13 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
   const submit = (e) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    if (kind === "ticket" && !me.isInternal && !fd.getAll("teamIds").filter(Boolean).length) {
+    if (kind === "ticket" && !me.isInternal && !fd.get("teamId")) {
       window.alert("Choose the owning team so the ticket reaches the right team queue.");
       return;
     }
     const payload = {};
     for (const [name, , type] of fields) {
-      const v = ["people", "teamsMulti", "teamPeople", "requestTeams", "projectTeams", "projectPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
+      const v = ["people", "teamsMulti", "teamPeople", "clientCollab", "requestTeams", "projectTeams", "projectPeople"].includes(type) ? fd.getAll(name) : fd.get(name);
       if (Array.isArray(v) ? v.length : v !== "" && v != null) payload[name] = v;
     }
     if (!me.isInternal && ["ticket", "projectRequest"].includes(kind)) {
@@ -147,12 +163,13 @@ export default function EntityModal({ kind, data, onClose, onSubmit, saving, ini
                 : type === "teamPeople" ? (teamId
                     ? <PeoplePicker key={pickedTeams.join("|")} name={name} users={peopleOfTeams(data.teams, pickedTeams).map((p) => ({ id: p.id, name: p.label }))} />
                     : <small className="hint">Select a team first, then pick people from it.</small>)
+                : type === "clientCollab" ? (pickedTeams.length ? <ClientCollaborators key={pickedTeams.join("|")} name={name} teamIds={pickedTeams} /> : <small className="hint">Select the owning team first, then pick collaborators from it.</small>)
                 : type === "projectTeams" ? <TeamMultiSelect id={`f-${name}`} name={name} teams={data.teams || []} value={projTeams} onChange={setProjTeams} label="Pick team(s)" />
                 : type === "projectPeople" ? (projTeams.length
                     ? <PeoplePicker key={projTeams.join("|")} name={name} users={peopleOfTeams(data.teams, projTeams).map((p) => ({ id: p.id, name: p.label }))} />
                     : <small className="hint">Select the team(s) first, then pick members from them.</small>)
                 : type === "requestTeams" ? <TeamMultiSelect id={`f-${name}`} name={name} teams={(me.isInternal ? data.teams : data.requestableTeams) || []} defaultValue={[]} label="Pick team(s)" />
-                : type === "teamsMulti" ? <><TeamMultiSelect id={`f-${name}`} name={name} teams={optionsFor("teams", data, orgId).filter(([v]) => v).map(([id, tname]) => ({ id, name: tname }))} value={sharedIds} onChange={setSharedIds} lockedId={teamId} disabled={!teamId} label={label} />{!teamId && <small className="hint">Choose the team first.</small>}</>
+                : type === "teamsMulti" ? <><TeamMultiSelect id={`f-${name}`} name={name} teams={me.isInternal ? optionsFor("teams", data, orgId).filter(([v]) => v).map(([id, tname]) => ({ id, name: tname })) : (data.requestableTeams || [])} value={sharedIds} onChange={setSharedIds} lockedId={teamId} disabled={!teamId} label={label} />{!teamId && <small className="hint">Choose the team first.</small>}</>
                 : SELECTS.includes(type) ? (
                   <select id={`f-${name}`} name={name} required={required} defaultValue={initial?.[name] ?? ""} disabled={type === "teamAssignees" && !teamId}
                     onChange={name === "organizationId" ? (e) => setOrgId(e.target.value) : name === "teamId" ? (e) => setTeamId(e.target.value) : undefined}>

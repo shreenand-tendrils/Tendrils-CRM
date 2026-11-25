@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -9,6 +10,7 @@ import api from '../routes/index.js';
 import { notFound, errorHandler } from '../middleware/error.middleware.js';
 import { env } from './env.js';
 import { internalAuth } from '../middleware/internalAuth.js';
+import { uploadDir } from '../services/storage.js';
 import whatsappWebhook from '../routes/whatsapp.webhook.js';
 import mcp from '../routes/mcp.routes.js';
 
@@ -41,7 +43,11 @@ export function createApp() {
   app.use('/auth', rateLimit({ windowMs: 900000, limit: 100 }));
   app.use('/auth/', authHandler);
 
-  app.get('/health', (_q, s) => s.json({ status: 'ok', service: 'tendrils-api', time: new Date().toISOString() }));
+  app.get('/health', (_q, s) => {
+    let uploads = 'ok';
+    try { fs.accessSync(uploadDir(), fs.constants.W_OK); } catch { uploads = 'NOT WRITABLE'; } // uploads fail if the storage folder is missing/read-only
+    s.json({ status: 'ok', service: 'tendrils-api', uploads, maxUploadMb: Math.round(env.maxUploadBytes / 1048576), time: new Date().toISOString() });
+  });
 
   // Generous for reads (one page load is ~10 calls and offices share an IP); stricter for writes.
   const writes = rateLimit({

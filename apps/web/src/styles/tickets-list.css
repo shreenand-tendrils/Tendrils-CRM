@@ -84,3 +84,8 @@
 
 /* v4.9.20: collaborators */
 .collab-badge { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #eef0ff; color: #4636d6; font-size: 12px; font-weight: 700; vertical-align: middle; white-space: nowrap; }
+
+/* v4.9.38: involvement + client dropdowns sit on the same line as the view pills */
+.tl-views { align-items: center; }
+.tl-views .tl-rel { min-width: 170px; max-width: 240px; border-radius: 999px; }
+.tl-views .tl-rel.on { border-color: #4636d6; background: #f4f3ff; color: #4636d6; font-weight: 600; }

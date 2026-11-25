@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Paperclip, Download, Eye } from "lucide-react";
+import { Paperclip, Download, Eye, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import { fmtDateTime } from "../../lib/dates";
 
 const size = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 // Lists the files on a ticket and downloads them through the authenticated API.
-export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
+export default function TicketAttachments({ ticketId, endpoint, refreshKey, canDelete, onDeleted }) {
   const [files, setFiles] = useState([]);
   const [err, setErr] = useState("");
   const load = useCallback(() => api.get(endpoint || `/tickets/${ticketId}/attachments`).then((r) => setFiles(r.data)).catch(() => setFiles([])), [ticketId, endpoint]);
@@ -27,6 +27,12 @@ export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
       window.open(URL.createObjectURL(new Blob([r.data], { type: f.mimeType })), "_blank", "noopener");
     } catch { setErr("Could not open this file."); }
   };
+  const remove = async (f) => {
+    if (!window.confirm(`Delete "${f.originalName}" permanently?\n\nIt is removed from the ticket and from the server and cannot be recovered.`)) return;
+    setErr("");
+    try { await api.delete(`/files/${f.id}`); await load(); onDeleted?.(); }
+    catch (e) { setErr(e.response?.data?.error || "Could not delete this file."); }
+  };
   if (!files.length) return <small className="hint">No attachments yet.</small>;
   return (
     <div className="attachment-list">
@@ -36,6 +42,7 @@ export default function TicketAttachments({ ticketId, endpoint, refreshKey }) {
           <span style={{ flex: 1 }}><b>{f.originalName}</b><small style={{ display: "block" }}>{size(f.size)} · {fmtDateTime(f.createdAt)}</small></span>
           {/^(image\/|application\/pdf)/.test(f.mimeType || "") && <button className="secondary" onClick={() => view(f)} aria-label={`View ${f.originalName}`}><Eye size={14} /></button>}
           <button className="secondary" onClick={() => download(f)} aria-label={`Download ${f.originalName}`}><Download size={14} /></button>
+          {canDelete?.(f) && <button className="secondary danger" onClick={() => remove(f)} aria-label={`Delete ${f.originalName}`} title="Delete file"><Trash2 size={14} /></button>}
         </div>
       ))}
       {err && <small className="hint">{err}</small>}

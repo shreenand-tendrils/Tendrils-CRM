@@ -145,7 +145,7 @@ const SECTIONS = (me) => [
     </>) }] : []),
   ...(can(me, "admin.view") ? [{ id: "reports", title: "Reports (admins)", icon: ShieldCheck, keys: "reports team comparison who opened closed tickets export csv",
     body: (<>
-      <p>Open <b>Reports</b> in the sidebar (under Admin). Pick a date range at the top right; every number follows it. Dates everywhere are written dd/mm/yy.</p>
+      <p>Open <b>Reports</b> in the sidebar (under Admin). Pick a date range at the top right; every number follows it. Dates everywhere are written mm/dd/yy.</p>
       <ul>
         <li><b>Overview</b>: opened, closed, close rate, average days to close, open / Review / overdue counts, opened-vs-closed per month, highlights and top-5 lists. Click a count to see those tickets.</li>
         <li><b>Team comparison</b>: every team side by side (opened, closed, overdue, speed, tickets raised for or received from other teams, tasks). Click a column to sort; the best value is highlighted; click a team to see its tickets.</li>

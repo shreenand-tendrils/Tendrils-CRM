@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Send, Hash, FolderKanban, Plus, X, ArrowLeft, Check, CheckCheck, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, Eye } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Send, Hash, FolderKanban, Plus, X, ArrowLeft, Check, CheckCheck, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, Eye, MessagesSquare, UserPlus, CheckCircle2, RotateCcw, ExternalLink, ListPlus, Search, Copy, ClipboardCheck } from "lucide-react";
 import Avatar from "../components/ui/Avatar";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
 import * as realtime from "../lib/realtime";
-import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+
 import Linkify from "../components/ui/Linkify";
+import TeamMultiSelect from "../components/ui/TeamMultiSelect";
 import { fmtTime, fmtDateTime } from "../lib/dates";
 
 const time = (v) => fmtTime(v);
@@ -41,6 +43,11 @@ export default function ChatPage({ me, users = [], notify }) {
   const [online, setOnline] = useState(realtime.getOnline());
   const [live, setLive] = useState(realtime.isOpen());
   const [picker, setPicker] = useState(false);
+  const navigate = useNavigate();
+  const [inviting, setInviting] = useState(false);
+  const [inviteUsers, setInviteUsers] = useState([]);
+  const [inviteTeams, setInviteTeams] = useState([]);
+  const [allTeams, setAllTeams] = useState([]);
   const [members, setMembers] = useState([]);
   const [pins, setPins] = useState([]);
   const [receipts, setReceipts] = useState({}); // userId -> { deliveredAt, readAt } for the open room
@@ -50,6 +57,9 @@ export default function ChatPage({ me, users = [], notify }) {
   const [info, setInfo] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
   const [showPins, setShowPins] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [copiedLink, setCopiedLink] = useState(false);
   const mentionMap = useRef({}); // "@Name" typed via the picker -> user id
   const inputRef = useRef(null);
   const bottom = useRef(null);
@@ -117,6 +127,7 @@ export default function ChatPage({ me, users = [], notify }) {
         if (roomId !== activeRef.current || userId === meId) return;
         setReceipts((cur) => ({ ...cur, [userId]: { ...cur[userId], userId, [kind === "read" ? "readAt" : "deliveredAt"]: at } }));
       }),
+      realtime.on("chat.room.updated", ({ roomId }) => { loadRooms(); if (roomId === activeRef.current) loadRoomExtras(roomId); }),
       realtime.on("chat.read", ({ roomId }) => setRooms((rs) => rs?.map((r) => (r.id === roomId ? { ...r, unread: 0 } : r)))),
       realtime.on("chat.error", ({ tempId, error }) => {
         notify(error || "Message not sent", "error");
@@ -191,6 +202,27 @@ export default function ChatPage({ me, users = [], notify }) {
     } catch (err) { notify(err.response?.data?.error || "Could not start conversation", "error"); }
   };
 
+  const openInvite = () => {
+    setInviteUsers([]); setInviteTeams([]); setInviting(true);
+    api.get("/teams").then((r) => setAllTeams(Array.isArray(r.data) ? r.data : r.data?.teams || [])).catch(() => setAllTeams([]));
+  };
+  const sendInvite = async () => {
+    if (!active || (!inviteUsers.length && !inviteTeams.length)) return;
+    try {
+      const { data } = await api.post(`/chat/rooms/${active.id}/invite`, { userIds: inviteUsers, teamIds: inviteTeams });
+      notify?.(data.added?.length ? `Added ${data.added.map((u) => u.name).join(", ")}` : "Everyone selected is already in this discussion", "success");
+      setInviting(false); loadRoomExtras(active.id); loadRooms();
+    } catch (e) { notify?.(e.response?.data?.error || "Could not invite", "error"); }
+  };
+  const toggleResolved = async (room) => {
+    try { await api.put(`/chat/rooms/${room.id}/resolved`, { resolved: !room.resolvedAt }); loadRooms(); }
+    catch (e) { notify?.(e.response?.data?.error || "Could not update the discussion", "error"); }
+  };
+  const makeTask = async (m) => {
+    setMenuFor(null);
+    try { const { data } = await api.post(`/chat/messages/${m.id}/task`); notify?.(`Task created: ${data.title}`, "success"); }
+    catch (e) { notify?.(e.response?.data?.error || "Could not create the task", "error"); }
+  };
   if (!rooms) return <small className="muted">Loading chat…</small>;
   if (!rooms.length) return <EmptyState icon={<Hash />} title="No chat rooms yet" text="The General room and your project rooms appear here." />;
 
@@ -198,8 +230,8 @@ export default function ChatPage({ me, users = [], notify }) {
     <div className="room-section">
       <div className="room-title"><small>{title}</small>{action}</div>
       {list.map((r) => (
-        <button key={r.id} className={"room" + (r.id === activeId ? " on" : "")} onClick={() => setParams({ room: r.id })}>
-          {r.type === "GENERAL" ? <Hash size={15} /> : r.type === "PROJECT" ? <FolderKanban size={15} /> : <span className="dm-dot-wrap"><Avatar name={r.name} /><i className={"dot" + (online.has(r.dmUser?.id) ? " on" : "")} /></span>}
+        <button key={r.id} className={"room" + (r.id === activeId ? " on" : "") + (r.resolvedAt ? " resolved" : "")} onClick={() => setParams({ room: r.id })}>
+          {r.type === "GENERAL" ? <Hash size={15} /> : r.type === "PROJECT" ? <FolderKanban size={15} /> : r.type === "TICKET" ? (r.resolvedAt ? <CheckCircle2 size={15} /> : <MessagesSquare size={15} />) : <span className="dm-dot-wrap"><Avatar name={r.name} /><i className={"dot" + (online.has(r.dmUser?.id) ? " on" : "")} /></span>}
           <span><b>{r.name}</b><small>{r.lastMessage ? `${r.lastMessage.authorId === meId ? "You" : r.lastMessage.author?.name || "Someone"}: ${r.lastMessage.deletedAt ? "Message deleted" : r.lastMessage.body}` : r.type === "PROJECT" ? r.project?.organization?.name : "No messages yet"}</small></span>
           {r.unread > 0 && <em className="badge">{r.unread > 99 ? "99+" : r.unread}</em>}
         </button>
@@ -215,24 +247,39 @@ export default function ChatPage({ me, users = [], notify }) {
   const suggestions = mentionQuery === null ? [] : [...(active?.type !== "DIRECT" && ("all".startsWith(mentionQuery) || "everyone".startsWith(mentionQuery)) ? [allOption] : []), ...members.filter((u) => u.id !== meId && (nameOf(u).toLowerCase().includes(mentionQuery) || (u.email || "").toLowerCase().includes(mentionQuery)))].slice(0, 5);
   const t = typing[activeId];
   const typingNow = t && t.until > Date.now() ? t.name : null;
+  const ticketFocus = params.get("focus") === "ticket" && active?.type === "TICKET";
+  const visibleMessages = searchText.trim() ? messages.filter((m) => (m.body || "").toLowerCase().includes(searchText.trim().toLowerCase())) : messages;
+  const copyDiscussionLink = async () => { try { await navigator.clipboard.writeText(window.location.href); setCopiedLink(true); window.setTimeout(() => setCopiedLink(false), 1800); } catch { notify("Could not copy the discussion link", "error"); } };
 
   return (
-    <div className={"chat" + (params.get("room") ? " has-room" : "")}>
-      <aside className="chat-rooms">
+    <div className={"chat" + (params.get("room") ? " has-room" : "") + (ticketFocus ? " ticket-chat-focus" : "")}>
+      {!ticketFocus && <aside className="chat-rooms">
         {section("CHANNELS", rooms.filter((r) => r.type === "GENERAL"))}
         {section("PROJECTS", rooms.filter((r) => r.type === "PROJECT").sort((a, b) => a.name.localeCompare(b.name)))}
+        {rooms.some((r) => r.type === "TICKET") && section("TICKET DISCUSSIONS", rooms.filter((r) => r.type === "TICKET").sort((a, b) => (a.resolvedAt ? 1 : 0) - (b.resolvedAt ? 1 : 0) || byActivity(a, b)))}
         {section("DIRECT MESSAGES", dms, <button className="icon-btn" title="New message" onClick={() => setPicker(true)}><Plus size={14} /></button>)}
         {!dms.length && <small className="muted pad">Start a conversation with + above.</small>}
-      </aside>
+      </aside>}
       <section className="chat-main">
         <header>
-          <button className="back" onClick={() => setParams({})} aria-label="Back to conversations"><ArrowLeft size={18} /></button>
+          <button className="back" onClick={() => ticketFocus ? navigate(`/tickets?ticket=${active.ticketId}`) : setParams({})} aria-label={ticketFocus ? "Back to ticket" : "Back to conversations"}><ArrowLeft size={18} /></button>
           <div><b>{active?.type === "GENERAL" ? "# " : ""}{active?.name}</b>
           <small>
-            {active?.type === "DIRECT" ? (online.has(active.dmUser?.id) ? "● Online" : "Offline") : active?.type === "PROJECT" ? "Project team + Platform admins" : "All Tendrils staff"}
+            {active?.type === "DIRECT" ? (online.has(active.dmUser?.id) ? "● Online" : "Offline") : active?.type === "PROJECT" ? "Project team + Platform admins" : active?.type === "TICKET" ? `Ticket discussion · ${members.length} ${members.length === 1 ? "person" : "people"}${active.resolvedAt ? " · Resolved" : ""}` : "All Tendrils staff"}
             {" · "}<span className={live ? "live" : "offline"}>{live ? "Live" : "Reconnecting…"}</span>
           </small></div>
+          {active?.type === "TICKET" && (
+            <div className="room-actions">
+              {ticketFocus && <button type="button" className="secondary" onClick={() => { setSearchOpen((v) => !v); setSearchText(""); }}><Search size={14} /> Search messages</button>}
+              {ticketFocus && <button type="button" className="secondary" onClick={copyDiscussionLink}>{copiedLink ? <><ClipboardCheck size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}</button>}
+              <button type="button" className="secondary" onClick={() => navigate(`/tickets?ticket=${active.ticketId}`)}><ExternalLink size={14} /> Open ticket</button>
+              <button type="button" className="secondary" onClick={openInvite}><UserPlus size={14} /> Invite</button>
+              <button type="button" className="secondary" onClick={() => toggleResolved(active)}>{active.resolvedAt ? <><RotateCcw size={14} /> Reopen</> : <><CheckCircle2 size={14} /> Resolve</>}</button>
+            </div>
+          )}
         </header>
+        {ticketFocus && <div className="ticket-chat-context"><span className="ticket-chat-icon"><MessagesSquare size={17} /></span><span><b>Ticket discussion</b><small>Keep decisions, questions and progress updates together. Use @mentions to notify teammates.</small></span><span className="ticket-chat-people">{members.length} participants</span></div>}
+        {searchOpen && ticketFocus && <div className="chat-search"><Search size={15} /><input autoFocus value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Find a message in this discussion…" /><small>{searchText ? `${visibleMessages.length} found` : "Search loaded messages"}</small><button className="icon-btn" onClick={() => { setSearchOpen(false); setSearchText(""); }} aria-label="Close search"><X size={14} /></button></div>}
         {pins.length > 0 && (
           <div className="pinbar">
             <button className="pin-main" onClick={() => jumpTo(pins[0].id)} title="Go to pinned message"><Pin size={14} /><span><b>{pins.length > 1 ? `Pinned (${pins.length})` : "Pinned"}</b> {pins[0].body}</span></button>
@@ -241,7 +288,7 @@ export default function ChatPage({ me, users = [], notify }) {
           </div>
         )}
         <div className="chat-log">
-          {messages.map((m) => {
+          {visibleMessages.map((m) => {
             const own = m.authorId === meId;
             const deleted = !!m.deletedAt;
             const canEdit = own && !deleted && Date.now() - new Date(m.createdAt).getTime() <= EDIT_WINDOW_MS;
@@ -270,6 +317,7 @@ export default function ChatPage({ me, users = [], notify }) {
                           <button onClick={() => startReply(m)}><Reply size={14} /> Reply</button>
                           {own && <button onClick={() => openInfo(m)}><Info size={14} /> Message info</button>}
                           <button onClick={() => togglePin(m)}>{m.pinnedAt ? <><PinOff size={14} /> Unpin</> : <><Pin size={14} /> Pin message</>}</button>
+                          {active?.type === "TICKET" && <button onClick={() => makeTask(m)}><ListPlus size={14} /> Create task</button>}
                           {canEdit && <button onClick={() => startEdit(m)}><Pencil size={14} /> Edit</button>}
                           {canDelete && <button className="danger" onClick={() => remove(m)}><Trash2 size={14} /> Delete for everyone</button>}
                         </div>
@@ -280,7 +328,7 @@ export default function ChatPage({ me, users = [], notify }) {
               </div>
             );
           })}
-          {!messages.length && <small className="muted center">No messages yet — say hello.</small>}
+          {!visibleMessages.length && <small className="muted center">{searchText ? "No messages match your search." : "No messages yet — say hello."}</small>}
           <div ref={bottom} />
         </div>
         <div className="typing">{typingNow ? `${typingNow} is typing…` : ""}</div>
@@ -310,6 +358,24 @@ export default function ChatPage({ me, users = [], notify }) {
               ))}
               {info && info.pending.length > 0 && <div className="info-group"><small>Not delivered yet ({info.pending.length})</small>{info.pending.map((u) => <div className="person-row" key={u.id}><Avatar name={u.name || u.email} /><span><b>{u.name || u.email}</b><small>Offline since sending</small></span></div>)}</div>}
               {info && <small className="muted">Read time is when the person last opened this room.</small>}
+            </div>
+          </div>
+        </div>
+      )}
+      {inviting && (
+        <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setInviting(false)}>
+          <div className="modal">
+            <div className="modal-head"><span><small>TICKET DISCUSSION</small><h2>Invite people</h2></span><button type="button" onClick={() => setInviting(false)}><X /></button></div>
+            <div className="modal-body">
+              <div className="field"><label>Whole teams</label><TeamMultiSelect teams={allTeams} value={inviteTeams} onChange={setInviteTeams} label="Invite teams" /></div>
+              <small className="win-label">People</small>
+              {others.filter((u) => !members.some((m) => m.id === u.id)).map((u) => (
+                <label key={u.id} className="person-row pick">
+                  <input type="checkbox" checked={inviteUsers.includes(u.id)} onChange={() => setInviteUsers((cur) => (cur.includes(u.id) ? cur.filter((x) => x !== u.id) : [...cur, u.id]))} />
+                  <Avatar name={u.name || u.email} /><span><b>{u.name || u.email}</b><small>{u.email}</small></span>
+                </label>
+              ))}
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}><button type="button" className="primary" disabled={!inviteUsers.length && !inviteTeams.length} onClick={sendInvite}>Add to discussion</button></div>
             </div>
           </div>
         </div>

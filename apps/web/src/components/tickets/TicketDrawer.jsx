@@ -1,6 +1,9 @@
+import { fmtDateTime } from "../../lib/dates";
 import { useEffect, useState } from "react";
-import { Trash2, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus, ArrowRight, Users, GitBranch, Lock, Bell } from "lucide-react";
+import { Trash2, ListChecks, Info, ThumbsUp, Undo2, Pencil, Check, XCircle, Plus, ArrowRight, Users, GitBranch, Lock, Bell, MessagesSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../../api";
+import * as realtime from "../../lib/realtime";
 import { pretty, formatDate } from "../../lib/formatters";
 import { PriorityBadge, StatusBadge, TicketStatusBadge } from "../ui/StatusBadge";
 import { can, ROLE_LABELS } from "../../lib/rbac";
@@ -30,6 +33,10 @@ const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete, onRefresh, notify }) {
   const [pasteHint, setPasteHint] = useState("");
+  const [closingToChat, setClosingToChat] = useState(false);
+  const [dueDateDraft, setDueDateDraft] = useState(ticket?.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : "");
+  const [editingDueDate, setEditingDueDate] = useState(false);
+  const [focusKey, setFocusKey] = useState(0); // bumps when the header Discussion button is used, so the composer takes focus
   const [tab, setTab] = useState(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview");
   const [routeOpen, setRouteOpen] = useState(false);
   const [collabOpen, setCollabOpen] = useState(false);
@@ -40,9 +47,27 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
   const [ownerTeamId, setOwnerTeamId] = useState("");
   const navigate = useNavigate();
+  const canChat = !!me?.isInternal && can(me, "chat.use");
+  const [dsum, setDsum] = useState(null); // live-discussion summary: unread, pinned decisions, resolved
+  useEffect(() => { // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!canChat || !ticket?.id) { setDsum(null); return undefined; }
+    let live = true;
+    const load = () => api.get(`/chat/ticket/${ticket.id}/summary`).then((r) => live && setDsum(r.data)).catch(() => live && setDsum(null));
+    load();
+    const off = realtime.on("chat.message", ({ message }) => { if (message?.roomId) load(); });
+    const off2 = realtime.on("chat.message.updated", () => load());
+    const off3 = realtime.on("chat.room.updated", () => load());
+    return () => { live = false; off(); off2(); off3(); };
+  }, [canChat, ticket?.id, ticket?.updatedAt]);
+  const openDiscussion = async () => {
+    try { const { data } = await api.post(`/chat/ticket/${ticket.id}`); setClosingToChat(true); window.setTimeout(() => navigate(`/chat?room=${data.id}&focus=ticket`), 190); }
+    catch (e) { notify?.(e.response?.data?.error || "Could not open the discussion", "error"); }
+  };
   const [collabIds, setCollabIds] = useState([]);
   useEffect(() => { setCollabIds((ticket?.collaborators || []).map((c) => c.userId)); }, [ticket?.id, ticket?.collaborators]);
-  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.title, ticket?.description, ticket?.teamId, ticket?.teamAccesses]);
+  // Editing state resets only when another ticket is opened, never on a refresh (which would wipe the draft after a few seconds).
+  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setDueDateDraft(ticket?.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : ""); setEditingDueDate(false); setEditing(false); }, [ticket?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.teamId, ticket?.teamAccesses]);
   useEffect(() => { setTab(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview"); setDisc(null); setRouteOpen(false); setCollabOpen(false); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
 
@@ -52,6 +77,8 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const ownStatus = can(me, "ticket.update_own") && (ticket.assigneeId === me.user.id || iCollaborate); // assignee and collaborators move the work along
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
   const canEditDetails = triage || requesterCanEdit;
+  const canEditDueDate = ticket.requesterId === me.user?.id; // the requester or an admin edits the title and description
+  const edited = ticket.descriptionEditedAt ? <small className="hint"> (edited {fmtDateTime(ticket.descriptionEditedAt)})</small> : null;
   const canStatus = triage || canRoute || ownStatus || (me.isInternal && requesterCanEdit);
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
   const canDelete = can(me, "ticket.delete") || (ticket.requesterId === me.user?.id && ticket.status === "OPEN" && !ticket.assigneeId && !(ticket._count?.comments > 0));
@@ -89,6 +116,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
   const ownerName = teams.find((t) => t.id === ticket.teamId)?.name || ticket.teamAccesses?.find((a) => a.teamId === ticket.teamId)?.team?.name || "";
   const sharedNames = (ticket.teamAccesses || []).filter((a) => a.teamId !== ticket.teamId).map((a) => a.team?.name || teams.find((t) => t.id === a.teamId)?.name).filter(Boolean);
+  const nDiscussion = disc?.comments ?? comments.length;
   const nComments = (disc?.comments ?? comments.length) + (disc?.files ?? (ticket._count?.attachments || 0));
   const rk = `${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.assigneeId}|${ticket.teamId}|${linked.length}|${(ticket.teamAccesses || []).length}|${(ticket.collaborators || []).length}|${nComments}`;
   const open = ticket.status !== "CLOSED";
@@ -205,6 +233,9 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
   const headActions = (
     <>
+      <button type="button" className="secondary tw-discuss" onClick={canChat ? openDiscussion : () => { setTab("comments"); setFocusKey((k) => k + 1); }} aria-label={`Open discussion${nDiscussion ? `, ${nDiscussion} comments` : ""}`} title={canChat ? "Open the live discussion in Chat" : "Open the discussion for this ticket"}>
+        <MessagesSquare size={15} /><span>Discussion</span>{canChat && dsum?.unread > 0 ? <b className="tw-discuss-n alert">{dsum.unread}</b> : (canChat ? dsum?.messages : nDiscussion) > 0 && <b className="tw-discuss-n">{canChat ? dsum.messages : nDiscussion}</b>}{canChat && dsum?.resolvedAt && <small className="tw-resolved">Resolved</small>}
+      </button>
       <CopyLinkButton ticket={ticket} label />
       {canEditDetails && !editing && <button type="button" className="secondary tw-edit" onClick={() => setEditing(true)} aria-label="Edit ticket details"><Pencil size={14} /> Edit</button>}
     </>
@@ -213,13 +244,13 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const tabs = [
     { id: "overview", label: "Overview" },
     { id: "tasks", label: "Tasks", count: staff ? linkedRoots.length : (ticket.tasksInReview > 0 ? `${ticket.tasksInReview} to review` : null), alert: !staff && ticket.tasksInReview > 0 },
-    { id: "comments", label: "Comments & files", count: nComments },
+    { id: "comments", label: "Discussion & files", count: nComments },
     { id: "history", label: "History" },
   ];
 
   return (
     <Window
-      label={`Ticket ${ticket.key}`} onClose={onClose} side={staff || canStatus ? side : undefined} headRight={headActions}
+      label={`Ticket ${ticket.key}`} onClose={onClose} className={closingToChat ? "win-slide-away" : ""} side={staff || canStatus ? side : undefined} headRight={headActions}
       head={<><b className="win-key">{ticket.key}</b>{staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}<PriorityBadge value={ticket.priority} /></>}
     >
       {editing ? (
@@ -227,7 +258,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
           <label htmlFor="ticket-edit-title">Ticket title</label>
           <input id="ticket-edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} maxLength={220} />
           <label htmlFor="ticket-edit-description">Description</label>
-          <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={5} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload(f, ticket.id)} onError={(m) => setPasteHint(m)} placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
+          <PasteTextarea id="ticket-edit-description" value={editDescription} onChange={setEditDescription} rows={5} target={{ ticketId: ticket.id }} onOtherFile={(f) => onUpload(f, ticket.id)} onError={(m) => setPasteHint(m)} showAttach placeholder="Paste a screenshot or PDF here with Ctrl+V to attach it" />
           {pasteHint && <small className="hint">{pasteHint}</small>}
           <div className="row"><button className="primary" disabled={!editTitle.trim()} onClick={async () => { const saved = await onUpdate(ticket.id, { title: editTitle.trim(), description: editDescription }); if (saved) setEditing(false); }}><Check size={14} /> Save details</button><button className="secondary" onClick={() => { setEditTitle(ticket.title); setEditDescription(ticket.description || ""); setEditing(false); }}><XCircle size={14} /> Cancel</button></div>
         </div>
@@ -244,15 +275,24 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       )}
 
       <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} />
+      {canEditDueDate && <div className="ticket-due-editor">
+        <div><small>Ticket due date</small><b>{ticket.dueDate ? formatDate(ticket.dueDate) : "No due date set"}</b></div>
+        {!editingDueDate ? <button type="button" className="tw-link" onClick={() => { setDueDateDraft(ticket.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : ""); setEditingDueDate(true); }}><Pencil size={13} /> {ticket.dueDate ? "Change" : "Set due date"}</button> : <div className="ticket-due-controls"><input aria-label="Ticket due date" type="date" value={dueDateDraft} onChange={(e) => setDueDateDraft(e.target.value)} /><button type="button" className="primary" onClick={async () => { const saved = await onUpdate(ticket.id, { dueDate: dueDateDraft || null }); if (saved) setEditingDueDate(false); }}>Save</button><button type="button" className="secondary" onClick={() => setEditingDueDate(false)}>Cancel</button></div>}
+      </div>}
       {clientReview}{clientTasks}{clientHelp}{nextStep}
 
       <WinTabs tabs={tabs} value={tab} onChange={setTab} label="Ticket sections" />
 
       {tab === "overview" && (
         <>
-          <Panel2 title="Description">
-            {ticket.description ? <RichText text={ticket.description} canDelete={canEditDetails || triage} /> : <p className="tw-empty">No description added.{canEditDetails && <> <button type="button" className="tw-link" onClick={() => setEditing(true)}>Add one</button></>}</p>}
-            <TicketAttachments ticketId={ticket.id} refreshKey={ticket._count?.attachments} />
+          {canChat && dsum?.pinned?.length > 0 && (
+            <Panel2 title="Decisions pinned in the discussion" action={<button type="button" className="tw-link" onClick={openDiscussion}>Open discussion</button>}>
+              <ul className="tw-decisions">{dsum.pinned.map((p) => <li key={p.id}><b>{p.author?.name || p.author?.email}</b> <span>{p.body}</span></li>)}</ul>
+            </Panel2>
+          )}
+          <Panel2 title={<>Description{edited}</>}>
+            {ticket.description ? <RichText text={ticket.description} canDelete={canEditDetails || triage || ticket.requesterId === me.user?.id || (me.roles || []).includes("PLATFORM_ADMIN")} /> : <p className="tw-empty">No description added.{canEditDetails && <> <button type="button" className="tw-link" onClick={() => setEditing(true)}>Add one</button></>}</p>}
+            <TicketAttachments ticketId={ticket.id} refreshKey={ticket._count?.attachments} canDelete={(f) => f.uploadedById === me.user?.id || ticket.requesterId === me.user?.id || (me.roles || []).includes("PLATFORM_ADMIN")} onDeleted={onRefresh} />
           </Panel2>
           <Panel2 title="Latest activity" action={<button type="button" className="tw-link" onClick={() => setTab("history")}>See everything</button>}>
             <TicketHistory ticketId={ticket.id} showRoles={staff} refreshKey={rk} limit={4} />
@@ -270,7 +310,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
       )}
       {tab === "tasks" && !staff && <TicketTasks ticketId={ticket.id} canReview={ticket.status === "OPEN"} onChanged={onRefresh} notify={notify} refreshKey={`${ticket.updatedAt}|${ticket.status}|${ticket.progress}|${ticket.tasksInReview}`} />}
 
-      {tab === "comments" && <Discussion kind="ticket" id={ticket.id} me={me} users={users} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
+      {tab === "comments" && <Discussion kind="ticket" id={ticket.id} requesterId={ticket.requesterId} focusKey={focusKey} me={me} users={users} staff={staff} canUpload={can(me, "file.upload")} canModerate={triage} onChanged={onRefresh} onCount={setDisc} notify={notify} refreshKey={ticket.id} />}
 
       {tab === "history" && <Panel2 title="Route & history" sub="Follow the ticket from the day it was raised: who held it, which team, and every change on the way"><TicketRoute ticketId={ticket.id} showRoles={staff} refreshKey={rk} /></Panel2>}
     </Window>

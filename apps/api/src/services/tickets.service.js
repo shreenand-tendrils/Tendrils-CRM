@@ -18,6 +18,7 @@ import { diffTicketEvents, clientView } from './ticketEvents.js';
 import { accessTeamIdsFor, isMemberOfAnyTeam, planAssignee, planCollaborators, normalizeTeamPicks } from './ticketRouting.js';
 import { canDeleteTicket, reviewTaskAsClient } from './review.js';
 import { AppError } from '../errors/AppError.js';
+import { loadContextByUserId, MODES } from './session.js';
 
 const authorSelect = { author: { select: { id: true, name: true, email: true } } };
 const ticketUrl = (t) => `/?ticket=${t.id}`;
@@ -49,13 +50,26 @@ async function ticketStaffIds(t, extra = []) {
 }
 
 async function notifyTicket(ctx, t, { title, body, toRequester = false, requesterIsEmployee = false, extra = [] }) {
-  const requesterIsClient = t.requesterId && t.requesterId !== t.assigneeId && (t.visibility === 'CLIENT' || requesterIsEmployee);
+  const requesterIsClient = t.requesterId && (t.visibility === 'CLIENT' || requesterIsEmployee);
   const staff = toRequester ? [] : await ticketStaffIds(t, extra);
   const ids = toRequester ? (requesterIsClient ? [t.requesterId] : []) : staff;
   await notifyPeople({ userIds: ids, actorId: ctx.currentUser.id, type: 'STATUS_CHANGE', title, body, href: ticketUrl(t) });
 }
 
-async function loadVisibleTicket(ctx, id) {
+/** Teams on the ticket that nobody is already engaged from. When the requester, assignee and commenters are one person (or all on
+ *  one team), the other participating teams would never hear anything - so their members get the mail instead. */
+async function uncoveredTeamPeople(t, engagedIds, actorId) {
+  const teamIds = [...new Set([t.teamId, ...(t.teamAccesses || []).map((a) => a.teamId)].filter(Boolean))];
+  if (!teamIds.length) return [];
+  const engaged = [...new Set([...engagedIds, actorId].filter(Boolean))];
+  const covered = new Set((await prisma.teamMember.findMany({
+    where: { teamId: { in: teamIds }, membership: { isActive: true, userId: { in: engaged } } }, select: { teamId: true },
+  })).map((r) => r.teamId));
+  const open = teamIds.filter((id) => !covered.has(id));
+  return open.length ? (await findTeamManagers(open)).map((u) => u.id) : [];
+}
+
+export async function loadVisibleTicket(ctx, id) {
   const t = await prisma.ticket.findUnique({ where: { id }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } });
   if (!t || !canViewTicket(ctx, t)) throw new AppError('Ticket not found', 404); // hide existence
   return t;
@@ -84,9 +98,10 @@ async function mailCollaborators(ctx, t, addedIds, accessTeamIds) {
 export async function listTickets(ctx, query) {
   const q = query.q ? String(query.q) : '';
   const search = q ? { OR: [{ title: { contains: q, mode: 'insensitive' } }, { key: { contains: q, mode: 'insensitive' } }] } : {};
+  const byId = query.id ? { id: String(query.id) } : {}; // single-ticket fetch for deep links (the list below is capped at 150)
   const rows = (
     await prisma.ticket.findMany({
-      where: { AND: [ticketScope(ctx), search] }, orderBy: { updatedAt: 'desc' }, take: 150,
+      where: { AND: [ticketScope(ctx), search, byId] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 150, // newest raised first (not by last update)
       include: {
         organization: { select: { id: true, name: true, type: true } },
         project: { select: { id: true, name: true } },
@@ -143,8 +158,9 @@ export async function createTicket(ctx, input) {
     throw new AppError("You don't have permission to assign tickets to others (ticket.triage).", 403);
   }
   if (collaboratorIds.length) {
-    if (!ctx.isInternal) throw new AppError('Only staff can add collaborators.', 403);
-    if (!crossTeam) throw new AppError("You don't have permission to add collaborators (ticket.triage).", 403);
+    // Clients may add collaborators too, but only people from the (client-visible) teams they picked: planCollaborators checks that below.
+    if (!ctx.isInternal && collaboratorIds.length > 10) throw new AppError('You can add up to 10 collaborators.', 400, 'TOO_MANY_COLLABORATORS');
+    if (ctx.isInternal && !crossTeam) throw new AppError("You don't have permission to add collaborators (ticket.triage).", 403);
   }
   const ownTeamIds = [...new Set(ctx.memberships.flatMap((m) => (m.teamMemberships || []).map((tm) => tm.teamId)))];
   if (ctx.isInternal && !ctx.can('ticket.triage')) {
@@ -156,7 +172,7 @@ export async function createTicket(ctx, input) {
   await assertProjectInOrg(data.projectId, data.organizationId);
   await assertAssignable(data.assigneeId);
   await assertInternalTeam(data.teamId);
-  if (teamIds.length && !crossTeam) throw new AppError('Only authorized triagers can share a ticket with additional teams.', 403);
+  if (teamIds.length && !crossTeam && ctx.isInternal) throw new AppError('Only authorized triagers can share a ticket with additional teams.', 403); // a client's extra teams were already checked against the client-visible list
   const accessTeamIds = accessTeamIdsFor(data.teamId, teamIds);
   if (ctx.isInternal && data.assigneeId) {
     // Team first, then assignee: the assignee must belong to the ticket's team.
@@ -236,6 +252,13 @@ export async function patchTicket(ctx, id, input) {
   if (ctx.isInternal && !ctx.can('ticket.triage') && data.status === 'CLOSED' && data.status !== old.status && !(reqEmp && isRequester)) {
     throw new AppError(reqEmp ? 'Submit it for review (Review/Test). The person who raised this ticket approves and closes it.' : 'Employees cannot mark a ticket as done. Submit it for client review instead.', 403, 'CLIENT_REVIEW_REQUIRED');
   }
+  // Title and description: only the person who raised the ticket may edit them (everyone else uses comments).
+  const descChanged = data.description !== undefined && (data.description ?? '') !== (old.description ?? '');
+  const titleChanged = data.title !== undefined && data.title !== old.title;
+  if ((descChanged || titleChanged) && old.requesterId !== ctx.currentUser.id && !ctx.can('ticket.triage')) throw new AppError('Only the person who raised this ticket or an admin can edit its title or description.', 403, 'TICKET_TEXT_CREATOR_ONLY');
+  if (descChanged) data.descriptionEditedAt = new Date();
+  if (data.description !== undefined && !descChanged) delete data.description;
+  if (data.title !== undefined && !titleChanged) delete data.title;
   if (['REVIEW_TEST', 'CLOSED'].includes(data.status) && data.status !== old.status) await assertTicketWorkComplete(prisma, old.id);
   if (scope === 'client' && data.status !== undefined && !clientStatusChangeAllowed(old.status, data.status)) {
     throw new AppError('You can only approve or send back a ticket that is waiting for your review.', 403, 'CLIENT_STATUS_LOCKED');
@@ -320,19 +343,46 @@ export async function patchTicket(ctx, id, input) {
       await notifyTeams({ teamIds: addedTeams, actorId: ctx.currentUser.id, exclude: [t.assigneeId, ...(collabPlan?.added || [])], title: `${t.key} was sent to your team: ${t.title}`, body: `${ctx.currentUser.name || ctx.currentUser.email} added your team to ticket ${t.key} ("${t.title}", priority ${String(t.priority || 'MEDIUM').toLowerCase()}).\nOpen it to pick it up or assign it to someone on your team.`, href: ticketUrl(t) });
     }
   }
+  if (descChanged || titleChanged) { // same audience as a comment: assignee, collaborators, earlier commenters, uncovered teams (clients only see client-visible tickets)
+    const earlier = await prisma.comment.findMany({ where: { ticketId: t.id, visibility: { not: 'INTERNAL' } }, select: { authorId: true }, distinct: ['authorId'] });
+    const ids = [t.assigneeId, t.requesterId, ...(old.collaborators || []).map((c) => c.userId), ...earlier.map((e) => e.authorId)].filter(Boolean);
+    ids.push(...await uncoveredTeamPeople(t, ids, ctx.currentUser.id));
+    const who = ctx.currentUser.name || ctx.currentUser.email;
+    await notifyPeople({
+      userIds: ids, actorId: ctx.currentUser.id, type: 'SYSTEM', title: `${t.key} was edited: ${t.title}`, href: ticketUrl(t),
+      body: `${who} edited the ${descChanged ? 'description' : 'title'} of \"${t.title}\" (${t.key}).${descChanged ? `\nNew description:\n\"${String(t.description || '(cleared)').replace(/\[\[img:[a-z0-9-]+\]\]/gi, '[image]').slice(0, 300)}\"` : ''}`,
+    });
+  }
   if (collabPlan?.added.length) await mailCollaborators(ctx, t, collabPlan.added, nextAccessIds);
   if (collabPlan?.removed.length) await notifyPeople({ userIds: collabPlan.removed.filter((id) => id !== t.assigneeId), actorId: ctx.currentUser.id, type: 'SYSTEM', title: `You are no longer a collaborator on ${t.key}`, body: `${ctx.currentUser.name || ctx.currentUser.email} removed you as a collaborator on "${t.title}" (${t.key}).`, href: '/tickets', email: false });
   await ticketLog(ctx, t, 'updated', autoUnassigned ? `Updated ticket ${t.key} (team changed, assignee cleared because they are not in the new team)` : `Updated ticket ${t.key}`);
   if (data.status && data.status !== old.status) {
-    const requesterReviewing = reqEmp && isRequester && old.status === 'REVIEW_TEST' && ['CLOSED', 'OPEN'].includes(data.status);
-    if (ctx.isInternal && !requesterReviewing) {
+    const approvedFromReview = isRequester && old.status === 'REVIEW_TEST' && data.status === 'CLOSED';
+    const actorName = ctx.currentUser.name || ctx.currentUser.email;
+    if (isRequester) {
+      // The person who raised it acted (approved, sent back, or closed/reopened it directly): tell the team side. Previously a direct
+      // close from any other status fell into the "tell the requester" branch, which is the actor, so nobody got mail.
+      const closed = data.status === 'CLOSED';
+      const extra = [old.assigneeId, ...await uncoveredTeamPeople(t, [t.assigneeId, old.assigneeId, ...(old.collaborators || []).map((c) => c.userId)], ctx.currentUser.id)];
+      await notifyTicket(ctx, t, {
+        extra,
+        title: approvedFromReview ? `${t.key}: ${ctx.isInternal ? 'requester' : 'client'} approved the work` : closed ? `${t.key} was closed by ${actorName}` : old.status === 'REVIEW_TEST' ? `${t.key}: ${ctx.isInternal ? 'requester' : 'client'} sent back the work` : `${t.key} is now ${nice(data.status)}`,
+        body: approvedFromReview ? `${actorName} approved the work on \"${t.title}\" (${t.key}). The ticket is now closed.`
+          : closed ? `${actorName}, who raised \"${t.title}\" (${t.key}), closed it${old.status !== 'REVIEW_TEST' ? ` directly from ${nice(old.status)}` : ''}. No further action is needed.`
+          : old.status === 'REVIEW_TEST' ? `${actorName} asked for changes on \"${t.title}\" (${t.key}). Please check the latest comment and continue.`
+          : `${actorName} moved \"${t.title}\" (${t.key}) from ${nice(old.status)} to ${nice(data.status)}.`,
+      });
+    } else if (ctx.isInternal) {
+      // Team side moved it: the requester hears (even when they are also the assignee and another collaborator acted).
       await notifyTicket(ctx, t, {
         toRequester: true, requesterIsEmployee: reqEmp,
         title: data.status === 'REVIEW_TEST' ? `${t.key} is ready for your review` : data.status === 'REVIEW_HELP' ? `${t.key} needs more information from you` : `${t.key} is now ${nice(data.status)}`,
-        body: data.status === 'REVIEW_HELP' ? `The team needs more information to continue on "${t.title}" (${t.key}). Please open the ticket and reply in the comments.` : data.status === 'REVIEW_TEST' ? `The team has finished work on "${t.title}" (${t.key}). Please review it, then approve it to close the ticket or send it back with a comment on what to change.` : `"${t.title}" (${t.key}) is now ${nice(data.status)}.`,
+        body: data.status === 'REVIEW_HELP' ? `The team needs more information to continue on \"${t.title}\" (${t.key}). Please open the ticket and reply in the comments.` : data.status === 'REVIEW_TEST' ? `The team has finished work on \"${t.title}\" (${t.key}). Please review it, then approve it to close the ticket or send it back with a comment on what to change.` : `\"${t.title}\" (${t.key}) is now ${nice(data.status)}.`,
       });
+      // When it is closed by staff, the rest of the team side (collaborators, other teams) is told too.
+      if (data.status === 'CLOSED') await notifyTicket(ctx, t, { extra: await uncoveredTeamPeople(t, [t.assigneeId, ...(old.collaborators || []).map((c) => c.userId)], ctx.currentUser.id), title: `${t.key} was closed by ${actorName}`, body: `${actorName} closed \"${t.title}\" (${t.key}).` });
     } else {
-      await notifyTicket(ctx, t, { extra: [old.assigneeId], title: `${t.key}: ${ctx.isInternal ? 'requester' : 'client'} ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${ctx.currentUser.name || ctx.currentUser.email} ${data.status === 'CLOSED' ? 'approved the work on' : 'asked for changes on'} "${t.title}" (${t.key}).${data.status === 'CLOSED' ? ' The ticket is now closed.' : ' Please check the latest comment and continue.'}` });
+      await notifyTicket(ctx, t, { extra: [old.assigneeId], title: `${t.key}: client ${data.status === 'CLOSED' ? 'approved' : 'sent back'} the work`, body: `${actorName} ${data.status === 'CLOSED' ? 'approved the work on' : 'asked for changes on'} \"${t.title}\" (${t.key}).${data.status === 'CLOSED' ? ' The ticket is now closed.' : ' Please check the latest comment and continue.'}` });
     }
   }
   return { ...t, autoUnassigned, collaboratorsDropped: collabPlan?.autoRemoved.length || 0, requesterIsEmployee: reqEmp };
@@ -429,6 +479,9 @@ export async function addTicketComment(ctx, id, input) {
       const teamIds = [t.teamId, ...(t.teamAccesses || []).map((a) => a.teamId)].filter(Boolean);
       ids.push(...(teamIds.length ? await findTeamManagers(teamIds) : await findTriagers()).map((u) => u.id));
     }
+    // Self-raised + self-assigned (or any case where the author is the only stakeholder): still reach every participating team nobody is engaged from.
+    ids.push(...await uncoveredTeamPeople(t, ids, ctx.currentUser.id));
+    if (!ids.some((id) => id !== ctx.currentUser.id)) ids.push(...(await findTriagers()).map((u) => u.id)); // last resort: an admin hears about it
     if (internalNote) { const emp = await employeeIdSet(ids); ids = ids.filter((id) => emp.has(id)); } // internal notes never reach clients
     const commentBody = `${ctx.currentUser.name || ctx.currentUser.email} ${internalNote ? 'added an internal note on' : 'commented on'} \"${t.title}\" (${t.key}):\n\"${(data.body || `Sent ${linked} file${linked === 1 ? '' : 's'}`).slice(0, 200)}\"`;
     // Resolve mentions only to people who already have legitimate access to this ticket.
@@ -454,4 +507,18 @@ export async function addTicketComment(ctx, id, input) {
     if (extraMentions.length) await notifyPeople({ userIds: extraMentions, actorId: ctx.currentUser.id, type: 'MENTION', title: `${ctx.currentUser.name || ctx.currentUser.email} mentioned you on ${t.key}`, href: ticketUrl(t), body: commentBody });
   }
   return c;
+}
+
+/** Which side (EMPLOYEE / CLIENT) of the signed-in person can open this ticket?
+ *  One email can be both an employee and a client; a notification link must open the ticket on the side that can see it. */
+export async function ticketAccessModes(ctx, id) {
+  const t = await prisma.ticket.findUnique({ where: { id: String(id) }, include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } });
+  const visibleIn = [];
+  if (t) {
+    for (const mode of MODES) {
+      const c = await loadContextByUserId(ctx.currentUser.id, mode);
+      if (c && canViewTicket(c, t) && !visibleIn.includes(mode)) visibleIn.push(mode);
+    }
+  }
+  return { visibleIn };
 }

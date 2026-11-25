@@ -31,6 +31,19 @@ router.get('/teams/requestable', async (_req, res) => {
   res.json(await prisma.team.findMany({ where: { isActive: true, clientVisible: true, organization: { type: 'INTERNAL' } }, orderBy: { name: 'asc' }, select: { id: true, name: true, description: true } }));
 });
 
+// Names (no emails) of the people in the client-visible teams a client has picked, so they can add collaborators like staff do.
+router.get('/teams/requestable/people', async (req, res) => {
+  const ids = String(req.query.teamIds || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 20);
+  if (!ids.length) return res.json([]);
+  const rows = await prisma.teamMember.findMany({
+    where: { teamId: { in: ids }, team: { isActive: true, clientVisible: true, organization: { type: 'INTERNAL' } }, membership: { isActive: true, role: { in: ['EMPLOYEE', 'PLATFORM_ADMIN'] } } },
+    select: { teamId: true, membership: { select: { user: { select: { id: true, name: true } } } } },
+  });
+  const seen = new Map();
+  for (const r of rows) { const u = r.membership.user; if (!seen.has(u.id)) seen.set(u.id, { id: u.id, name: u.name || 'Team member' }); }
+  res.json([...seen.values()].sort((a, b) => a.name.localeCompare(b.name)));
+});
+
 // Staff who can be put in a team (Platform admin only).
 router.get('/teams/candidates', requirePermission('team.manage'), async (_req, res) => {
   const rows = await prisma.membership.findMany({ where: { isActive: true, organization: { type: 'INTERNAL' } }, select: { id: true, role: true, user: { select: personSelect } }, orderBy: { createdAt: 'asc' } });

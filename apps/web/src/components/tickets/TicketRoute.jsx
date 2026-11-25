@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Flag, Users, Share2, UserCheck, UserPlus, UserMinus, CircleDot, CheckCircle2, Eye, EyeOff, PauseCircle, ListChecks, MessageSquare, Paperclip, Pencil, Zap, CalendarClock, FolderKanban, ArrowRight, ArrowDownUp } from "lucide-react";
+import { Flag, Users, Share2, UserCheck, UserPlus, UserMinus, CircleDot, CheckCircle2, Eye, EyeOff, PauseCircle, ListChecks, MessageSquare, Paperclip, Pencil, Zap, CalendarClock, FolderKanban, ArrowRight, ArrowDownUp, Trash2 } from "lucide-react";
 import { api } from "../../api";
 import { describeEvent, actorLabel, groupByDay } from "../../lib/ticketHistory";
 import { statusKeyLabel } from "../../lib/ticketStatus";
@@ -38,6 +38,7 @@ export function present(e) {
     case "TASK_REVIEW": return { major: true, tone: "red", Icon: ListChecks, title: describeEvent(e).replace(/^./, (c) => c.toUpperCase()) };
     case "COMMENT": return { tone: e.clientVisible ? "grey" : "amber", Icon: MessageSquare };
     case "ATTACHMENT": return { tone: "grey", Icon: Paperclip };
+    case "ATTACHMENT_REMOVED": return { tone: "grey", Icon: Trash2 };
     case "PRIORITY": return { tone: "grey", Icon: Zap, chips: [pretty(e.fromValue), pretty(e.toValue)] };
     case "DUE_DATE": return { tone: "grey", Icon: CalendarClock, chips: [e.fromValue ? fmtDate(e.fromValue) : "none", e.toValue ? fmtDate(e.toValue) : "none"] };
     case "VISIBILITY": return { tone: "grey", Icon: EyeOff };
@@ -47,7 +48,7 @@ export function present(e) {
 }
 
 const ROUTE = ["CREATED", "TEAM", "TEAM_ACCESS", "ASSIGNEE", "COLLABORATOR", "STATUS", "TASK", "TASK_REVIEW"];
-const TALK = ["COMMENT", "ATTACHMENT"];
+const TALK = ["COMMENT", "ATTACHMENT", "ATTACHMENT_REMOVED"];
 const FILTERS = [["all", "Everything"], ["route", "Route & status"], ["details", "Edits"], ["talk", "Comments & files"]];
 const keep = (f, e) => f === "all" || (f === "route" ? ROUTE.includes(e.type) : f === "talk" ? TALK.includes(e.type) : !ROUTE.includes(e.type) && !TALK.includes(e.type));
 

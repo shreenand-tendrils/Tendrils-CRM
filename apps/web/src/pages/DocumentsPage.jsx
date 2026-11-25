@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { Files, Upload, UploadCloud, Download, Search, FileSpreadsheet, FileText, Image as ImageIcon } from 'lucide-react';
 import { fmtDate } from "../lib/dates";
+import { uploadErrorText } from '../lib/files';
 
 const CATEGORIES = [['GENERAL', 'General'], ['POLICY', 'Policy'], ['REPORT', 'Report'], ['TEMPLATE', 'Template'], ['FINANCE', 'Finance'], ['PROJECT', 'Project']];
 const catLabel = (c) => CATEGORIES.find(([v]) => v === c)?.[1] || String(c || '').toLowerCase().replace(/\b\w/g, (x) => x.toUpperCase());
@@ -31,7 +32,7 @@ export default function DocumentsPage({ me, notify }) {
     if (org) fd.append('organizationId', org);
     setBusy(true);
     try { await api.post('/documents', fd); notify('Document uploaded'); setTitle(''); await load(); }
-    catch (err) { notify(err.response?.data?.error || 'Upload failed', 'error'); }
+    catch (err) { notify(uploadErrorText(err), 'error'); }
     finally { setBusy(false); }
   };
   const onPick = (e) => { const f = e.target.files?.[0]; e.target.value = ''; sendFile(f); };

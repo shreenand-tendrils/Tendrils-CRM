@@ -5,7 +5,7 @@ import { fmtTime } from "../../lib/dates";
 
 // Per-ticket timeline: who changed what, and when. `refreshKey` reloads it when the ticket changes.
 const ROUTE = ["TEAM", "TEAM_ACCESS", "ASSIGNEE", "COLLABORATOR"];
-const TALK = ["COMMENT", "ATTACHMENT"];
+const TALK = ["COMMENT", "ATTACHMENT", "ATTACHMENT_REMOVED"];
 const FILTERS = [["all", "All"], ["route", "Routing"], ["status", "Status & details"], ["talk", "Comments & files"]];
 const keep = (f, e) => f === "all" || (f === "route" ? ROUTE.includes(e.type) : f === "talk" ? TALK.includes(e.type) : !ROUTE.includes(e.type) && !TALK.includes(e.type));
 

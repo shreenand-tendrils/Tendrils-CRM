@@ -30,6 +30,7 @@ export function describeEvent(e) {
     case "TASK": return `added linked task “${e.toLabel || "task"}”`;
     case "COMMENT": return e.clientVisible ? "commented" : "added an internal note";
     case "ATTACHMENT": return `attached ${e.toLabel || "a file"}`;
+    case "ATTACHMENT_REMOVED": return `deleted ${e.fromLabel || "a file"}`;
     default: return pretty(e.type);
   }
 }

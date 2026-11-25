@@ -60,7 +60,7 @@ export default function Sidebar({ me, unread, chatUnread = 0, collapsed, onToggl
             <b>{me?.user?.name || "Tendrils member"}</b>
             <small>{me?.user?.email}</small>
             <em className="role-pill">{ROLE_LABELS[topRole(me)] || "Member"}</em>
-            {me?.modes?.length > 1 && <button type="button" className="secondary" style={{ marginTop: 6, padding: "2px 8px", fontSize: 12 }} onClick={() => { localStorage.removeItem("tdl_mode"); window.location.assign("/"); }}>Switch to {me.mode === "CLIENT" ? "Employee" : "Client"}</button>}
+            {me?.modes?.length > 1 && <button type="button" className="user-switch" onClick={() => { localStorage.removeItem("tdl_mode"); window.location.assign("/"); }}>Switch to {me.mode === "CLIENT" ? "Employee" : "Client"}</button>}
           </span>
           <button title="Sign out" aria-label="Sign out" onClick={signOut}><LogOut size={18} /></button>
         </div>

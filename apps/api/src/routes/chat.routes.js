@@ -4,7 +4,7 @@ import { requirePermission } from '../middleware/index.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
 import { chatMessageCreate, chatMessageEdit, dmCreate } from '../validators/schemas.js';
-import { listRooms, loadRoomFor, sendMessage, markRead, getOrCreateDm, editMessage, deleteMessage, setPinned, listPins, roomMembers, getReceipts, messageInfo, messageInclude } from '../services/chat.service.js';
+import { listRooms, loadRoomFor, sendMessage, markRead, getOrCreateDm, editMessage, deleteMessage, setPinned, listPins, roomMembers, getReceipts, messageInfo, messageInclude, openTicketRoom, ticketDiscussionSummary, inviteToRoom, setRoomResolved, messageToTask } from '../services/chat.service.js';
 import { publicMessage } from '../services/chatLogic.js';
 
 // REST side of chat (history, fallback send). Live delivery is over the WebSocket (/ws).
@@ -52,4 +52,12 @@ router.patch('/chat/messages/:id', async (req, res) => res.json(await editMessag
 router.delete('/chat/messages/:id', async (req, res) => res.json(await deleteMessage(req, req.params.id)));
 router.put('/chat/messages/:id/pin', async (req, res) => res.json(await setPinned(req, req.params.id, true)));
 router.delete('/chat/messages/:id/pin', async (req, res) => res.json(await setPinned(req, req.params.id, false)));
+
+// Ticket discussions (live rooms tied to one ticket).
+router.post('/chat/ticket/:ticketId', async (req, res) => res.json(await openTicketRoom(req, req.params.ticketId)));
+router.get('/chat/ticket/:ticketId/summary', async (req, res) => res.json(await ticketDiscussionSummary(req, req.params.ticketId)));
+const idArray = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.length <= 64).slice(0, 100) : []);
+router.post('/chat/rooms/:id/invite', async (req, res) => res.json(await inviteToRoom(req, req.params.id, { userIds: idArray(req.body?.userIds), teamIds: idArray(req.body?.teamIds) })));
+router.put('/chat/rooms/:id/resolved', async (req, res) => res.json(await setRoomResolved(req, req.params.id, req.body?.resolved !== false)));
+router.post('/chat/messages/:id/task', async (req, res) => res.status(201).json(await messageToTask(req, req.params.id)));
 export default router;

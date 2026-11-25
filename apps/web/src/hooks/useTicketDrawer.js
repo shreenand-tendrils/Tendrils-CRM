@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 /**
@@ -6,12 +6,13 @@ import { api } from "../api";
  * deep-linking (?ticket= / ?task=). Returns everything the shell and pages need;
  * pages never touch this state directly.
  */
-export function useDrawers({ data, navigate, location }) {
+export function useDrawers({ data, navigate, location, notify }) {
   const [modal, setModal] = useState("");
   const [modalInit, setModalInit] = useState(null);
   const [selected, setSelected] = useState(null);
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [comments, setComments] = useState([]);
+  const resolving = useRef("");
 
   const selectedId = selected?.id;
   const loadComments = useCallback(() => {
@@ -33,8 +34,23 @@ export function useDrawers({ data, navigate, location }) {
     const k = ts && (data.tasks || []).find((x) => x.id === ts);
     if (t) { setSelectedTaskId(null); setSelected(t); }
     if (k) { setSelected(null); setSelectedTaskId(k.id); }
-    if (t || k) navigate(location.pathname, { replace: true });
-  }, [location.search, location.pathname, data.tickets, data.tasks, navigate]);
+    if (t || k) { navigate(location.pathname, { replace: true }); return; }
+    // Not in the loaded list: the list is capped, or this login is both an employee and a client and the ticket belongs to the other side.
+    if (tk && !k && data.me && resolving.current !== tk) {
+      resolving.current = tk;
+      (async () => {
+        try {
+          const one = (await api.get("/tickets", { params: { id: tk } })).data?.[0];
+          if (one) { setSelectedTaskId(null); setSelected(one); navigate(location.pathname, { replace: true }); return; }
+          const { visibleIn = [] } = (await api.get(`/tickets/${encodeURIComponent(tk)}/access`)).data || {};
+          const other = visibleIn.find((m) => m !== data.me.mode);
+          if (other && data.me.modes?.length > 1) { try { localStorage.setItem("tdl_mode", other); } catch { /* ignore */ } window.location.replace(`/?ticket=${encodeURIComponent(tk)}`); return; } // reopen on the side that can see it
+          notify?.("You don't have access to that ticket. Ask the person who shared it to add you.", "error");
+        } catch { notify?.("Could not open that ticket. Press Refresh and try again.", "error"); }
+        navigate(location.pathname, { replace: true });
+      })();
+    }
+  }, [location.search, location.pathname, data.tickets, data.tasks, data.me, navigate, notify]);
 
   const openTask = useCallback((t) => { setSelected(null); setSelectedTaskId(t.id); }, []);
   const showTicket = useCallback((t) => { setSelectedTaskId(null); setSelected(t); }, []);
