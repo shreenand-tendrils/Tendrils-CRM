@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Send, ArrowLeft, Paperclip, X, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, ExternalLink, UserPlus,
+  Send, ArrowLeft, Plus, X, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, ExternalLink, UserPlus,
   CheckCircle2, RotateCcw, ListPlus, Search, SmilePlus, Copy, ArrowDown, PanelRight, Activity, FileText, Download, Users, ChevronUp,
 } from "lucide-react";
 import Avatar from "../ui/Avatar";
@@ -79,6 +79,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
   const [dragging, setDragging] = useState(false);
   const [menuFor, setMenuFor] = useState(null);
   const [reactFor, setReactFor] = useState(null);
+  const [sel, setSel] = useState(null); // tapped row on touch screens
   const [panel, setPanel] = useState(() => window.innerWidth >= 1180 ? "details" : null); // details | pins | files | people | null
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -292,10 +293,11 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
     const docs = (m.attachments || []).filter((a) => !isImage(a.mimeType));
     const author = m.author?.name || m.author?.email;
     return (
-      <div key={m.id} id={`tcm-${m.id}`} className={"tc-msg" + (own ? " own" : "") + (grouped ? " grouped" : "") + (pinged ? " pinged" : "")}>
-        {!own && (grouped ? <span className="tc-av-gap" /> : <Avatar name={author} />)}
+      <div key={m.id} id={`tcm-${m.id}`} className={"tc-msg" + (own ? " own" : "") + (grouped ? " grouped" : "") + (pinged ? " pinged" : "") + (menuFor === m.id || reactFor === m.id ? " menu-open" : "") + (sel === m.id ? " sel" : "")}
+        onClick={(e) => { if (e.target.closest(".tc-actions, a, button")) return; e.stopPropagation(); setMenuFor(null); setReactFor(null); setSel(sel === m.id ? null : m.id); }}>
+        {grouped ? <span className="tc-av-gap"><span className="tc-gtime">{fmtTime(m.createdAt)}</span></span> : <Avatar name={author} />}
         <div className="tc-col">
-          {!grouped && <small className="tc-meta"><b>{own ? "You" : author}</b> · {fmtTime(m.createdAt)}{m.editedAt && !deleted ? " · edited" : ""}{m.pinnedAt && !deleted ? <span className="tc-decision"><Pin size={11} /> Decision</span> : null}</small>}
+          {!grouped && <small className="tc-meta"><b>{own ? `${author || "You"} (you)` : author}</b><time>{fmtDate(m.createdAt)}, {fmtTime(m.createdAt)}</time>{m.editedAt && !deleted ? <em className="tc-edited">(edited)</em> : ""}{m.pinnedAt && !deleted ? <span className="tc-decision"><Pin size={11} /> Decision</span> : null}</small>}
           <div className="tc-bubble">
             {!deleted && m.replyTo && (
               <button type="button" className="tc-quote" onClick={() => jumpTo(m.replyTo.id)} aria-label="Go to the original message">
@@ -309,7 +311,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
                 {docs.map((a) => <FileChip key={a.id} file={a} />)}
               </>
             )}
-            {!deleted && <span className="tc-time">{grouped ? fmtTime(m.createdAt) : ""}{own && <Ticks status={tickStatus(m, receiptList)} />}</span>}
+            {!deleted && own && <span className="tc-time"><Ticks status={tickStatus(m, receiptList)} /></span>}
           </div>
           {!deleted && (m.reactions || []).length > 0 && (
             <div className="tc-reacts">
@@ -387,7 +389,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
           )}
           {pins[0] && !panel && <button type="button" className="tc-pinbar" onClick={() => jumpTo(pins[0].id)}><Pin size={13} /><span><b>Decision{pins.length > 1 ? `s (${pins.length})` : ""}</b> {pins[0].body}</span></button>}
 
-          <div className="tc-log" ref={logRef} onScroll={onScroll} onClick={() => { setMenuFor(null); setReactFor(null); }}>
+          <div className="tc-log" ref={logRef} onScroll={onScroll} onClick={() => { setMenuFor(null); setReactFor(null); setSel(null); }}>
             {hasEarlier && <button type="button" className="tc-earlier" onClick={() => loadEarlier().catch(() => notify("Could not load older messages", "error"))}><ChevronUp size={14} /> Load earlier messages</button>}
             {!loaded && <small className="muted tc-empty">Loading the discussion…</small>}
             {loaded && !messages.length && (
@@ -424,12 +426,14 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
           )}
           <form className="tc-composer" onSubmit={submit}>
             <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" className="icon-btn tc-attach" onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file or screenshot"><Paperclip size={19} /></button>
-            <textarea ref={inputRef} rows={1} value={draft} onChange={onType} onKeyDown={onKeyDown} onPaste={onPaste} maxLength={4000} aria-label="Message"
-              placeholder={editing ? "Edit your message" : replyTo ? "Write a reply…" : "Message the team. Paste a screenshot, @mention, Shift+Enter for a new line"} />
-            <button type="submit" className="primary tc-send" disabled={editing ? !draft.trim() : !draft.trim() && !atts.some((a) => a.status === "ok")} aria-label={editing ? "Save" : "Send"}><Send size={16} /><span>{editing ? "Save" : "Send"}</span></button>
+            <div className="tc-box">
+              <button type="button" className="tc-attach" onClick={() => fileRef.current?.click()} aria-label="Attach a file" title="Attach a file or screenshot"><Plus size={20} /></button>
+              <textarea ref={inputRef} rows={1} value={draft} onChange={onType} onKeyDown={onKeyDown} onPaste={onPaste} maxLength={4000} aria-label="Message"
+                placeholder={editing ? "Edit your message" : replyTo ? "Write a reply…" : `Message ${t?.key || "the discussion"}`} />
+              <button type="submit" className="tc-send" disabled={editing ? !draft.trim() : !draft.trim() && !atts.some((a) => a.status === "ok")} aria-label={editing ? "Save" : "Send"} title={editing ? "Save" : "Send"}><Send size={18} /></button>
+            </div>
           </form>
-          <small className="tc-hint">Enter to send · Shift+Enter new line · ↑ edits your last message · drop files anywhere</small>
+          <small className="tc-hint">Enter to send · Shift+Enter for new line · ↑ edit last message · paste or drop files</small>
         </div>
 
         {panel && (

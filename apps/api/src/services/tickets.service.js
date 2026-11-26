@@ -263,6 +263,11 @@ export async function patchTicket(ctx, id, input) {
   if (scope === 'client' && data.status !== undefined && !clientStatusChangeAllowed(old.status, data.status)) {
     throw new AppError('You can only approve or send back a ticket that is waiting for your review.', 403, 'CLIENT_STATUS_LOCKED');
   }
+  // Due date: only the person who raised the ticket may move it (admins, triagers and assignees cannot).
+  const dayOf = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+  const dueChanged = data.dueDate !== undefined && dayOf(data.dueDate) !== dayOf(old.dueDate);
+  if (dueChanged && old.requesterId !== ctx.currentUser.id) throw new AppError('Only the person who raised this ticket can change its due date.', 403, 'TICKET_DUE_CREATOR_ONLY');
+  if (data.dueDate !== undefined && !dueChanged) delete data.dueDate;
   assertDueNotPast(data.dueDate, old.dueDate);
   await assertProjectInOrg(data.projectId, old.organizationId);
   await assertAssignable(data.assigneeId);

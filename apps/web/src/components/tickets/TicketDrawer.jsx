@@ -278,7 +278,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </header>
       )}
 
-      <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} canEditDue={isRequester || triage || canRoute} onSaveDue={(dueDate) => onUpdate(ticket.id, { dueDate })} />
+      <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} canEditDue={isRequester} onSaveDue={(dueDate) => onUpdate(ticket.id, { dueDate })} />
       {clientReview}{clientTasks}{clientHelp}{nextStep}
 
       <WinTabs tabs={tabs} value={tab} onChange={setTab} label="Ticket sections" />

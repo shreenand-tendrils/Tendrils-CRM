@@ -5,7 +5,8 @@ import Avatar from "../components/ui/Avatar";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
 import * as realtime from "../lib/realtime";
-import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+
 import { Ticks, Body } from "../components/chat/ChatBits";
 import TicketChat from "../components/chat/TicketChat";
 import { previewOf } from "../lib/chatTimeline";
@@ -273,7 +274,7 @@ export default function ChatPage({ me, users = [], notify }) {
             const mentionsMe = (m.mentionIds || []).includes(meId);
             return (
               <div key={m.id} id={`msg-${m.id}`} className={"msg" + (own ? " own" : "") + (mentionsMe ? " pinged" : "")}>
-                {!own && <Avatar name={m.author?.name || m.author?.email} />}
+                <Avatar name={m.author?.name || m.author?.email} />
                 <div className="bubble-wrap">
                   <small>{own ? "You" : m.author?.name || m.author?.email} · {time(m.createdAt)}{m.editedAt && !deleted ? " · edited" : ""}{m.pinnedAt && !deleted ? " · 📌" : ""}</small>
                   {!deleted && m.replyTo && (
