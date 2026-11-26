@@ -36,12 +36,18 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
   const [form, setForm] = useState({ email: "", name: "", organizationId: presetOrgId, role: "EMPLOYEE", teamIds: [], notify: true });
   const [busy, setBusy] = useState(false);
   const [editTeams, setEditTeams] = useState(null);
+  const [renaming, setRenaming] = useState(null); // { userId, name }
   const err = useCallback((e) => notify(e.response?.data?.error || "Something went wrong", "error"), [notify]);
   const load = useCallback(() => Promise.all([api.get("/admin/members"), api.get("/admin/invitations")]).then(([m, i]) => { setMembers(m.data); setInvites(i.data); }).catch(() => notify("Could not load members", "error")), [notify]);
   useEffect(() => { load(); }, [load]);
 
   const grantAdmin = can(me, "member.grant_admin");
-  const rename = async (m) => { const next = window.prompt(`Rename ${m.user.name || m.user.email}`, m.user.name || ""); if (next === null) return; const name = next.trim(); if (name.length < 2 || name.length > 120) { notify("Name must be between 2 and 120 characters.", "error"); return; } try { await api.patch(`/admin/users/${m.userId}/name`, { name }); notify("Display name updated"); load(); } catch (e) { err(e); } };
+  const isPlatformAdmin = (me.roles || []).includes("PLATFORM_ADMIN"); // only platform admins can rename people
+  const saveName = async () => {
+    const name = renaming.name.trim();
+    if (name.length < 2) { notify("Name must be at least 2 characters", "error"); return; }
+    try { await api.patch(`/admin/users/${renaming.userId}/name`, { name }); notify("Name updated"); setRenaming(null); load(); } catch (e) { err(e); }
+  };
   const rolesFor = (type) => (type === "INTERNAL" ? STAFF_ROLES : CLIENT_ROLES).filter((r) => r !== "PLATFORM_ADMIN" || grantAdmin);
   const orgType = (id) => orgs.find((o) => o.id === id)?.type || "INTERNAL";
   const internalTeams = teams.filter((t) => !t.organization || t.organization.type !== "CLIENT");
@@ -95,7 +101,17 @@ export default function MembersPanel({ me, orgs, teams = [], notify, presetOrgId
                 const locked = self || lockedAdmin;
                 return (
                   <tr key={m.id}>
-                    <td data-label="Person"><span className="cell-person"><Avatar name={m.user.name || m.user.email} /><span><b>{m.user.name || m.user.email}{self ? " (you)" : ""}</b><div>{m.user.email}</div></span>{grantAdmin && !self && <button type="button" className="icon-btn" title="Rename person" aria-label={`Rename ${m.user.name || m.user.email}`} onClick={() => rename(m)}><Pencil size={14} /></button>}</span></td>
+                    <td data-label="Person"><span className="cell-person"><Avatar name={m.user.name || m.user.email} /><span>
+                    {renaming?.userId === m.user.id ? (
+                      <span className="rename-row">
+                        <input autoFocus value={renaming.name} maxLength={120} aria-label="New name" onChange={(e) => setRenaming({ ...renaming, name: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setRenaming(null); }} />
+                        <button type="button" className="primary" onClick={saveName}>Save</button>
+                        <button type="button" className="secondary" onClick={() => setRenaming(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <b>{m.user.name || m.user.email}{self ? " (you)" : ""}{isPlatformAdmin && <button type="button" className="icon-btn rename-btn" title="Rename this person" aria-label={`Rename ${m.user.name || m.user.email}`} onClick={() => setRenaming({ userId: m.user.id, name: m.user.name || "" })}><Pencil size={13} /></button>}</b>
+                    )}
+                    <div>{m.user.email}</div></span></span></td>
                     <td data-label="Workspace">{m.organization.name}</td>
                     <td data-label="Role">
                       <select className="table-select" value={m.role} disabled={locked} title={self ? "You can't change your own access" : lockedAdmin ? "Only a Platform admin can change a Platform admin" : undefined} onChange={(e) => change(m, { role: e.target.value })} aria-label={`Role for ${m.user.email}`}>

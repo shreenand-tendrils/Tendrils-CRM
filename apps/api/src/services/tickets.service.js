@@ -419,7 +419,7 @@ export async function deleteTicket(ctx, id) {
   if (!canDeleteTicket({ canDeleteAny: ctx.can('ticket.delete'), isRequester: t.requesterId === ctx.currentUser.id, status: t.status, assigneeId: t.assigneeId, othersCommented })) {
     throw new AppError('You can delete a ticket you raised only while it is still Open, unassigned and without replies. Ask a manager to delete it.', 403, 'TICKET_NOT_DELETABLE');
   }
-  const files = await prisma.attachment.findMany({ where: { ticketId: t.id }, select: { storageKey: true } });
+  const files = await prisma.attachment.findMany({ where: { OR: [{ ticketId: t.id }, { chatRoom: { ticketId: t.id } }] }, select: { storageKey: true } }); // includes files sent in the ticket's chat
   const detached = await prisma.task.count({ where: { ticketId: t.id, autoCreated: false } });
   await prisma.$transaction([
     prisma.task.deleteMany({ where: { ticketId: t.id, autoCreated: true } }), // its mirror task goes with it; manual tasks are kept, detached

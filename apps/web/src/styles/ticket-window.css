@@ -366,40 +366,16 @@
   .win .win-side .tw-row { grid-template-columns: 84px minmax(0, 1fr); }
 }
 
-/* v4.9.44: creator-owned ticket due date and a focused, full-width ticket conversation. */
-.ticket-due-editor { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border:1px solid #e6e9f4; border-radius:12px; padding:10px 14px; background:#fbfbfe; }
-.ticket-due-editor > div:first-child { display:grid; gap:2px; }
-.ticket-due-editor small { color:#6b7287; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
-.ticket-due-editor b { font-size:13px; }
-.ticket-due-editor .tw-link, .ticket-due-controls button { display:inline-flex; align-items:center; gap:5px; }
-.ticket-due-controls { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
-.ticket-due-controls input { min-height:36px; border:1px solid #dfe2ee; border-radius:9px; padding:5px 9px; }
-@media (prefers-reduced-motion:no-preference) {
-  .win-slide-away { animation: ticket-slide-away .19s cubic-bezier(.4,0,.8,.3) forwards; }
-}
-@keyframes ticket-slide-away { to { opacity:0; transform:translateX(-42px) scale(.985); } }
-
-.chat.ticket-chat-focus { display:block; min-height:calc(100dvh - 150px); height:calc(100dvh - 150px); }
-.chat.ticket-chat-focus .chat-main { display:flex !important; height:100%; border:1px solid #e6e9f4; border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 10px 32px rgba(26,32,55,.06); }
-.chat.ticket-chat-focus .chat-main > header { padding:14px 20px; background:linear-gradient(135deg,#fbfaff,#fff); }
-.chat.ticket-chat-focus .chat-main > header > div b { font-size:17px; }
-.ticket-chat-context { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid #e9eaf2; background:#fafaff; }
-.ticket-chat-icon { display:grid; place-items:center; width:36px; height:36px; flex:none; color:#5746e8; background:#efedff; border-radius:12px; }
-.ticket-chat-context > span:nth-child(2) { display:grid; gap:2px; min-width:0; }
-.ticket-chat-context b { font-size:13px; }
-.ticket-chat-context small { color:#6b7287; font-size:12px; }
-.ticket-chat-people { margin-left:auto; white-space:nowrap; color:#5746e8; background:#efedff; border-radius:999px; padding:5px 10px; font-size:11px; font-weight:700; }
-.chat-search { display:flex; align-items:center; gap:9px; padding:9px 18px; border-bottom:1px solid #e9eaf2; background:#fff; }
-.chat-search input { flex:1; min-width:0; border:0; outline:0; font:inherit; }
-.chat-search small { color:#777d91; white-space:nowrap; }
-.chat.ticket-chat-focus .chat-log { padding:20px clamp(16px,5vw,76px); }
-.chat.ticket-chat-focus .chat-input { margin:0 clamp(12px,3vw,36px) 12px; border:1px solid #e2e4ef; border-radius:14px; padding:7px 8px 7px 14px; box-shadow:0 5px 18px rgba(30,35,60,.06); }
-.chat.ticket-chat-focus .typing { padding-left:clamp(16px,5vw,76px); }
-@media (max-width:760px) {
-  .chat.ticket-chat-focus { height:calc(100dvh - 110px); min-height:calc(100dvh - 110px); }
-  .chat.ticket-chat-focus .chat-main > header { flex-wrap:wrap; padding:10px 12px; }
-  .chat.ticket-chat-focus .chat-main > header .room-actions { width:100%; margin-left:0; }
-  .ticket-chat-context { padding:10px 12px; }
-  .ticket-chat-context small { font-size:11px; }
-  .ticket-chat-people { font-size:10px; }
-}
+/* ======================= v4.9.44: due date editing, rename ======================= */
+.tw-due-btn { margin-left: 6px; vertical-align: middle; opacity: .7; }
+.tw-due-btn:hover, .tw-due-btn:focus-visible { opacity: 1; }
+.tw-due-edit { display: grid; gap: 6px; }
+.tw-due-edit input[type="date"] { width: 100%; max-width: 190px; min-height: 36px; }
+.tw-due-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tw-due-actions button { min-height: 32px; padding: 4px 10px; font-size: 12.5px; }
+.tw-due-err { color: #b42318; }
+.rename-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rename-row input { min-width: 150px; max-width: 220px; min-height: 34px; }
+.rename-row button { min-height: 32px; padding: 4px 10px; font-size: 12.5px; }
+.rename-btn { margin-left: 6px; opacity: .6; vertical-align: middle; }
+.rename-btn:hover, .rename-btn:focus-visible { opacity: 1; }

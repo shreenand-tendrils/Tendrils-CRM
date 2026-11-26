@@ -23,7 +23,7 @@ export function uploadErrorText(err, file) {
 export const MAX_UPLOAD_MB = 15;
 export const checkUploadSize = (file) => (file && file.size > MAX_UPLOAD_MB * 1048576 ? `"${file.name}" is ${fmtSize(file.size)}. The limit is ${MAX_UPLOAD_MB} MB per file.` : null);
 
-const fetchBlob = (id) => api.get(`/files/${id}/download`, { responseType: "blob" }).then((r) => r.data);
+export const fetchBlob = (id) => api.get(`/files/${id}/download`, { responseType: "blob" }).then((r) => r.data);
 
 /** Open an image/PDF in a new tab through the authenticated API. */
 export async function openFile(f) {

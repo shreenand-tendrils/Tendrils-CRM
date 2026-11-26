@@ -7,13 +7,13 @@ import { notifyUser } from './activity.js';
 import { sendMentionEmail, fireAndLog } from './email.service.js';
 import { loadVisibleTicket } from './tickets.service.js';
 import { createTask } from './tasks.service.js';
-import { canEditMessage, canDeleteMessage, cleanMentions, publicMessage, MAX_PINS, mentionsAll, canMentionAll, classifyReceipts } from './chatLogic.js';
+import { canEditMessage, canDeleteMessage, cleanMentions, publicMessage, MAX_PINS, mentionsAll, canMentionAll, classifyReceipts, REACTION_EMOJIS } from './chatLogic.js';
 
 // ctx = { currentUser, memberships, isInternal, isManager }
 // Chat is staff-only. GENERAL: all staff. PROJECT: project members + managers. DIRECT: the two participants.
 const authorSelect = { author: { select: { id: true, name: true, email: true, image: true } } };
 // A message with its author and the (short) message it replies to.
-export const messageInclude = { ...authorSelect, replyTo: { select: { id: true, body: true, deletedAt: true, authorId: true, author: { select: { id: true, name: true, email: true } } } } };
+export const messageInclude = { ...authorSelect, reactions: { select: { userId: true, emoji: true }, orderBy: { createdAt: 'asc' } }, attachments: { select: { id: true, originalName: true, mimeType: true, size: true } }, replyTo: { select: { id: true, body: true, deletedAt: true, authorId: true, author: { select: { id: true, name: true, email: true } } } } };
 export const dmKey = (a, b) => [a, b].sort().join(':');
 const participants = (room) => room.directKey?.split(':') ?? [];
 const uniq = (rows) => [...new Set(rows.map((r) => r.userId))];
@@ -89,7 +89,7 @@ async function notifyMentions({ ctx, room, ids, body, everyone = false }) {
   }
 }
 
-export async function sendMessage(ctx, roomId, body, mentionIds = [], replyToId = null) {
+export async function sendMessage(ctx, roomId, body, mentionIds = [], replyToId = null, attachmentIds = []) {
   const room = await loadRoomFor(ctx, roomId);
   const me = ctx.currentUser.id;
   const userIds = await roomUserIds(room);
@@ -101,7 +101,11 @@ export async function sendMessage(ctx, roomId, body, mentionIds = [], replyToId 
     mentions = userIds.filter((id) => id !== me);
   }
   if (replyToId && !(await prisma.chatMessage.findFirst({ where: { id: replyToId, roomId: room.id }, select: { id: true } }))) throw new AppError('The message you are replying to was not found in this room.', 400, 'INVALID_REPLY');
-  const message = await prisma.chatMessage.create({ data: { roomId: room.id, authorId: me, body, mentionIds: mentions, replyToId: replyToId || null }, include: messageInclude });
+  let message = await prisma.chatMessage.create({ data: { roomId: room.id, authorId: me, body, mentionIds: mentions, replyToId: replyToId || null }, include: messageInclude });
+  if (attachmentIds.length) { // files uploaded to this room by me and not yet used: they travel with this message
+    await prisma.attachment.updateMany({ where: { id: { in: attachmentIds }, chatRoomId: room.id, uploadedById: me, chatMessageId: null }, data: { chatMessageId: message.id } });
+    message = await prisma.chatMessage.findUnique({ where: { id: message.id }, include: messageInclude });
+  }
   await prisma.chatRead.upsert({
     where: { roomId_userId: { roomId: room.id, userId: me } },
     update: { lastReadAt: message.createdAt },
@@ -352,4 +356,47 @@ export async function messageToTask(ctx, messageId) {
   });
   await sendMessage(ctx, room.id, `Created task "${task.title}" from this discussion.`, [], msg.id).catch(() => {});
   return task;
+}
+
+// ---------- reactions, search, files ----------
+
+/** Add or remove my emoji reaction on a message. Everyone in the room sees the update live. */
+export async function toggleReaction(ctx, messageId, emoji) {
+  if (!REACTION_EMOJIS.includes(emoji)) throw new AppError('That reaction is not available.', 400, 'REACTION_NOT_ALLOWED');
+  const { msg, room } = await loadMessageFor(ctx, messageId);
+  if (msg.deletedAt) throw new AppError('This message was deleted.', 400);
+  const key = { messageId: msg.id, userId: ctx.currentUser.id, emoji };
+  const had = await prisma.chatReaction.findUnique({ where: { messageId_userId_emoji: key } });
+  if (had) await prisma.chatReaction.delete({ where: { messageId_userId_emoji: key } });
+  else await prisma.chatReaction.create({ data: key });
+  const message = await prisma.chatMessage.findUnique({ where: { id: msg.id }, include: messageInclude });
+  await broadcastUpdate(room, message);
+  return publicMessage(message);
+}
+
+/** Search one room's messages (newest first, max 30). */
+export async function searchMessages(ctx, roomId, q) {
+  const room = await loadRoomFor(ctx, roomId);
+  const term = String(q || '').trim().slice(0, 100);
+  if (term.length < 2) return [];
+  const rows = await prisma.chatMessage.findMany({ where: { roomId: room.id, deletedAt: null, body: { contains: term, mode: 'insensitive' } }, orderBy: { createdAt: 'desc' }, take: 30, include: messageInclude });
+  return rows.map(publicMessage);
+}
+
+/** Every file shared in this room (for the Files panel). */
+export async function roomFiles(ctx, roomId) {
+  const room = await loadRoomFor(ctx, roomId);
+  return prisma.attachment.findMany({
+    where: { chatRoomId: room.id, chatMessageId: { not: null }, chatMessage: { deletedAt: null } },
+    orderBy: { createdAt: 'desc' }, take: 100,
+    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadedById: true, chatMessageId: true },
+  });
+}
+
+/** After a file is deleted from a message, tell everyone in the room so the message refreshes. */
+export async function refreshMessage(messageId) {
+  const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, include: messageInclude });
+  if (!message) return;
+  const room = await prisma.chatRoom.findUnique({ where: { id: message.roomId } });
+  if (room) await broadcastUpdate(room, message);
 }

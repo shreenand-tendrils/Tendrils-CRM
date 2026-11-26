@@ -4,7 +4,7 @@ import { requirePermission } from '../middleware/index.js';
 import { logActivity, grantMembership, assertTeamsFor, setMembershipTeams, inviteExpiry, sendInviteEmail, sendAccessGrantedEmail, fireAndLog } from '../services/index.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
-import { memberInvite, memberUpdate, invitationCreate, memberTeamsSet } from '../validators/schemas.js';
+import { memberInvite, memberUpdate, invitationCreate, memberTeamsSet, userRename } from '../validators/schemas.js';
 import { PERMISSIONS, ROLE_PERMISSIONS, ROLE_LABELS } from '../rbac/permissions.js';
 import { checkMemberChange, checkGrant, roleFitsOrgType } from '../rbac/policies.js';
 
@@ -81,6 +81,20 @@ router.patch('/admin/members/:id', guard, async (req, res) => {
   const what = [change.role && `role → ${ROLE_LABELS[change.role]}`, change.isActive !== undefined && (change.isActive ? 'reactivated' : 'deactivated')].filter(Boolean).join(', ');
   await logActivity({ actorId: req.currentUser.id, organizationId: m.organizationId, entityType: 'access', entityId: m.organizationId, action: 'updated', summary: `Changed access for ${m.user.email}: ${what}` });
   res.json(present(m));
+});
+
+// ---- Rename a person. Platform admins only (the name is shown on tickets, chat, tasks and reports).
+router.patch('/admin/users/:userId/name', guard, async (req, res) => {
+  const isPlatformAdmin = (req.memberships || []).some((m) => m.organization?.type === 'INTERNAL' && m.role === 'PLATFORM_ADMIN');
+  if (!isPlatformAdmin) throw new AppError('Only a Platform admin can rename people.', 403);
+  const { name } = parseBody(userRename, req.body);
+  const user = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true, name: true, email: true } });
+  if (!user) throw new AppError('Person not found', 404);
+  if (user.name === name) return res.json(user);
+  const saved = await prisma.user.update({ where: { id: user.id }, data: { name }, select: { id: true, name: true, email: true, image: true } });
+  const home = await prisma.membership.findFirst({ where: { userId: user.id }, select: { organizationId: true } });
+  await logActivity({ actorId: req.currentUser.id, organizationId: home?.organizationId, entityType: 'access', entityId: home?.organizationId || user.id, action: 'updated', summary: `Renamed ${user.email}: "${user.name || '(no name)'}" to "${name}"` });
+  res.json(saved);
 });
 
 // ---- Multiple teams per member.

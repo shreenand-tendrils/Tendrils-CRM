@@ -136,13 +136,16 @@ export const teamCreate = z.object({
 });
 
 export const projectMembersSet = z.object({ memberIds: idList, leadId: optId, teamIds: idList.optional() });
+export const userRename = z.object({ name: z.string().trim().min(2, 'Name must be at least 2 characters').max(120) });
 export const projectRequest = z.object({ name: z.string().trim().min(2).max(160), description: z.string().optional(), organizationId: id, startDate: optDate, dueDate: optDueDate, teamIds: idList.optional() });
 
 export const chatMessageCreate = z.object({
-  body: z.string().trim().min(1).max(4000),
+  body: z.string().trim().max(4000),
+  attachmentIds: z.array(id).max(6).optional(), // files uploaded to the room first; a message needs text or at least one file
   replyToId: optId, // reply to a specific message in the same room
   mentionIds: z.array(id).max(10).optional(), // people "pinged" with @name: they get a notification (and an email if offline)
-});
+}).refine((v) => v.body.length > 0 || (v.attachmentIds || []).length > 0, { message: 'Write a message or attach a file', path: ['body'] });
+export const chatReactionSet = z.object({ emoji: z.string().min(1).max(8) });
 export const chatMessageEdit = z.object({ body: z.string().trim().min(1).max(4000) });
 
 export const dailyUpdateUpsert = z.object({

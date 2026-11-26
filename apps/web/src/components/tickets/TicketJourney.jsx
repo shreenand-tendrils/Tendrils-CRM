@@ -1,4 +1,5 @@
-import { Check, PauseCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, PauseCircle, Pencil } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import { PROGRESS_LABEL, clientStatusText, daysPassed, dayLabel } from "../../lib/ticketStatus";
 import { fmtDate } from "../../lib/dates";
@@ -30,7 +31,46 @@ function Track({ ticket, staff }) {
 
 const Fact = ({ label, children, warn }) => <div className={"tw-fact" + (warn ? " warn" : "")}><small>{label}</small><div>{children}</div></div>;
 
-export default function TicketJourney({ ticket, staff, teamName, sharedNames, workDone, workTotal, inReview }) {
+const isoDay = (v) => (v ? new Date(v).toISOString().slice(0, 10) : "");
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** The Due fact. The person who raised the ticket (and admins / routers) can change or clear the date right here. */
+function DueFact({ ticket, late, canEditDue, onSaveDue }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(isoDay(ticket.dueDate));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => { setVal(isoDay(ticket.dueDate)); setEditing(false); setError(""); }, [ticket.id, ticket.dueDate]);
+  const save = async (next) => {
+    if (next && next < todayIso() && next !== isoDay(ticket.dueDate)) { setError("Pick today or a future date."); return; }
+    setBusy(true); setError("");
+    const ok = await onSaveDue(next || null);
+    setBusy(false);
+    if (ok) setEditing(false); else setError("Could not save the due date.");
+  };
+  return (
+    <Fact label="Due" warn={late > 0 && !editing}>
+      {editing ? (
+        <span className="tw-due-edit">
+          <input type="date" value={val} min={todayIso()} onChange={(e) => setVal(e.target.value)} aria-label="Due date" autoFocus />
+          <span className="tw-due-actions">
+            <button type="button" className="primary" disabled={busy || val === isoDay(ticket.dueDate)} onClick={() => save(val)}>Save</button>
+            {ticket.dueDate && <button type="button" className="secondary" disabled={busy} onClick={() => save("")}>Clear</button>}
+            <button type="button" className="secondary" disabled={busy} onClick={() => { setEditing(false); setVal(isoDay(ticket.dueDate)); setError(""); }}>Cancel</button>
+          </span>
+          {error && <small className="tw-due-err" role="alert">{error}</small>}
+        </span>
+      ) : (
+        <>
+          <b>{fmtDate(ticket.dueDate, "No due date")}{canEditDue && <button type="button" className="icon-btn tw-due-btn" onClick={() => setEditing(true)} aria-label={ticket.dueDate ? "Change due date" : "Set due date"} title={ticket.dueDate ? "Change due date" : "Set due date"}><Pencil size={13} /></button>}</b>
+          {late > 0 && <small>{late} day{late === 1 ? "" : "s"} overdue</small>}
+        </>
+      )}
+    </Fact>
+  );
+}
+
+export default function TicketJourney({ ticket, staff, teamName, sharedNames, workDone, workTotal, inReview, canEditDue = false, onSaveDue }) {
   const open = ticket.status !== "CLOSED";
   const today = new Date(); today.setUTCHours(0, 0, 0, 0);
   const late = open && ticket.dueDate ? Math.floor((today - new Date(ticket.dueDate)) / DAY) : 0;
@@ -50,10 +90,7 @@ export default function TicketJourney({ ticket, staff, teamName, sharedNames, wo
         </Fact>
         {staff && <Fact label="Collaborators"><b>{collabs.length ? collabs.join(", ") : "None"}</b></Fact>}
         {staff && <Fact label="Tasks">{workTotal ? <><b>{workDone} of {workTotal} done</b>{inReview > 0 && <small>{inReview} waiting for review</small>}</> : <b>None yet</b>}</Fact>}
-        <Fact label="Due" warn={late > 0}>
-          <b>{fmtDate(ticket.dueDate, "No due date")}</b>
-          {late > 0 && <small>{late} day{late === 1 ? "" : "s"} overdue</small>}
-        </Fact>
+        <DueFact ticket={ticket} late={late} canEditDue={canEditDue && open && !!onSaveDue} onSaveDue={onSaveDue} />
         <Fact label={ticket.closedAt ? "Closed in" : "Open for"}><b>{dayLabel(daysPassed(ticket))}</b></Fact>
       </div>
     </section>

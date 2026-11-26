@@ -333,11 +333,17 @@ model Attachment {
   projectId String?
   commentId String? // set when the file was sent with a comment: kept apart from the ticket/task's own files
   inline Boolean @default(false) // pasted into a description/comment: shown inline, not in the Files list
+  chatRoomId String? // a file sent in a ticket discussion (chat). Staff only; never shown on the ticket's Files list
+  chatMessageId String? // set once the message carrying it is sent
   ticket Ticket? @relation(fields:[ticketId],references:[id],onDelete:Cascade)
   task Task? @relation(fields:[taskId],references:[id],onDelete:Cascade)
   project Project? @relation(fields:[projectId],references:[id],onDelete:Cascade)
   comment Comment? @relation(fields:[commentId],references:[id],onDelete:Cascade)
+  chatRoom ChatRoom? @relation(fields:[chatRoomId],references:[id],onDelete:Cascade)
+  chatMessage ChatMessage? @relation(fields:[chatMessageId],references:[id],onDelete:Cascade)
   createdAt DateTime @default(now())
+  @@index([chatRoomId])
+  @@index([chatMessageId])
   @@index([commentId])
   @@index([ticketId])
   @@index([taskId])
@@ -411,6 +417,7 @@ model ChatRoom {
   messages ChatMessage[]
   reads ChatRead[]
   deliveries ChatDelivery[]
+  attachments Attachment[]
   createdAt DateTime @default(now())
   @@index([type])
 }
@@ -436,12 +443,24 @@ model ChatMessage {
   replyToId String?
   replyTo ChatMessage? @relation("Replies",fields:[replyToId],references:[id],onDelete:SetNull)
   replies ChatMessage[] @relation("Replies")
+  reactions ChatReaction[]
+  attachments Attachment[]
   room ChatRoom @relation(fields:[roomId],references:[id],onDelete:Cascade)
   author User @relation(fields:[authorId],references:[id],onDelete:Cascade)
   createdAt DateTime @default(now())
   @@index([roomId,createdAt])
   @@index([roomId,pinnedAt])
   @@index([replyToId])
+}
+// An emoji reaction on a chat message (one row per person + emoji; toggling removes it).
+model ChatReaction {
+  messageId String
+  userId String
+  emoji String
+  createdAt DateTime @default(now())
+  message ChatMessage @relation(fields:[messageId],references:[id],onDelete:Cascade)
+  @@id([messageId,userId,emoji])
+  @@index([messageId])
 }
 model DailyUpdate {
   id String @id @default(cuid())

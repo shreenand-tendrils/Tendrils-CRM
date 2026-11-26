@@ -3,8 +3,8 @@ import { prisma } from '../db.js';
 import { requirePermission } from '../middleware/index.js';
 import { AppError } from '../errors/AppError.js';
 import { parseBody } from '../validators/validate.js';
-import { chatMessageCreate, chatMessageEdit, dmCreate } from '../validators/schemas.js';
-import { listRooms, loadRoomFor, sendMessage, markRead, getOrCreateDm, editMessage, deleteMessage, setPinned, listPins, roomMembers, getReceipts, messageInfo, messageInclude, openTicketRoom, ticketDiscussionSummary, inviteToRoom, setRoomResolved, messageToTask } from '../services/chat.service.js';
+import { chatMessageCreate, chatMessageEdit, chatReactionSet, dmCreate } from '../validators/schemas.js';
+import { listRooms, loadRoomFor, sendMessage, markRead, getOrCreateDm, editMessage, deleteMessage, setPinned, listPins, roomMembers, getReceipts, messageInfo, messageInclude, openTicketRoom, ticketDiscussionSummary, inviteToRoom, toggleReaction, searchMessages, roomFiles, setRoomResolved, messageToTask } from '../services/chat.service.js';
 import { publicMessage } from '../services/chatLogic.js';
 
 // REST side of chat (history, fallback send). Live delivery is over the WebSocket (/ws).
@@ -33,8 +33,8 @@ router.get('/chat/rooms/:id/messages', async (req, res) => {
 });
 
 router.post('/chat/rooms/:id/messages', async (req, res) => {
-  const { body, mentionIds, replyToId } = parseBody(chatMessageCreate, req.body);
-  res.status(201).json(await sendMessage(req, req.params.id, body, mentionIds, replyToId));
+  const { body, mentionIds, replyToId, attachmentIds } = parseBody(chatMessageCreate, req.body);
+  res.status(201).json(await sendMessage(req, req.params.id, body, mentionIds, replyToId, attachmentIds || []));
 });
 
 router.post('/chat/rooms/:id/read', async (req, res) => {
@@ -42,6 +42,9 @@ router.post('/chat/rooms/:id/read', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.get('/chat/rooms/:id/search', async (req, res) => res.json(await searchMessages(req, req.params.id, req.query.q)));
+router.get('/chat/rooms/:id/files', async (req, res) => res.json(await roomFiles(req, req.params.id)));
+router.put('/chat/messages/:id/reaction', async (req, res) => res.json(await toggleReaction(req, req.params.id, parseBody(chatReactionSet, req.body).emoji)));
 router.get('/chat/rooms/:id/pins', async (req, res) => res.json(await listPins(req, req.params.id)));
 router.get('/chat/rooms/:id/members', async (req, res) => res.json(await roomMembers(req, req.params.id)));
 router.get('/chat/rooms/:id/receipts', async (req, res) => res.json(await getReceipts(req, req.params.id)));

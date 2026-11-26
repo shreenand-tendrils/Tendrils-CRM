@@ -60,3 +60,19 @@ test('message info buckets: read / delivered / waiting', () => {
   assert.deepEqual(r.deliveredTo.map((x) => x.user.id), ['b']);
   assert.deepEqual(r.pending.map((u) => u.id), ['c']);
 });
+
+// ---- v4.9.44: reactions
+import { groupReactions, REACTION_EMOJIS } from '../src/services/chatLogic.js';
+test('reactions are grouped per emoji in first-used order', () => {
+  const out = groupReactions([{ emoji: '👍', userId: 'a' }, { emoji: '✅', userId: 'b' }, { emoji: '👍', userId: 'c' }]);
+  assert.deepEqual(out, [{ emoji: '👍', userIds: ['a', 'c'] }, { emoji: '✅', userIds: ['b'] }]);
+});
+test('a deleted message hides its reactions and files', () => {
+  const m = publicMessage({ id: 'm', body: 'secret', deletedAt: new Date(), reactions: [{ emoji: '👍', userId: 'a' }], attachments: [{ id: 'f' }] });
+  assert.deepEqual(m.reactions, []);
+  assert.deepEqual(m.attachments, []);
+  assert.equal(m.body, '');
+});
+test('only the allowed reaction emojis exist', () => {
+  assert.ok(REACTION_EMOJIS.includes('👍') && !REACTION_EMOJIS.includes('💩'));
+});

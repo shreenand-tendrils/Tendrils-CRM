@@ -33,9 +33,6 @@ const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
 export default function TicketDrawer({ ticket, comments, me, users = [], teams = [], tasks = [], onClose, onUpdate, onAddComment, onUpload, onAddTask, onOpenTask, onDelete, onRefresh, notify }) {
   const [pasteHint, setPasteHint] = useState("");
-  const [closingToChat, setClosingToChat] = useState(false);
-  const [dueDateDraft, setDueDateDraft] = useState(ticket?.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : "");
-  const [editingDueDate, setEditingDueDate] = useState(false);
   const [focusKey, setFocusKey] = useState(0); // bumps when the header Discussion button is used, so the composer takes focus
   const [tab, setTab] = useState(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview");
   const [routeOpen, setRouteOpen] = useState(false);
@@ -59,14 +56,22 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
     const off3 = realtime.on("chat.room.updated", () => load());
     return () => { live = false; off(); off2(); off3(); };
   }, [canChat, ticket?.id, ticket?.updatedAt]);
+  const [leaving, setLeaving] = useState(false);
+  // Open the discussion: the ticket window slides away, then the chat for this ticket is shown.
   const openDiscussion = async () => {
-    try { const { data } = await api.post(`/chat/ticket/${ticket.id}`); setClosingToChat(true); window.setTimeout(() => navigate(`/chat?room=${data.id}&focus=ticket`), 190); }
-    catch (e) { notify?.(e.response?.data?.error || "Could not open the discussion", "error"); }
+    if (leaving) return;
+    try {
+      const wait = new Promise((r) => setTimeout(r, window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 240));
+      setLeaving(true);
+      const [{ data }] = await Promise.all([api.post(`/chat/ticket/${ticket.id}`), wait]);
+      onClose?.();
+      navigate(`/chat?room=${data.id}`);
+    } catch (e) { setLeaving(false); notify?.(e.response?.data?.error || "Could not open the discussion", "error"); }
   };
   const [collabIds, setCollabIds] = useState([]);
   useEffect(() => { setCollabIds((ticket?.collaborators || []).map((c) => c.userId)); }, [ticket?.id, ticket?.collaborators]);
   // Editing state resets only when another ticket is opened, never on a refresh (which would wipe the draft after a few seconds).
-  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setDueDateDraft(ticket?.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : ""); setEditingDueDate(false); setEditing(false); }, [ticket?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setEditTitle(ticket?.title || ""); setEditDescription(ticket?.description || ""); setEditing(false); }, [ticket?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setSelectedTeamIds((ticket?.teamAccesses || []).filter((a) => a.teamId !== ticket?.teamId).map((a) => a.teamId)); setOwnerTeamId(ticket?.teamId || ""); }, [ticket?.id, ticket?.teamId, ticket?.teamAccesses]);
   useEffect(() => { setTab(!me?.isInternal && ticket?.tasksInReview > 0 ? "tasks" : "overview"); setDisc(null); setRouteOpen(false); setCollabOpen(false); }, [ticket?.id, me?.isInternal]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!ticket) return null;
@@ -76,8 +81,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
   const iCollaborate = (ticket.collaborators || []).some((c) => c.userId === me.user.id);
   const ownStatus = can(me, "ticket.update_own") && (ticket.assigneeId === me.user.id || iCollaborate); // assignee and collaborators move the work along
   const requesterCanEdit = ticket.requesterId === me.user.id && (can(me, "ticket.update_own") || !me.isInternal);
-  const canEditDetails = triage || requesterCanEdit;
-  const canEditDueDate = ticket.requesterId === me.user?.id; // the requester or an admin edits the title and description
+  const canEditDetails = triage || requesterCanEdit; // the requester or an admin edits the title and description
   const edited = ticket.descriptionEditedAt ? <small className="hint"> (edited {fmtDateTime(ticket.descriptionEditedAt)})</small> : null;
   const canStatus = triage || canRoute || ownStatus || (me.isInternal && requesterCanEdit);
   // Managers/admins can delete any ticket; whoever raised it can delete it while it is still Open, unassigned and unanswered (server re-checks).
@@ -250,7 +254,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
 
   return (
     <Window
-      label={`Ticket ${ticket.key}`} onClose={onClose} className={closingToChat ? "win-slide-away" : ""} side={staff || canStatus ? side : undefined} headRight={headActions}
+      label={`Ticket ${ticket.key}`} onClose={onClose} leaving={leaving} side={staff || canStatus ? side : undefined} headRight={headActions}
       head={<><b className="win-key">{ticket.key}</b>{staff ? <TicketStatusBadge ticket={ticket} /> : <b>{clientStatusText(ticket)}</b>}<PriorityBadge value={ticket.priority} /></>}
     >
       {editing ? (
@@ -274,11 +278,7 @@ export default function TicketDrawer({ ticket, comments, me, users = [], teams =
         </header>
       )}
 
-      <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} />
-      {canEditDueDate && <div className="ticket-due-editor">
-        <div><small>Ticket due date</small><b>{ticket.dueDate ? formatDate(ticket.dueDate) : "No due date set"}</b></div>
-        {!editingDueDate ? <button type="button" className="tw-link" onClick={() => { setDueDateDraft(ticket.dueDate ? new Date(ticket.dueDate).toISOString().slice(0, 10) : ""); setEditingDueDate(true); }}><Pencil size={13} /> {ticket.dueDate ? "Change" : "Set due date"}</button> : <div className="ticket-due-controls"><input aria-label="Ticket due date" type="date" value={dueDateDraft} onChange={(e) => setDueDateDraft(e.target.value)} /><button type="button" className="primary" onClick={async () => { const saved = await onUpdate(ticket.id, { dueDate: dueDateDraft || null }); if (saved) setEditingDueDate(false); }}>Save</button><button type="button" className="secondary" onClick={() => setEditingDueDate(false)}>Cancel</button></div>}
-      </div>}
+      <TicketJourney ticket={ticket} staff={staff} teamName={ownerName} sharedNames={sharedNames} workDone={rootsDone} workTotal={linkedRoots.length} inReview={inReview} canEditDue={isRequester || triage || canRoute} onSaveDue={(dueDate) => onUpdate(ticket.id, { dueDate })} />
       {clientReview}{clientTasks}{clientHelp}{nextStep}
 
       <WinTabs tabs={tabs} value={tab} onChange={setTab} label="Ticket sections" />

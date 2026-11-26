@@ -9,6 +9,7 @@ import { env } from '../config/env.js';
 import { recordTicketEvents } from '../services/ticketHistory.service.js';
 import { diskStorage, storagePath, discard } from '../services/storage.js';
 import { AppError } from '../errors/AppError.js';
+import { loadRoomFor, refreshMessage } from '../services/chat.service.js';
 
 const router = Router();
 
@@ -35,10 +36,15 @@ function canAccessTarget(req, rec, kind) {
 
 router.post('/files', requirePermission('file.upload'), upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a file' });
-  const { ticketId, taskId, projectId } = req.body;
-  if ([ticketId, taskId, projectId].filter(Boolean).length !== 1) {
+  const { ticketId, taskId, projectId, chatRoomId } = req.body;
+  if ([ticketId, taskId, projectId, chatRoomId].filter(Boolean).length !== 1) {
     await discard(req.file);
-    return res.status(400).json({ error: 'Provide exactly one ticketId, taskId or projectId' });
+    return res.status(400).json({ error: 'Provide exactly one ticketId, taskId, projectId or chatRoomId' });
+  }
+  if (chatRoomId) { // a file or screenshot sent in a ticket discussion: staff in that room only, never on the ticket's Files list
+    try { await loadRoomFor(req, chatRoomId); } catch { await discard(req.file); return res.status(404).json({ error: 'Discussion not found' }); }
+    const c = await prisma.attachment.create({ data: { originalName: path.basename(req.file.originalname).slice(0, 255), storageKey: req.file.filename, mimeType: req.file.mimetype, size: req.file.size, uploadedById: req.currentUser.id, chatRoomId } });
+    return res.status(201).json({ id: c.id, originalName: c.originalName, size: c.size, mimeType: c.mimeType, inline: false });
   }
   const kind = ticketId ? 'ticket' : taskId ? 'task' : 'project';
   const rec = projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : ticketId ? await prisma.ticket.findUnique({ where: { id: ticketId }, include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }) : await prisma.task.findFirst({ where: { id: taskId, ...taskTeamScope(req) }, include: { teamAccesses: { select: { teamId: true } } } });
@@ -61,7 +67,7 @@ router.post('/files', requirePermission('file.upload'), upload.single('file'), a
 router.get('/files/:id/download', async (req, res) => {
   const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { comment: { select: { visibility: true } }, ticket: { include: { teamAccesses: { select: { teamId: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) return res.status(404).json({ error: 'File not found' });
-  const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
+  const ok = a.chatRoomId ? await loadRoomFor(req, a.chatRoomId).then(() => true, () => false) : a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) return res.status(404).json({ error: 'File not found' });
   if (a.comment?.visibility === 'INTERNAL' && !req.can('ticket.view_internal')) return res.status(404).json({ error: 'File not found' }); // files in internal notes stay internal
   const file = storagePath(a.storageKey);
@@ -75,13 +81,15 @@ const isPlatformAdminReq = (req) => (req.memberships || []).some((m) => m.organi
 router.delete('/files/:id', async (req, res) => {
   const a = await prisma.attachment.findUnique({ where: { id: req.params.id }, include: { ticket: { include: { teamAccesses: { select: { teamId: true, accessRole: true, addedById: true } }, collaborators: { select: { userId: true } } } }, task: { include: { teamAccesses: { select: { teamId: true } } } }, project: true } });
   if (!a) throw new AppError('File not found', 404);
-  const ok = a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
+  const ok = a.chatRoomId ? await loadRoomFor(req, a.chatRoomId).then(() => true, () => false) : a.ticket ? canAccessTarget(req, a.ticket, 'ticket') : a.task ? canAccessTarget(req, a.task, 'task') : canAccessTarget(req, a.project, 'project');
   if (!ok) throw new AppError('File not found', 404);
   const me = req.currentUser.id;
-  const mayDelete = a.uploadedById === me || (a.ticket && a.ticket.requesterId === me) || isPlatformAdminReq(req);
+  const chatTicket = a.chatRoomId ? (await prisma.chatRoom.findUnique({ where: { id: a.chatRoomId }, select: { ticket: { select: { requesterId: true } } } }))?.ticket : null;
+  const mayDelete = a.uploadedById === me || (a.ticket && a.ticket.requesterId === me) || (chatTicket && chatTicket.requesterId === me) || isPlatformAdminReq(req);
   if (!mayDelete) throw new AppError('Only the person who created the ticket, the person who uploaded the file, or a platform admin can delete it.', 403);
   await prisma.attachment.delete({ where: { id: a.id } });
   await discard(storagePath(a.storageKey)); // the bytes on the server disk go too
+  if (a.chatMessageId) await refreshMessage(a.chatMessageId).catch(() => {}); // the chat message drops the file live
   if (a.ticketId && !a.inline) await recordTicketEvents(prisma, a.ticketId, me, [{ type: 'ATTACHMENT_REMOVED', fromValue: a.id, fromLabel: a.originalName, clientVisible: a.ticket?.visibility === 'CLIENT' }]);
   res.json({ ok: true });
 });

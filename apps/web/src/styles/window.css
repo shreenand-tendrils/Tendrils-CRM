@@ -64,3 +64,10 @@
   .win-main { flex: 0 0 auto; padding-bottom: 22px; }
   .win-side { flex: 0 0 auto; }
 }
+
+/* v4.9.44: the ticket window slides away when the Discussion (chat) opens */
+.win.is-leaving { animation: win-slide-away .24s ease-in forwards; pointer-events: none; }
+.win-overlay.is-leaving { animation: win-fade-out .24s ease-in forwards; pointer-events: none; }
+@keyframes win-slide-away { to { opacity: 0; transform: translateX(-9%) scale(.985); } }
+@keyframes win-fade-out { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .win.is-leaving, .win-overlay.is-leaving { animation-duration: .01s; } }

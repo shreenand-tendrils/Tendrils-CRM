@@ -52,3 +52,16 @@ test('multi-assignee, members and daily update schemas', async () => {
   assert.equal(s.dailyUpdateUpsert.safeParse({ yesterday: '', today: 'y' }).success, false);
   assert.equal(s.chatMessageCreate.safeParse({ body: '   ' }).success, false);
 });
+
+// ---- v4.9.44: chat messages may be a file only; client can set a due date; rename
+import { chatMessageCreate, userRename } from '../src/validators/schemas.js';
+test('a chat message needs text or a file', () => {
+  assert.equal(chatMessageCreate.safeParse({ body: '' }).success, false);
+  assert.equal(chatMessageCreate.safeParse({ body: '   ', attachmentIds: [] }).success, false);
+  assert.equal(chatMessageCreate.safeParse({ body: '', attachmentIds: ['f1'] }).success, true);
+  assert.equal(chatMessageCreate.safeParse({ body: 'hello' }).success, true);
+});
+test('rename needs at least 2 characters', () => {
+  assert.equal(userRename.safeParse({ name: ' A ' }).success, false);
+  assert.equal(userRename.safeParse({ name: ' Priya Shah ' }).data.name, 'Priya Shah');
+});

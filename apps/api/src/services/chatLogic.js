@@ -24,8 +24,16 @@ export function tickStatus(message, receipts) {
 export const cleanMentions = (ids = [], roomUserIds = [], me) => [...new Set(ids)].filter((id) => id !== me && roomUserIds.includes(id));
 
 /** What other clients are allowed to see of a message (deleted text never leaves the server). */
+export const REACTION_EMOJIS = ['👍', '✅', '👀', '❤️', '🎉', '🙏', '😂', '❓'];
+/** Raw reaction rows -> [{ emoji, userIds }] in first-used order. */
+export const groupReactions = (rows = []) => {
+  const by = new Map();
+  for (const r of rows) by.set(r.emoji, [...(by.get(r.emoji) || []), r.userId]);
+  return [...by].map(([emoji, userIds]) => ({ emoji, userIds }));
+};
 export const publicMessage = (m) => {
-  const out = m.deletedAt ? { ...m, body: '', mentionIds: [] } : m;
+  const base = m.reactions ? { ...m, reactions: groupReactions(m.reactions) } : m;
+  const out = m.deletedAt ? { ...base, body: '', mentionIds: [], reactions: [], attachments: [] } : base;
   return out.replyTo?.deletedAt ? { ...out, replyTo: { ...out.replyTo, body: '' } } : out; // a quoted deleted message stays hidden
 };
 

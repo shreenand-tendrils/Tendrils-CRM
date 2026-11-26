@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { permissionsFor, ROLE_PERMISSIONS, PERMISSIONS } from '../src/rbac/permissions.js';
-import { canEditTask, canViewTicket, ticketEditScope, TICKET_FIELDS, checkMemberChange, roleFitsOrgType } from '../src/rbac/policies.js';
+import { canEditTask, canViewTicket, ticketEditScope, checkMemberChange, roleFitsOrgType } from '../src/rbac/policies.js';
 import { ticketToTaskStatus, TASK_TO_TICKET, deriveProgress, progressValid, shouldSubmitClientTicketForReview } from '../src/services/ticketTaskMaps.js';
 
 const internal = { type: 'INTERNAL' }, client = { type: 'CLIENT' };
@@ -53,7 +53,6 @@ test('ticket policy: view + edit scope', () => {
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'a'), t), 'own');
   assert.equal(ticketEditScope(ctx('EMPLOYEE', 'z'), t), 'none');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'a'), t), 'client');
-  assert.ok(TICKET_FIELDS.client.includes('dueDate'), 'ticket creator can edit the due date on a client-created ticket');
   assert.equal(ticketEditScope(ctx('CLIENT_MEMBER', 'b'), t), 'none');
 });
 

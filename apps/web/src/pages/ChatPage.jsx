@@ -1,38 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Send, Hash, FolderKanban, Plus, X, ArrowLeft, Check, CheckCheck, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, Eye, MessagesSquare, UserPlus, CheckCircle2, RotateCcw, ExternalLink, ListPlus, Search, Copy, ClipboardCheck } from "lucide-react";
+import { Send, Hash, FolderKanban, Plus, X, ArrowLeft, Check, Pin, PinOff, Pencil, Trash2, MoreHorizontal, Ban, Reply, Info, Eye, MessagesSquare, UserPlus, CheckCircle2, RotateCcw, ExternalLink, ListPlus } from "lucide-react";
 import Avatar from "../components/ui/Avatar";
 import EmptyState from "../components/ui/EmptyState";
 import { api } from "../api";
 import * as realtime from "../lib/realtime";
-import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
-
-import Linkify from "../components/ui/Linkify";
+import { tickStatus, EDIT_WINDOW_MS, nameOf } from "../lib/chatTicks";
+import { Ticks, Body } from "../components/chat/ChatBits";
+import TicketChat from "../components/chat/TicketChat";
+import { previewOf } from "../lib/chatTimeline";
 import TeamMultiSelect from "../components/ui/TeamMultiSelect";
 import { fmtTime, fmtDateTime } from "../lib/dates";
 
 const time = (v) => fmtTime(v);
 const TYPING_MS = 3500;
-const esc = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** ✓ sent · ✓✓ delivered · blue ✓✓ read (like WhatsApp). */
-function Ticks({ status }) {
-  const Icon = status === "sent" ? Check : CheckCheck;
-  return <span className={"ticks " + status} title={status === "read" ? "Read" : status === "delivered" ? "Delivered" : "Sent"} aria-label={status}><Icon size={15} /></span>;
-}
-
-/** Message text with @mentions highlighted. */
-function Body({ text, members, meId }) {
-  const names = [...members.map((u) => nameOf(u)), "everyone", "all"].sort((a, b) => b.length - a.length);
-  const parts = text.split(new RegExp(`(@(?:${names.map(esc).join("|")}))(?![\\w])`, "gi"));
-  return <>{parts.map((p, i) => {
-    if (!p.startsWith("@")) return <Linkify key={i} text={p} />;
-    const w = p.slice(1).toLowerCase();
-    const u = members.find((m) => nameOf(m).toLowerCase() === w);
-    if (!u && w !== "all" && w !== "everyone") return <span key={i}>{p}</span>;
-    return <mark key={i} className={"mention" + (!u || u.id === meId ? " me" : "")}>{p}</mark>;
-  })}</>;
-}
 
 export default function ChatPage({ me, users = [], notify }) {
   const [params, setParams] = useSearchParams();
@@ -57,9 +38,6 @@ export default function ChatPage({ me, users = [], notify }) {
   const [info, setInfo] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
   const [showPins, setShowPins] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchText, setSearchText] = useState("");
-  const [copiedLink, setCopiedLink] = useState(false);
   const mentionMap = useRef({}); // "@Name" typed via the picker -> user id
   const inputRef = useRef(null);
   const bottom = useRef(null);
@@ -71,6 +49,8 @@ export default function ChatPage({ me, users = [], notify }) {
   const active = rooms?.find((r) => r.id === activeId);
   const activeRef = useRef(activeId);
   activeRef.current = activeId;
+  const ticketRoomRef = useRef(false);
+  ticketRoomRef.current = active?.type === "TICKET";
 
   const loadRooms = useCallback(() => api.get("/chat/rooms").then((r) => setRooms(r.data)).catch(() => notify("Could not load chat rooms", "error")), [notify]);
   const markRead = useCallback((roomId) => {
@@ -91,10 +71,11 @@ export default function ChatPage({ me, users = [], notify }) {
     api.get(`/chat/rooms/${roomId}/pins`).then((r) => setPins(r.data)).catch(() => setPins([]));
     api.get(`/chat/rooms/${roomId}/receipts`).then((r) => setReceipts(Object.fromEntries(r.data.map((x) => [x.userId, x])))).catch(() => setReceipts({}));
   }, []);
+  const ticketRoom = active?.type === "TICKET"; // ticket discussions have their own screen (components/chat/TicketChat)
   useEffect(() => {
     setMessages([]); setEditing(null); setReplyTo(null); setMenuFor(null); setShowPins(false); setPins([]); setReceipts({}); mentionMap.current = {};
-    if (activeId) { loadMessages(activeId); loadRoomExtras(activeId); }
-  }, [activeId, loadMessages, loadRoomExtras]);
+    if (activeId && !ticketRoom) { loadMessages(activeId); loadRoomExtras(activeId); }
+  }, [activeId, ticketRoom, loadMessages, loadRoomExtras]);
 
   // Live events
   useEffect(() => {
@@ -103,7 +84,7 @@ export default function ChatPage({ me, users = [], notify }) {
         const isActive = message.roomId === activeRef.current;
         if (isActive) {
           merge([message]);
-          if (message.authorId !== meId && !document.hidden) markRead(message.roomId);
+          if (message.authorId !== meId && !document.hidden && !ticketRoomRef.current) markRead(message.roomId);
           setTyping((t) => { const { [message.roomId]: _, ...rest } = t; return rest; });
         }
         setRooms((rs) => {
@@ -232,7 +213,7 @@ export default function ChatPage({ me, users = [], notify }) {
       {list.map((r) => (
         <button key={r.id} className={"room" + (r.id === activeId ? " on" : "") + (r.resolvedAt ? " resolved" : "")} onClick={() => setParams({ room: r.id })}>
           {r.type === "GENERAL" ? <Hash size={15} /> : r.type === "PROJECT" ? <FolderKanban size={15} /> : r.type === "TICKET" ? (r.resolvedAt ? <CheckCircle2 size={15} /> : <MessagesSquare size={15} />) : <span className="dm-dot-wrap"><Avatar name={r.name} /><i className={"dot" + (online.has(r.dmUser?.id) ? " on" : "")} /></span>}
-          <span><b>{r.name}</b><small>{r.lastMessage ? `${r.lastMessage.authorId === meId ? "You" : r.lastMessage.author?.name || "Someone"}: ${r.lastMessage.deletedAt ? "Message deleted" : r.lastMessage.body}` : r.type === "PROJECT" ? r.project?.organization?.name : "No messages yet"}</small></span>
+          <span><b>{r.name}</b><small>{r.lastMessage ? `${r.lastMessage.authorId === meId ? "You" : r.lastMessage.author?.name || "Someone"}: ${previewOf(r.lastMessage)}` : r.type === "PROJECT" ? r.project?.organization?.name : "No messages yet"}</small></span>
           {r.unread > 0 && <em className="badge">{r.unread > 99 ? "99+" : r.unread}</em>}
         </button>
       ))}
@@ -247,22 +228,22 @@ export default function ChatPage({ me, users = [], notify }) {
   const suggestions = mentionQuery === null ? [] : [...(active?.type !== "DIRECT" && ("all".startsWith(mentionQuery) || "everyone".startsWith(mentionQuery)) ? [allOption] : []), ...members.filter((u) => u.id !== meId && (nameOf(u).toLowerCase().includes(mentionQuery) || (u.email || "").toLowerCase().includes(mentionQuery)))].slice(0, 5);
   const t = typing[activeId];
   const typingNow = t && t.until > Date.now() ? t.name : null;
-  const ticketFocus = params.get("focus") === "ticket" && active?.type === "TICKET";
-  const visibleMessages = searchText.trim() ? messages.filter((m) => (m.body || "").toLowerCase().includes(searchText.trim().toLowerCase())) : messages;
-  const copyDiscussionLink = async () => { try { await navigator.clipboard.writeText(window.location.href); setCopiedLink(true); window.setTimeout(() => setCopiedLink(false), 1800); } catch { notify("Could not copy the discussion link", "error"); } };
 
   return (
-    <div className={"chat" + (params.get("room") ? " has-room" : "") + (ticketFocus ? " ticket-chat-focus" : "")}>
-      {!ticketFocus && <aside className="chat-rooms">
+    <div className={"chat" + (params.get("room") ? " has-room" : "") + (ticketRoom ? " is-ticket" : "")}>
+      <aside className="chat-rooms">
         {section("CHANNELS", rooms.filter((r) => r.type === "GENERAL"))}
         {section("PROJECTS", rooms.filter((r) => r.type === "PROJECT").sort((a, b) => a.name.localeCompare(b.name)))}
         {rooms.some((r) => r.type === "TICKET") && section("TICKET DISCUSSIONS", rooms.filter((r) => r.type === "TICKET").sort((a, b) => (a.resolvedAt ? 1 : 0) - (b.resolvedAt ? 1 : 0) || byActivity(a, b)))}
         {section("DIRECT MESSAGES", dms, <button className="icon-btn" title="New message" onClick={() => setPicker(true)}><Plus size={14} /></button>)}
         {!dms.length && <small className="muted pad">Start a conversation with + above.</small>}
-      </aside>}
+      </aside>
+      {ticketRoom ? (
+        <TicketChat key={active.id} room={active} me={me} users={users} notify={notify} onBackToList={() => setParams({})} onRoomChanged={loadRooms} />
+      ) : (
       <section className="chat-main">
         <header>
-          <button className="back" onClick={() => ticketFocus ? navigate(`/tickets?ticket=${active.ticketId}`) : setParams({})} aria-label={ticketFocus ? "Back to ticket" : "Back to conversations"}><ArrowLeft size={18} /></button>
+          <button className="back" onClick={() => setParams({})} aria-label="Back to conversations"><ArrowLeft size={18} /></button>
           <div><b>{active?.type === "GENERAL" ? "# " : ""}{active?.name}</b>
           <small>
             {active?.type === "DIRECT" ? (online.has(active.dmUser?.id) ? "● Online" : "Offline") : active?.type === "PROJECT" ? "Project team + Platform admins" : active?.type === "TICKET" ? `Ticket discussion · ${members.length} ${members.length === 1 ? "person" : "people"}${active.resolvedAt ? " · Resolved" : ""}` : "All Tendrils staff"}
@@ -270,16 +251,12 @@ export default function ChatPage({ me, users = [], notify }) {
           </small></div>
           {active?.type === "TICKET" && (
             <div className="room-actions">
-              {ticketFocus && <button type="button" className="secondary" onClick={() => { setSearchOpen((v) => !v); setSearchText(""); }}><Search size={14} /> Search messages</button>}
-              {ticketFocus && <button type="button" className="secondary" onClick={copyDiscussionLink}>{copiedLink ? <><ClipboardCheck size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}</button>}
               <button type="button" className="secondary" onClick={() => navigate(`/tickets?ticket=${active.ticketId}`)}><ExternalLink size={14} /> Open ticket</button>
               <button type="button" className="secondary" onClick={openInvite}><UserPlus size={14} /> Invite</button>
               <button type="button" className="secondary" onClick={() => toggleResolved(active)}>{active.resolvedAt ? <><RotateCcw size={14} /> Reopen</> : <><CheckCircle2 size={14} /> Resolve</>}</button>
             </div>
           )}
         </header>
-        {ticketFocus && <div className="ticket-chat-context"><span className="ticket-chat-icon"><MessagesSquare size={17} /></span><span><b>Ticket discussion</b><small>Keep decisions, questions and progress updates together. Use @mentions to notify teammates.</small></span><span className="ticket-chat-people">{members.length} participants</span></div>}
-        {searchOpen && ticketFocus && <div className="chat-search"><Search size={15} /><input autoFocus value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Find a message in this discussion…" /><small>{searchText ? `${visibleMessages.length} found` : "Search loaded messages"}</small><button className="icon-btn" onClick={() => { setSearchOpen(false); setSearchText(""); }} aria-label="Close search"><X size={14} /></button></div>}
         {pins.length > 0 && (
           <div className="pinbar">
             <button className="pin-main" onClick={() => jumpTo(pins[0].id)} title="Go to pinned message"><Pin size={14} /><span><b>{pins.length > 1 ? `Pinned (${pins.length})` : "Pinned"}</b> {pins[0].body}</span></button>
@@ -288,7 +265,7 @@ export default function ChatPage({ me, users = [], notify }) {
           </div>
         )}
         <div className="chat-log">
-          {visibleMessages.map((m) => {
+          {messages.map((m) => {
             const own = m.authorId === meId;
             const deleted = !!m.deletedAt;
             const canEdit = own && !deleted && Date.now() - new Date(m.createdAt).getTime() <= EDIT_WINDOW_MS;
@@ -328,7 +305,7 @@ export default function ChatPage({ me, users = [], notify }) {
               </div>
             );
           })}
-          {!visibleMessages.length && <small className="muted center">{searchText ? "No messages match your search." : "No messages yet — say hello."}</small>}
+          {!messages.length && <small className="muted center">No messages yet — say hello.</small>}
           <div ref={bottom} />
         </div>
         <div className="typing">{typingNow ? `${typingNow} is typing…` : ""}</div>
@@ -344,6 +321,7 @@ export default function ChatPage({ me, users = [], notify }) {
           <button className="primary" disabled={!draft.trim()}>{editing ? <><Check size={16} /> Save</> : <><Send size={16} /> Send</>}</button>
         </form>
       </section>
+      )}
       {infoFor && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setInfoFor(null)}>
           <div className="modal">

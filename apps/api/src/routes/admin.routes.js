@@ -3,7 +3,6 @@ import { prisma } from '../db.js';
 import { requirePermission, taskTeamScope } from '../middleware/index.js';
 import { AppError } from '../errors/AppError.js';
 import { safeActivityScope } from '../repositories/workspace.repository.js';
-import { logActivity } from '../services/activity.js';
 
 // Admin console API: managers/admins of the internal organization only.
 const router = Router();
@@ -16,19 +15,6 @@ const parseDay = (v) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(d.getTime())) throw new AppError('date must be YYYY-MM-DD', 400);
   return { s, d };
 };
-
-
-// Display names are global user data. Only a Platform Admin may change another person's name.
-router.patch('/admin/users/:id/name', async (req, res) => {
-  if (!req.can('member.grant_admin')) throw new AppError('Only a Platform admin can rename people.', 403);
-  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-  if (name.length < 2 || name.length > 120) throw new AppError('Name must be between 2 and 120 characters.', 400);
-  const target = await prisma.user.findUnique({ where: { id: req.params.id }, select: userSelect });
-  if (!target) throw new AppError('User not found.', 404);
-  const updated = await prisma.user.update({ where: { id: target.id }, data: { name }, select: userSelect });
-  await logActivity({ actorId: req.currentUser.id, organizationId: req.memberships?.find((m) => m.organization?.type === 'INTERNAL')?.organizationId, entityType: 'user', entityId: target.id, action: 'updated', summary: `Renamed ${target.email || target.id} to ${name}` });
-  res.json(updated);
-});
 
 router.get('/admin/overview', async (req, res) => {
   const { s, d } = parseDay(req.query.date);

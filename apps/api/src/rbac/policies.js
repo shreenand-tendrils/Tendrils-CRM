@@ -45,7 +45,7 @@ export const TICKET_FIELDS = {
   full: ['title', 'description', 'status', 'progress', 'priority', 'visibility', 'assigneeId', 'teamId', 'teamIds', 'collaboratorIds', 'projectId', 'dueDate'],
   status: ['status', 'progress'],
   own: ['title', 'description', 'status', 'progress', 'priority', 'dueDate'],
-  client: ['title', 'description', 'priority', 'status', 'dueDate'], // due date is editable only by the ticket creator; status is further limited by clientStatusChangeAllowed
+  client: ['title', 'description', 'priority', 'status', 'dueDate'], // the client who raised the ticket may move its due date; 'status' is further limited by clientStatusChangeAllowed
   none: [],
 };
 
