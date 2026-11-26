@@ -327,3 +327,9 @@
 .chat-input { padding: 8px 20px calc(14px + env(safe-area-inset-bottom)); border-top: 0; }
 .chat-input input { border-radius: 14px; min-height: 48px; background: #f6f7fb; }
 @media (max-width: 720px) { .msg, .msg.own { padding: 3px 12px; gap: 10px; } .msg > .avatar { width: 34px; height: 34px; } .msg-menu, .msg.own .msg-menu { right: 12px; } }
+
+/* v4.9.47: menus are position:fixed (set inline) so the scrolling list can't clip them */
+.tc-actions .menu { z-index: 60; max-height: min(420px, calc(100dvh - 24px)); overflow-y: auto; box-shadow: 0 12px 32px rgba(16, 22, 42, .22); }
+.tc-actions .menu button { white-space: nowrap; }
+/* General / project / DM rooms: last messages open the menu upwards */
+.chat-log .msg:nth-last-child(-n+4) .menu { top: auto; bottom: 36px; }

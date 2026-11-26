@@ -80,6 +80,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
   const [menuFor, setMenuFor] = useState(null);
   const [reactFor, setReactFor] = useState(null);
   const [sel, setSel] = useState(null); // tapped row on touch screens
+  const [pop, setPop] = useState({}); // fixed position of the open menu (so the message list never clips it)
   const [panel, setPanel] = useState(() => window.innerWidth >= 1180 ? "details" : null); // details | pins | files | people | null
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -184,7 +185,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
     }
     if (stick.current) { el.scrollTop = el.scrollHeight; stick.current = false; setNewBelow(0); }
   }, [rows.length, loaded]);
-  const onScroll = () => { const el = logRef.current; const near = el.scrollHeight - el.scrollTop - el.clientHeight < 140; setAtBottom(near); if (near) setNewBelow(0); };
+  const onScroll = () => { setMenuFor(null); setReactFor(null); const el = logRef.current; const near = el.scrollHeight - el.scrollTop - el.clientHeight < 140; setAtBottom(near); if (near) setNewBelow(0); };
   const toBottom = () => { const el = logRef.current; el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); setNewBelow(0); };
 
   const jumpTo = useCallback(async (id) => {
@@ -248,6 +249,12 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
   const togglePin = (m) => { setMenuFor(null); api[m.pinnedAt ? "delete" : "put"](`/chat/messages/${m.id}/pin`).catch((err) => notify(err.response?.data?.error || "Could not update pin", "error")); };
   const remove = (m) => { setMenuFor(null); if (window.confirm("Delete this message for everyone?")) api.delete(`/chat/messages/${m.id}`).catch((err) => notify(err.response?.data?.error || "Could not delete", "error")); };
   const makeTask = async (m) => { setMenuFor(null); try { const { data } = await api.post(`/chat/messages/${m.id}/task`); notify(`Task created: ${data.title}`, "success"); } catch (e) { notify(e.response?.data?.error || "Could not create the task", "error"); } };
+  const openPop = (e, id, kind) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const down = window.innerHeight - r.bottom > (kind === "menu" ? 330 : 90);
+    setPop({ right: Math.max(8, window.innerWidth - r.right), ...(down ? { top: r.bottom + 6 } : { bottom: window.innerHeight - r.top + 6 }) });
+    if (kind === "menu") { setMenuFor(menuFor === id ? null : id); setReactFor(null); } else { setReactFor(reactFor === id ? null : id); setMenuFor(null); }
+  };
   const copyText = async (m) => { setMenuFor(null); try { await navigator.clipboard.writeText(m.body); notify("Copied", "success"); } catch { notify("Could not copy", "error"); } };
   const react = async (m, emoji) => { setMenuFor(null); setReactFor(null); try { const { data } = await api.put(`/chat/messages/${m.id}/reaction`, { emoji }); setMessages((cur) => cur.map((x) => (x.id === data.id ? { ...x, ...data } : x))); } catch (e) { notify(e.response?.data?.error || "Could not react", "error"); } };
   const openInfo = (m) => { setMenuFor(null); setInfoFor(m); setInfo(null); api.get(`/chat/messages/${m.id}/info`).then((r) => setInfo(r.data)).catch((e) => { notify(e.response?.data?.error || "Could not load info", "error"); setInfoFor(null); }); };
@@ -325,12 +332,12 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
           {!deleted && (
             <div className="tc-actions" role="toolbar" aria-label="Message actions">
               {QUICK.map((e) => <button type="button" key={e} className="icon-btn" onClick={() => react(m, e)} aria-label={`React ${e}`}>{e}</button>)}
-              <button type="button" className="icon-btn" onClick={() => { setReactFor(reactFor === m.id ? null : m.id); setMenuFor(null); }} aria-label="More reactions"><SmilePlus size={15} /></button>
+              <button type="button" className="icon-btn" onClick={(e) => openPop(e, m.id, "palette")} aria-label="More reactions"><SmilePlus size={15} /></button>
               <button type="button" className="icon-btn" onClick={() => startReply(m)} aria-label="Reply"><Reply size={15} /></button>
-              <button type="button" className="icon-btn" onClick={() => { setMenuFor(menuFor === m.id ? null : m.id); setReactFor(null); }} aria-label="More actions"><MoreHorizontal size={15} /></button>
-              {reactFor === m.id && <div className="menu tc-palette" role="menu">{EMOJIS.map((e) => <button type="button" key={e} onClick={() => react(m, e)} aria-label={`React ${e}`}>{e}</button>)}</div>}
+              <button type="button" className="icon-btn" onClick={(e) => openPop(e, m.id, "menu")} aria-label="More actions"><MoreHorizontal size={15} /></button>
+              {reactFor === m.id && <div className="menu tc-palette" role="menu" style={{ position: "fixed", left: "auto", ...pop }}>{EMOJIS.map((e) => <button type="button" key={e} onClick={() => react(m, e)} aria-label={`React ${e}`}>{e}</button>)}</div>}
               {menuFor === m.id && (
-                <div className="menu" role="menu">
+                <div className="menu" role="menu" style={{ position: "fixed", left: "auto", ...pop }}>
                   <button type="button" onClick={() => startReply(m)}><Reply size={14} /> Reply</button>
                   {m.body && <button type="button" onClick={() => copyText(m)}><Copy size={14} /> Copy text</button>}
                   <button type="button" onClick={() => togglePin(m)}>{m.pinnedAt ? <><PinOff size={14} /> Remove decision pin</> : <><Pin size={14} /> Pin as decision</>}</button>
@@ -389,7 +396,7 @@ export default function TicketChat({ room, me, users = [], notify, onBackToList,
           )}
           {pins[0] && !panel && <button type="button" className="tc-pinbar" onClick={() => jumpTo(pins[0].id)}><Pin size={13} /><span><b>Decision{pins.length > 1 ? `s (${pins.length})` : ""}</b> {pins[0].body}</span></button>}
 
-          <div className="tc-log" ref={logRef} onScroll={onScroll} onClick={() => { setMenuFor(null); setReactFor(null); setSel(null); }}>
+          <div className="tc-log" ref={logRef} onScroll={onScroll} onClick={(e) => { if (e.target.closest(".tc-actions")) return; setMenuFor(null); setReactFor(null); setSel(null); }}>
             {hasEarlier && <button type="button" className="tc-earlier" onClick={() => loadEarlier().catch(() => notify("Could not load older messages", "error"))}><ChevronUp size={14} /> Load earlier messages</button>}
             {!loaded && <small className="muted tc-empty">Loading the discussion…</small>}
             {loaded && !messages.length && (
