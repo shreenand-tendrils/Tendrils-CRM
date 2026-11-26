@@ -36,6 +36,10 @@ model User {
   chatDeliveries ChatDelivery[]
   whatsapp WhatsAppLink?
   apiTokens ApiToken[]
+  productReviewsRequested ProductReview[] @relation("ReviewRequester")
+  productReviewerSlots ProductReviewer[]
+  productReviewComments ProductReviewComment[]
+  productReviewItems ProductReviewItem[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -688,4 +692,78 @@ model ApiToken {
 model TicketCounter {
   prefix String @id
   lastNumber Int @default(0)
+}
+
+// ---- Product reviews: a lightweight "please review this" request (links, screenshots, Excel/PDF files).
+// Lighter than a ticket: one requester, a few reviewers, Approve / Request changes, versions, comments, email.
+enum ReviewStatus {
+  IN_REVIEW
+  APPROVED
+  CHANGES_REQUESTED
+  CANCELLED
+}
+enum ReviewDecision {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+}
+model ProductReview {
+  id String @id @default(cuid())
+  title String
+  description String?
+  status ReviewStatus @default(IN_REVIEW)
+  version Int @default(1)
+  dueDate DateTime?
+  requesterId String
+  teamIds String[] @default([]) // the review teams chosen (display only: their people became reviewers)
+  lastRemindedAt DateTime?
+  requester User @relation("ReviewRequester", fields:[requesterId], references:[id], onDelete:Cascade)
+  items ProductReviewItem[]
+  reviewers ProductReviewer[]
+  comments ProductReviewComment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([requesterId, createdAt])
+  @@index([status, dueDate])
+}
+model ProductReviewItem {
+  id String @id @default(cuid())
+  reviewId String
+  version Int @default(1)
+  kind String // LINK | FILE
+  title String
+  url String?
+  originalName String?
+  storageKey String? @unique
+  mimeType String?
+  size Int?
+  addedById String
+  review ProductReview @relation(fields:[reviewId], references:[id], onDelete:Cascade)
+  addedBy User @relation(fields:[addedById], references:[id], onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@index([reviewId, version])
+}
+model ProductReviewer {
+  reviewId String
+  userId String
+  decision ReviewDecision @default(PENDING)
+  note String?
+  decidedAt DateTime?
+  review ProductReview @relation(fields:[reviewId], references:[id], onDelete:Cascade)
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@id([reviewId, userId])
+  @@index([userId, decision])
+}
+model ProductReviewComment {
+  id String @id @default(cuid())
+  reviewId String
+  authorId String
+  kind String @default("COMMENT") // COMMENT | APPROVED | CHANGES | VERSION | SYSTEM
+  body String
+  version Int @default(1)
+  review ProductReview @relation(fields:[reviewId], references:[id], onDelete:Cascade)
+  author User @relation(fields:[authorId], references:[id], onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@index([reviewId, createdAt])
 }

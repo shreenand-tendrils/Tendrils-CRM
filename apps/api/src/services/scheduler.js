@@ -1,5 +1,6 @@
 import { prisma } from '../db.js';
 import { notifyUser } from './activity.js';
+import { pingReview } from './reviews.service.js';
 
 const DAY = 86400000;
 const DONE = ['REVIEW_TEST', 'CLOSED']; // resolved or closed: nothing left to be late on
@@ -35,11 +36,33 @@ export async function alertDueTickets(now = new Date()) {
   return sent;
 }
 
+/** Remind reviewers who have not decided on reviews due within 24h or already late (once per person per review per day). */
+export async function alertDueReviews(now = new Date()) {
+  const reviews = await prisma.productReview.findMany({
+    where: { status: 'IN_REVIEW', dueDate: { not: null, lte: new Date(now.getTime() + DAY) } },
+    include: { reviewers: { where: { decision: 'PENDING' } }, items: { where: {} } }, take: 300,
+  });
+  let sent = 0;
+  for (const r of reviews) {
+    const href = `/reviews?open=${r.id}`;
+    const items = r.items.filter((i) => i.version === r.version);
+    for (const slot of r.reviewers) {
+      const recent = await prisma.notification.findFirst({ where: { userId: slot.userId, href, type: { in: ['DUE_SOON', 'OVERDUE'] }, createdAt: { gt: new Date(now.getTime() - DAY) } }, select: { id: true } });
+      if (recent) continue;
+      await pingReview({ userIds: [slot.userId], actorId: null, review: r, kind: 'reminder', items, title: r.dueDate < now ? `Review overdue: ${r.title}` : `Review due soon: ${r.title}`, body: 'You have not decided on this review yet.' });
+      sent += 1;
+    }
+  }
+  return sent;
+}
+
 export function startScheduler() {
   if (process.env.NODE_ENV === 'test' || process.env.DISABLE_SCHEDULER === 'true') return () => {};
   const safe = (fn) => () => fn().catch((e) => console.error('[scheduler]', e.message));
   const a = setInterval(safe(fireDueReminders), 60 * 1000);
   const b = setInterval(safe(alertDueTickets), 15 * 60 * 1000);
   setTimeout(safe(alertDueTickets), 15 * 1000);
-  return () => { clearInterval(a); clearInterval(b); };
+  const c = setInterval(safe(alertDueReviews), 30 * 60 * 1000);
+  setTimeout(safe(alertDueReviews), 25 * 1000);
+  return () => { clearInterval(a); clearInterval(b); clearInterval(c); };
 }

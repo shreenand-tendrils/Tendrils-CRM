@@ -35,6 +35,7 @@ import RemindersPage from "../../pages/RemindersPage";
 import AdminPage from "../../pages/AdminPage";
 import ReportsPage from "../../pages/ReportsPage";
 import ResourcesPage from "../../pages/ResourcesPage";
+import ReviewsPage from "../../pages/ReviewsPage";
 import { uploadErrorText } from "../../lib/files";
 
 const pageMeta = {
@@ -46,6 +47,7 @@ const pageMeta = {
   "/tickets": ["Tickets", "Every request has an owner, a priority and a next step."],
   "/tasks": ["Tasks", "Your team’s work, deadlines and what needs attention."],
   "/chat": ["Chat", "Talk with your team, in General or per project."],
+  "/reviews": ["Reviews", "Share links and files for quick review. Approve, or ask for changes, without raising a ticket."],
   "/reminders": ["Reminders", "Your private flags and reminders. Only you can see them."],
   "/notes": ["My notes", "Private notes that only you can see. Never emailed or shared."],
   // "/updates": ["Daily update", "Share what you did and what is next. Admins are notified."],
@@ -238,7 +240,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
       <main>
         <Topbar title={title} me={me} hasUnread={unread > 0} onBroadcast={can(me, "broadcast.send") ? () => setBroadcastOpen(true) : undefined} onMenu={() => setNavOpen(true)} showSearch={path === "/tickets" || path === "/tasks"} />
 
-        <section className={"page" + (path === "/chat" ? " page-chat" : "")}>
+        <section className={"page" + (path === "/chat" ? " page-chat" : path === "/reviews" ? " page-reviews" : "")}>
           <PageHeader
             title={path === "/" ? `Welcome back, ${me.user.name?.split(" ")[0] || "there"}.` : title}
             subtitle={subtitle}
@@ -256,6 +258,7 @@ export default function WorkspaceShell({ data, refresh, setData }) {
             <Route path="/documents" element={<ResourcesPage me={me} notify={note} />} />
             <Route path="/projects" element={<ProjectsPage data={data} onRefresh={refresh} notify={note} />} />
             <Route path="/chat" element={guard(can(me, "chat.use"), "team chat", <ChatPage me={me} users={data.users || []} notify={note} />)} />
+            <Route path="/reviews" element={guard(internal, "product reviews", <ReviewsPage me={me} notify={note} />)} />
             <Route path="/reminders" element={guard(internal, "reminders", <RemindersPage notify={note} onOpenTicket={(t) => { navigate("/tickets"); setSelected(t); }} />)} />
             <Route path="/notes" element={guard(internal, "my notes", <NotesPage notify={note} />)} />
             {/* <Route path="/updates" element={guard(can(me, "update.post"), "daily updates", <UpdatesPage notify={note} onRefresh={refresh} />)} /> */}

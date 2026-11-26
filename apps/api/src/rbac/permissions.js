@@ -31,10 +31,11 @@ export const PERMISSIONS = {
   'member.grant_admin': 'Grant or remove Platform Admin',
   'project.post_update': 'Post client-visible project updates (any project)',
   'work.cross_team': 'Raise tickets and create tasks for other teams',
+  'review.request': 'Ask teams to review links, screenshots and files (product reviews)',
 };
 const ALL = Object.keys(PERMISSIONS);
 
-const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.route', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'broadcast.send', 'update.post'];
+const EMPLOYEE = ['task.create', 'task.assign', 'task.update_own', 'ticket.create', 'ticket.route', 'ticket.view_internal', 'ticket.update_own', 'ticket.comment_internal', 'file.upload', 'team.view', 'user.list', 'chat.use', 'broadcast.send', 'update.post', 'review.request'];
 
 export const ROLE_PERMISSIONS = {
   PLATFORM_ADMIN: ALL.filter((p) => p !== 'project.request'),

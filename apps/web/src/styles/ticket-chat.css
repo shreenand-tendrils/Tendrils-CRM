@@ -333,3 +333,16 @@
 .tc-actions .menu button { white-space: nowrap; }
 /* General / project / DM rooms: last messages open the menu upwards */
 .chat-log .msg:nth-last-child(-n+4) .menu { top: auto; bottom: 36px; }
+
+/* v4.9.48: the global .icon-btn is purple-tinted; the hover toolbar needs plain ghost buttons */
+.tc-actions { gap: 2px; padding: 3px; border-radius: 12px; background: #fff; border: 1px solid var(--color-line-strong); box-shadow: 0 4px 14px rgba(16, 22, 42, .12); }
+.tc-actions .icon-btn { width: 32px; height: 32px; border-radius: 8px; background: transparent; color: var(--color-muted); font-size: 17px; line-height: 1; transition: background .12s, color .12s, transform .12s; }
+.tc-actions .icon-btn:hover { background: var(--color-page); color: var(--color-ink); transform: scale(1.08); }
+.tc-actions .icon-btn:active { transform: scale(.96); }
+.tc-actions .icon-btn[aria-label="Reply"]:hover, .tc-actions .icon-btn[aria-label="More actions"]:hover, .tc-actions .icon-btn[aria-label="More reactions"]:hover { color: var(--color-brand-600); background: var(--color-brand-soft); }
+.tc-actions .icon-btn + .icon-btn[aria-label="More reactions"] { margin-left: 2px; }
+.tc-actions .icon-btn[aria-label="More reactions"] { border-left: 1px solid var(--color-line); border-radius: 0 8px 8px 0; }
+.tc-actions .menu button, .tc-actions .tc-palette button { color: var(--color-ink); background: transparent; }
+.tc-actions .menu button:hover, .tc-actions .tc-palette button:hover { background: var(--color-page); }
+.tc-actions .menu button.danger { color: var(--color-bad); }
+.tc-actions .menu button.danger:hover { background: var(--color-bad-soft); }

@@ -121,3 +121,29 @@ export function sendNotificationEmail({ to, name, subject, message, href, cta = 
 }
 
 export { fireAndLog };
+
+/** Product-review emails: request, new version, decision, reminder. Lists the links and files so the reviewer sees what to open. */
+export function sendReviewEmail({ to, name, kind, review, items = [], note, actorName, href }) {
+  const url = `${webBase()}${href || '/reviews'}`;
+  const who = actorName || 'Someone';
+  const lines = {
+    request: [`${who} asked you to review: ${review.title}`, `${who} asked you to review this`],
+    version: [`New version (v${review.version}) to review: ${review.title}`, `${who} uploaded version ${review.version}. Your earlier decision was reset, so please look again`],
+    approved: [`Approved: ${review.title}`, `${who} approved this review`],
+    changes: [`Changes requested: ${review.title}`, `${who} asked for changes`],
+    reminder: [`Review reminder: ${review.title}`, review.dueDate && new Date(review.dueDate) < new Date() ? 'This review is overdue and still waiting for you' : 'This review is due soon and still waiting for you'],
+    nudge: [`Reminder: please review ${review.title}`, `${who} sent a reminder`],
+  }[kind] || [`Review: ${review.title}`, 'There is an update on this review'];
+  const rows = items.slice(0, 12).map((i) => i.kind === 'LINK'
+    ? `<li style="margin:3px 0"><a href="${esc(i.url)}">${esc(i.title || i.url)}</a></li>`
+    : `<li style="margin:3px 0">${esc(i.title || i.originalName)} <span style="color:#888">(file, open in Tendrils)</span></li>`).join('');
+  const more = items.length > 12 ? `<p style="color:#888">…and ${items.length - 12} more.</p>` : '';
+  const due = review.dueDate ? `<p style="margin:4px 0;color:#555">Due <b>${esc(ddmmyy(review.dueDate))}</b></p>` : '';
+  const quote = note ? `<blockquote style="border-left:3px solid #5746e8;margin:10px 0;padding:6px 12px;color:#444">${esc(note).replace(/\n/g, '<br>')}</blockquote>` : '';
+  const desc = review.description && ['request', 'version'].includes(kind) ? `<p style="color:#444">${esc(review.description).replace(/\n/g, '<br>')}</p>` : '';
+  return sendMail({
+    to, subject: lines[0],
+    text: `${lines[1]}.\n\n${review.title}${review.dueDate ? `\nDue ${ddmmyy(review.dueDate)}` : ''}${note ? `\n\n"${note}"` : ''}\n\nOpen: ${url}`,
+    html: wrapBase(`<h3 style="margin:0 0 8px">${esc(review.title)}</h3><p>Hi ${esc(name || 'there')},</p><p>${esc(lines[1])}.</p>${desc}${quote}${due}${rows ? `<p style="margin:10px 0 4px"><b>What to look at</b></p><ul style="padding-left:18px;margin:0">${rows}</ul>${more}` : ''}${btn(url, kind === 'approved' || kind === 'changes' ? 'Open review' : 'Review now')}<p style="color:#888;font-size:12px">You are receiving this because of a product review in Tendrils.</p>`),
+  });
+}
